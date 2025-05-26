@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Main Menu -->
+    <menuitem id="zns_main_menu" 
+              name="Zalo ZNS" 
+              sequence="50"
+              web_icon="bom_zns_simple,static/description/icon.png"/>
+    
+    <!-- Dashboard -->
+    <menuitem id="zns_dashboard_menu" 
+              name="Dashboard" 
+              parent="zns_main_menu" 
+              action="zns_dashboard_action" 
+              sequence="5"/>
+    
+    <!-- Messages -->
+    <menuitem id="zns_messages_menu" 
+              name="Messages" 
+              parent="zns_main_menu" 
+              action="zns_message_action" 
+              sequence="10"/>
+    
+    <!-- Analytics -->
+    <menuitem id="zns_analytics_menu" 
+              name="Analytics" 
+              parent="zns_main_menu" 
+              action="zns_message_analytics_action" 
+              sequence="15"/>
+    
+    <!-- Reports -->
+    <menuitem id="zns_reports_menu" 
+              name="Reports" 
+              parent="zns_main_menu" 
+              sequence="20"/>
+    
+    <menuitem id="zns_generate_report_menu" 
+              name="Generate Report" 
+              parent="zns_reports_menu" 
+              action="zns_report_wizard_action" 
+              sequence="10"/>
+    
+    <!-- Configuration -->
+    <menuitem id="zns_config_menu" 
+              name="Configuration" 
+              parent="zns_main_menu" 
+              sequence="90"/>
+    
+    <menuitem id="zns_connections_menu" 
+              name="Connections" 
+              parent="zns_config_menu" 
+              action="zns_connection_action" 
+              sequence="10"/>
+    
+    <menuitem id="zns_templates_menu" 
+              name="Templates" 
+              parent="zns_config_menu" 
+              action="zns_template_action" 
+              sequence="20"/>
+
+</odoo>

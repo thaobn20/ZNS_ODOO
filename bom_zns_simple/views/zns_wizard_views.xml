@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- ZNS Send Wizard Views -->
+    <record id="zns_send_wizard_form_view" model="ir.ui.view">
+        <field name="name">zns.send.wizard.form</field>
+        <field name="model">zns.send.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Send ZNS Message">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="template_id"/>
+                            <field name="connection_id" readonly="1"/>
+                            <field name="partner_id"/>
+                        </group>
+                        <group>
+                            <field name="phone"/>
+                            <field name="sale_order_id" invisible="1"/>
+                            <field name="invoice_id" invisible="1"/>
+                        </group>
+                    </group>
+                    <group string="Parameters">
+                        <field name="parameter_ids" nolabel="1">
+                            <tree editable="bottom">
+                                <field name="title"/>
+                                <field name="name" invisible="1"/>
+                                <field name="param_type" invisible="1"/>
+                                <field name="required" invisible="1"/>
+                                <field name="value"/>
+                            </tree>
+                        </field>
+                    </group>
+                </sheet>
+                <footer>
+                    <button name="send_message" string="Send Message" type="object" class="btn-primary"/>
+                    <button string="Cancel" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+</odoo>

@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- ZNS Template Views -->
+    <record id="zns_template_form_view" model="ir.ui.view">
+        <field name="name">zns.template.form</field>
+        <field name="model">zns.template</field>
+        <field name="arch" type="xml">
+            <form string="ZNS Template">
+                <header>
+                    <button name="sync_template_params" string="Sync Parameters" type="object" class="btn-primary"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name" placeholder="Template Name"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="template_id"/>
+                            <field name="template_type"/>
+                            <field name="connection_id"/>
+                        </group>
+                        <group>
+                            <field name="active"/>
+                            <field name="last_sync" readonly="1"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Parameters">
+                            <field name="parameter_ids" nolabel="1">
+                                <tree editable="bottom">
+                                    <field name="name"/>
+                                    <field name="title"/>
+                                    <field name="param_type"/>
+                                    <field name="required"/>
+                                    <field name="default_value"/>
+                                </tree>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="zns_template_tree_view" model="ir.ui.view">
+        <field name="name">zns.template.tree</field>
+        <field name="model">zns.template</field>
+        <field name="arch" type="xml">
+            <tree string="ZNS Templates">
+                <field name="name"/>
+                <field name="template_id"/>
+                <field name="template_type"/>
+                <field name="connection_id"/>
+                <field name="active"/>
+                <field name="last_sync"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="zns_template_action" model="ir.actions.act_window">
+        <field name="name">ZNS Templates</field>
+        <field name="res_model">zns.template</field>
+        <field name="view_mode">tree,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create your first ZNS template!
+            </p>
+            <p>
+                Set up ZNS message templates from your BOM dashboard.
+            </p>
+        </field>
+    </record>
+</odoo>

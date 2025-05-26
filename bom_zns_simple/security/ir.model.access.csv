@@ -1,0 +1,13 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_zns_connection_user,zns.connection.user,model_zns_connection,bom_zns_simple.group_zns_user,1,0,0,0
+access_zns_connection_manager,zns.connection.manager,model_zns_connection,bom_zns_simple.group_zns_manager,1,1,1,1
+access_zns_template_user,zns.template.user,model_zns_template,bom_zns_simple.group_zns_user,1,0,0,0
+access_zns_template_manager,zns.template.manager,model_zns_template,bom_zns_simple.group_zns_manager,1,1,1,1
+access_zns_template_parameter_user,zns.template.parameter.user,model_zns_template_parameter,bom_zns_simple.group_zns_user,1,0,0,0
+access_zns_template_parameter_manager,zns.template.parameter.manager,model_zns_template_parameter,bom_zns_simple.group_zns_manager,1,1,1,1
+access_zns_message_user,zns.message.user,model_zns_message,bom_zns_simple.group_zns_user,1,1,1,0
+access_zns_message_manager,zns.message.manager,model_zns_message,bom_zns_simple.group_zns_manager,1,1,1,1
+access_zns_send_wizard_user,zns.send.wizard.user,model_zns_send_wizard,bom_zns_simple.group_zns_user,1,1,1,1
+access_zns_send_wizard_parameter_user,zns.send.wizard.parameter.user,model_zns_send_wizard_parameter,bom_zns_simple.group_zns_user,1,1,1,1
+access_zns_report_wizard_user,zns.report.wizard.user,model_zns_report_wizard,bom_zns_simple.group_zns_user,1,1,1,1
+access_zns_report_wizard_manager,zns.report.wizard.manager,model_zns_report_wizard,bom_zns_simple.group_zns_manager,1,1,1,1

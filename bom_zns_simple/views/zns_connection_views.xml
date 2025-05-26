@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- ZNS Connection Views -->
+    <record id="zns_connection_form_view" model="ir.ui.view">
+        <field name="name">zns.connection.form</field>
+        <field name="model">zns.connection</field>
+        <field name="arch" type="xml">
+            <form string="ZNS Connection">
+                <header>
+                    <button name="test_connection" string="Test Connection" type="object" class="btn-primary"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name" placeholder="Connection Name"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group string="API Configuration">
+                            <field name="api_key" password="True" placeholder="Enter your BOM API Key"/>
+                            <field name="api_base_url"/>
+                            <field name="active"/>
+                        </group>
+                        <group string="Token Status">
+                            <field name="access_token" readonly="1" widget="text" attrs="{'invisible': [('access_token', '=', False)]}"/>
+                            <field name="token_expires_at" readonly="1"/>
+                            <field name="last_sync" readonly="1"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="API Information">
+                            <group>
+                                <div class="alert alert-info" role="alert">
+                                    <h4>🔑 How to get your API Key:</h4>
+                                    <p>1. Login to your BOM dashboard: <a href="https://zns.bom.asia" target="_blank">https://zns.bom.asia</a></p>
+                                    <p>2. Go to API settings or developer section</p>
+                                    <p>3. Copy your API Key</p>
+                                    <p>4. Paste it in the "API Key" field above</p>
+                                    <p>5. Click "Test Connection" to get access token</p>
+                                    <hr/>
+                                    <h5>📋 API Flow:</h5>
+                                    <p>• Your API Key → Used to get Access Token</p>
+                                    <p>• Access Token → Used for actual API calls</p>
+                                    <p>• Token auto-refreshed when expired</p>
+                                </div>
+                            </group>
+                        </page>
+                        <page string="Advanced" groups="base.group_no_one">
+                            <group string="Debug Information">
+                                <field name="refresh_token" readonly="1"/>
+                                <field name="api_secret" readonly="1"/>
+                            </group>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="zns_connection_tree_view" model="ir.ui.view">
+        <field name="name">zns.connection.tree</field>
+        <field name="model">zns.connection</field>
+        <field name="arch" type="xml">
+            <tree string="ZNS Connections">
+                <field name="name"/>
+                <field name="api_base_url"/>
+                <field name="active"/>
+                <field name="token_expires_at"/>
+                <field name="last_sync"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="zns_connection_action" model="ir.actions.act_window">
+        <field name="name">ZNS Connections</field>
+        <field name="res_model">zns.connection</field>
+        <field name="view_mode">tree,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                🔑 Create your first ZNS connection!
+            </p>
+            <p>
+                Configure your BOM ZNS API connection with your API Key to start sending Zalo messages.
+            </p>
+            <p>
+                <strong>Steps:</strong><br/>
+                1. Get your API Key from <a href="https://zns.bom.asia" target="_blank">BOM Dashboard</a><br/>
+                2. Create new connection<br/>
+                3. Enter API Key<br/>
+                4. Test connection (gets access token)<br/>
+                5. Start sending ZNS messages!
+            </p>
+        </field>
+    </record>
+</odoo>d name="active"/>
+                        </group>
+                        <group string="Status">
+                            <field name="last_sync" readonly="1"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="API Information">
+                            <group>
+                                <div class="alert alert-info" role="alert">
+                                    <h4>🔑 How to get your API Key:</h4>
+                                    <p>1. Login to your BOM dashboard: <a href="https://zns.bom.asia" target="_blank">https://zns.bom.asia</a></p>
+                                    <p>2. Go to API settings or developer section</p>
+                                    <p>3. Copy your API Key</p>
+                                    <p>4. Paste it in the "API Key" field above</p>
+                                    <p>5. Click "Test Connection" to verify</p>
+                                </div>
+                            </group>
+                        </page>
+                        <page string="Advanced" groups="base.group_no_one">
+                            <group string="Legacy Fields (Not Used in v2)">
+                                <field name="api_secret" readonly="1"/>
+                                <field name="access_token" readonly="1"/>
+                                <field name="refresh_token" readonly="1"/>
+                                <field name="token_expires_at" readonly="1"/>
+                            </group>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="zns_connection_tree_view" model="ir.ui.view">
+        <field name="name">zns.connection.tree</field>
+        <field name="model">zns.connection</field>
+        <field name="arch" type="xml">
+            <tree string="ZNS Connections">
+                <field name="name"/>
+                <field name="api_base_url"/>
+                <field name="active"/>
+                <field name="last_sync"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="zns_connection_action" model="ir.actions.act_window">
+        <field name="name">ZNS Connections</field>
+        <field name="res_model">zns.connection</field>
+        <field name="view_mode">tree,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                🔑 Create your first ZNS connection!
+            </p>
+            <p>
+                Configure your BOM ZNS API connection with just your API Key to start sending Zalo messages.
+            </p>
+            <p>
+                <strong>Steps:</strong><br/>
+                1. Get your API Key from <a href="https://zns.bom.asia" target="_blank">BOM Dashboard</a><br/>
+                2. Create new connection<br/>
+                3. Enter API Key<br/>
+                4. Test connection<br/>
+                5. Start sending ZNS messages!
+            </p>
+        </field>
+    </record>
+</odoo>
