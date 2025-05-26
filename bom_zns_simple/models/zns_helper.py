@@ -38,12 +38,13 @@ class ZnsHelper(models.AbstractModel):
 
     @api.model
     def build_sale_order_params(self, sale_order, template):
-        """Build parameters for sale order ZNS message"""
+        """Enhanced parameter building for sale orders"""
         params = {}
         
         for param in template.parameter_ids:
             value = None
             
+            # Standard parameters
             if param.name == 'customer_name':
                 value = sale_order.partner_id.name
             elif param.name == 'order_id' or param.name == 'so_no':
@@ -61,7 +62,11 @@ class ZnsHelper(models.AbstractModel):
             elif param.name == 'customer_email':
                 value = sale_order.partner_id.email
             else:
-                # Try to get from default value or leave empty
+                # Advanced parameter mapping
+                value = self._get_sale_order_param_value(sale_order, param.name)
+            
+            # Use default if no value found
+            if not value:
                 value = param.default_value or ''
             
             if value:
@@ -71,12 +76,13 @@ class ZnsHelper(models.AbstractModel):
 
     @api.model
     def build_invoice_params(self, invoice, template):
-        """Build parameters for invoice ZNS message"""
+        """Enhanced parameter building for invoices"""
         params = {}
         
         for param in template.parameter_ids:
             value = None
             
+            # Standard parameters
             if param.name == 'customer_name':
                 value = invoice.partner_id.name
             elif param.name == 'invoice_number':
@@ -96,13 +102,97 @@ class ZnsHelper(models.AbstractModel):
             elif param.name == 'customer_email':
                 value = invoice.partner_id.email
             else:
-                # Try to get from default value or leave empty
+                # Advanced parameter mapping
+                value = self._get_invoice_param_value(invoice, param.name)
+            
+            # Use default if no value found
+            if not value:
                 value = param.default_value or ''
             
             if value:
                 params[param.name] = str(value)
         
         return params
+
+    def _get_sale_order_param_value(self, sale_order, param_name):
+        """Get parameter value from sale order with advanced mapping"""
+        # Advanced mappings
+        param_mappings = {
+            # Order details
+            'order_reference': sale_order.client_order_ref,
+            'payment_terms': sale_order.payment_term_id.name if sale_order.payment_term_id else '',
+            'delivery_date': sale_order.commitment_date.strftime('%d/%m/%Y') if sale_order.commitment_date else '',
+            'order_note': sale_order.note,
+            'currency': sale_order.currency_id.name,
+            
+            # Customer details
+            'customer_code': sale_order.partner_id.ref,
+            'customer_address': sale_order.partner_id.contact_address,
+            'customer_city': sale_order.partner_id.city,
+            'customer_country': sale_order.partner_id.country_id.name if sale_order.partner_id.country_id else '',
+            
+            # Product details
+            'product_count': len(sale_order.order_line),
+            'main_product': sale_order.order_line[0].product_id.name if sale_order.order_line else '',
+            'product_name': sale_order.order_line[0].product_id.name if sale_order.order_line else '',
+            'total_qty': sum(sale_order.order_line.mapped('product_uom_qty')),
+            
+            # Amounts
+            'subtotal': sale_order.amount_untaxed,
+            'tax_amount': sale_order.amount_tax,
+            'discount_amount': sum(line.price_unit * line.product_uom_qty * line.discount / 100 for line in sale_order.order_line),
+            
+            # Status
+            'order_status': dict(sale_order._fields['state'].selection).get(sale_order.state),
+            'is_confirmed': 'Yes' if sale_order.state in ['sale', 'done'] else 'No',
+            
+            # Formatted amounts (Vietnamese style)
+            'amount_vnd': f"{sale_order.amount_total:,.0f}".replace(',', '.'),
+            'amount_words': self._number_to_words_vn(sale_order.amount_total),
+        }
+        
+        return param_mappings.get(param_name, '')
+
+    def _get_invoice_param_value(self, invoice, param_name):
+        """Get parameter value from invoice with advanced mapping"""
+        # Advanced mappings for invoices
+        param_mappings = {
+            # Invoice details
+            'payment_terms': invoice.invoice_payment_term_id.name if invoice.invoice_payment_term_id else '',
+            'currency': invoice.currency_id.name,
+            'invoice_note': invoice.narration,
+            
+            # Customer details
+            'customer_code': invoice.partner_id.ref,
+            'customer_address': invoice.partner_id.contact_address,
+            'customer_city': invoice.partner_id.city,
+            'customer_country': invoice.partner_id.country_id.name if invoice.partner_id.country_id else '',
+            
+            # Amounts
+            'subtotal': invoice.amount_untaxed,
+            'tax_amount': invoice.amount_tax,
+            'amount_vnd': f"{invoice.amount_total:,.0f}".replace(',', '.'),
+            'amount_words': self._number_to_words_vn(invoice.amount_total),
+            'remaining_vnd': f"{invoice.amount_residual:,.0f}".replace(',', '.'),
+            
+            # Status
+            'invoice_status': dict(invoice._fields['state'].selection).get(invoice.state),
+            'is_paid': 'Yes' if invoice.amount_residual == 0 else 'No',
+        }
+        
+        return param_mappings.get(param_name, '')
+
+    def _number_to_words_vn(self, amount):
+        """Convert number to Vietnamese words (simplified)"""
+        # This is a simplified version - you can implement full Vietnamese number conversion
+        if amount >= 1000000000:
+            return f"{amount/1000000000:.1f} tỷ"
+        elif amount >= 1000000:
+            return f"{amount/1000000:.1f} triệu"
+        elif amount >= 1000:
+            return f"{amount/1000:.0f} nghìn"
+        else:
+            return f"{amount:.0f}"
 
     @api.model
     def send_sale_order_zns(self, sale_order, template_id=None):
@@ -115,30 +205,6 @@ class ZnsHelper(models.AbstractModel):
             ], limit=1, order='id')
         else:
             template = self.env['zns.template'].browse(template_id)
-        
-        if not template:
-            raise UserError(_("No ZNS template found"))
-        
-        phone = self.format_phone_number(
-            invoice.partner_id.mobile or invoice.partner_id.phone
-        )
-        if not phone:
-            raise UserError(_("No phone number found for customer"))
-        
-        params = self.build_invoice_params(invoice, template)
-        
-        # Create and send message
-        message = self.env['zns.message'].create({
-            'template_id': template.id,
-            'connection_id': template.connection_id.id,
-            'phone': phone,
-            'parameters': json.dumps(params),
-            'partner_id': invoice.partner_id.id,
-            'invoice_id': invoice.id,
-        })
-        
-        message.send_zns_message()
-        return message.env['zns.template'].browse(template_id)
         
         if not template:
             raise UserError(_("No ZNS template found"))
@@ -174,4 +240,28 @@ class ZnsHelper(models.AbstractModel):
                 ('active', '=', True)
             ], limit=1, order='id')
         else:
-            template = self
+            template = self.env['zns.template'].browse(template_id)
+        
+        if not template:
+            raise UserError(_("No ZNS template found"))
+        
+        phone = self.format_phone_number(
+            invoice.partner_id.mobile or invoice.partner_id.phone
+        )
+        if not phone:
+            raise UserError(_("No phone number found for customer"))
+        
+        params = self.build_invoice_params(invoice, template)
+        
+        # Create and send message
+        message = self.env['zns.message'].create({
+            'template_id': template.id,
+            'connection_id': template.connection_id.id,
+            'phone': phone,
+            'parameters': json.dumps(params),
+            'partner_id': invoice.partner_id.id,
+            'invoice_id': invoice.id,
+        })
+        
+        message.send_zns_message()
+        return message

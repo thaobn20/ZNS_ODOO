@@ -13,25 +13,60 @@
               action="zns_dashboard_action" 
               sequence="5"/>
     
-    <!-- Messages -->
+    <!-- Operations -->
+    <menuitem id="zns_operations_menu" 
+              name="Operations" 
+              parent="zns_main_menu" 
+              sequence="10"/>
+    
     <menuitem id="zns_messages_menu" 
               name="Messages" 
-              parent="zns_main_menu" 
+              parent="zns_operations_menu" 
               action="zns_message_action" 
               sequence="10"/>
+    
+    <menuitem id="zns_send_manual_menu" 
+              name="Send Message" 
+              parent="zns_operations_menu" 
+              action="zns_send_manual_action" 
+              sequence="20"/>
+    
+    <!-- Templates -->
+    <menuitem id="zns_templates_menu" 
+              name="Templates" 
+              parent="zns_main_menu" 
+              sequence="20"/>
+    
+    <menuitem id="zns_template_list_menu" 
+              name="Template List" 
+              parent="zns_templates_menu" 
+              action="zns_template_action" 
+              sequence="10"/>
+    
+    <menuitem id="zns_template_mapping_menu" 
+              name="Template Mappings" 
+              parent="zns_templates_menu" 
+              action="zns_template_mapping_action" 
+              sequence="20"/>
+    
+    <menuitem id="zns_template_sync_menu" 
+              name="Sync from BOM" 
+              parent="zns_templates_menu" 
+              action="zns_template_sync_wizard_action" 
+              sequence="30"/>
     
     <!-- Analytics -->
     <menuitem id="zns_analytics_menu" 
               name="Analytics" 
               parent="zns_main_menu" 
               action="zns_message_analytics_action" 
-              sequence="15"/>
+              sequence="30"/>
     
     <!-- Reports -->
     <menuitem id="zns_reports_menu" 
               name="Reports" 
               parent="zns_main_menu" 
-              sequence="20"/>
+              sequence="40"/>
     
     <menuitem id="zns_generate_report_menu" 
               name="Generate Report" 
@@ -50,11 +85,20 @@
               parent="zns_config_menu" 
               action="zns_connection_action" 
               sequence="10"/>
-    
-    <menuitem id="zns_templates_menu" 
-              name="Templates" 
-              parent="zns_config_menu" 
-              action="zns_template_action" 
-              sequence="20"/>
 
+    <!-- Actions -->
+    <record id="zns_send_manual_action" model="ir.actions.act_window">
+        <field name="name">Send ZNS Message</field>
+        <field name="res_model">zns.send.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                📱 Send a manual ZNS message!
+            </p>
+            <p>
+                Send ZNS messages manually to any phone number using your configured templates.
+            </p>
+        </field>
+    </record>
 </odoo>

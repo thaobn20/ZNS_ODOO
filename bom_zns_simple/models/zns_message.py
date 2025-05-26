@@ -43,7 +43,7 @@ class ZnsMessage(models.Model):
                 record.display_name = f"ZNS Message #{record.id}"
     
     def send_zns_message(self):
-        """Send ZNS message using correct endpoint"""
+        """Send ZNS message using correct BOM API format from Postman collection"""
         if self.status == 'sent':
             raise UserError("Message already sent")
         
@@ -51,13 +51,18 @@ class ZnsMessage(models.Model):
         if not connection:
             raise UserError("No connection configured")
         
-        access_token = connection._get_access_token()
-        # Use correct endpoint from Postman collection
-        url = f"{connection.api_base_url}/send-zns-by-template"
-        headers = {
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {access_token}'
-        }
+        if not connection.api_key:
+            raise UserError("No API key configured")
+        
+        try:
+            # Get access token
+            access_token = connection._get_access_token()
+        except Exception as e:
+            self.write({
+                'status': 'failed',
+                'error_message': f"Failed to get access token: {str(e)}"
+            })
+            raise UserError(f"❌ Token error: {str(e)}")
         
         # Parse parameters
         try:
@@ -65,35 +70,98 @@ class ZnsMessage(models.Model):
         except json.JSONDecodeError:
             params = {}
         
+        # Format phone number (remove leading 0, don't add country code if already present)
+        phone = self.phone
+        if phone.startswith('0'):
+            phone = phone  # Keep as is for Vietnamese numbers
+        
+        # Prepare request exactly as shown in Postman collection
+        url = f"{connection.api_base_url}/send-zns-by-template"
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json'
+        }
+        
+        # Data structure from Postman collection
         data = {
-            'phone': self.phone,
-            'template_id': self.template_id.template_id,
-            'params': params
+            "phone": phone,
+            "params": params,
+            "template_id": self.template_id.template_id
         }
         
         try:
-            response = requests.post(url, headers=headers, json=data, timeout=30)
-            response.raise_for_status()
+            _logger.info(f"Sending ZNS message to: {url}")
+            _logger.info(f"Headers: {headers}")
+            _logger.info(f"Data: {data}")
             
+            response = requests.post(url, headers=headers, json=data, timeout=30)
+            
+            _logger.info(f"Response status: {response.status_code}")
+            _logger.info(f"Response body: {response.text}")
+            
+            response.raise_for_status()
             result = response.json()
+            
+            # Check for success (BOM API returns error: 0 for success)
             if result.get('error') == 0:
                 message_data = result.get('data', {})
                 self.write({
                     'status': 'sent',
-                    'message_id': message_data.get('message_id'),
-                    'sent_date': fields.Datetime.now()
+                    'message_id': message_data.get('message_id', str(response.status_code)),
+                    'sent_date': fields.Datetime.now(),
+                    'error_message': False
                 })
-                self.env.user.notify_success(message="ZNS message sent successfully!")
+                
+                return {
+                    'type': 'ir.actions.client',
+                    'tag': 'display_notification',
+                    'params': {
+                        'title': 'ZNS Message Sent',
+                        'message': f"✅ ZNS message sent successfully!\nMessage ID: {self.message_id}",
+                        'type': 'success',
+                        'sticky': False,
+                    }
+                }
             else:
+                error_msg = result.get('message', 'Unknown API error')
                 self.write({
                     'status': 'failed',
-                    'error_message': result.get('message', 'Unknown error')
+                    'error_message': f"API Error: {error_msg}"
                 })
-                raise UserError(f"Send failed: {result.get('message', 'Unknown error')}")
+                raise UserError(f"❌ Send failed: {error_msg}")
                 
         except requests.exceptions.RequestException as e:
+            error_msg = f"Connection error: {str(e)}"
             self.write({
                 'status': 'failed',
-                'error_message': str(e)
+                'error_message': error_msg
             })
-            raise UserError(f"Send failed: {str(e)}")
+            raise UserError(f"❌ Send failed: {error_msg}")
+        except Exception as e:
+            error_msg = f"Unexpected error: {str(e)}"
+            self.write({
+                'status': 'failed',
+                'error_message': error_msg
+            })
+            raise UserError(f"❌ Send failed: {error_msg}")
+    
+    def test_send_dummy(self):
+        """Test send functionality with dummy data"""
+        # Create dummy parameters based on Postman collection example
+        dummy_params = {
+            "customer_name": "Test User",
+            "product_name": "Test Product", 
+            "so_no": "TEST123",
+            "amount": "1"
+        }
+        
+        # Temporarily set parameters for test
+        original_params = self.parameters
+        self.parameters = json.dumps(dummy_params)
+        
+        try:
+            result = self.send_zns_message()
+            return result
+        finally:
+            # Restore original parameters
+            self.parameters = original_params

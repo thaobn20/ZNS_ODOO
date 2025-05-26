@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Enhanced Sale Order Form View -->
+    <record id="sale_order_form_zns_enhanced" model="ir.ui.view">
+        <field name="name">sale.order.form.zns.enhanced</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_form"/>
+        <field name="arch" type="xml">
+            <!-- Add ZNS button to header -->
+            <div name="button_box" position="inside">
+                <button type="object" name="action_view_zns_messages" 
+                        class="oe_stat_button" icon="fa-paper-plane">
+                    <field name="zns_message_count" widget="statinfo" string="ZNS Messages"/>
+                </button>
+            </div>
+            
+            <!-- Add manual ZNS send button -->
+            <button name="action_confirm" position="after">
+                <button name="action_send_zns_manual" string="Send ZNS" type="object" 
+                        class="btn-secondary" icon="fa-paper-plane"
+                        attrs="{'invisible': [('state', 'in', ['draft', 'cancel'])]}"/>
+            </button>
+            
+            <!-- Add ZNS configuration in order details -->
+            <field name="partner_id" position="after">
+                <field name="zns_auto_send" attrs="{'invisible': [('state', '!=', 'draft')]}"/>
+                <field name="zns_template_mapping_id" 
+                       attrs="{'invisible': [('state', '!=', 'draft')]}"
+                       options="{'no_create': True, 'no_edit': True}"/>
+            </field>
+            
+            <!-- Add ZNS tab -->
+            <xpath expr="//notebook[last()]" position="inside">
+                <page string="Zalo ZNS" name="zns_messages">
+                    <group>
+                        <group string="ZNS Configuration">
+                            <field name="zns_auto_send"/>
+                            <field name="zns_template_mapping_id" options="{'no_create': True}"/>
+                        </group>
+                        <group string="Customer Contact">
+                            <field name="partner_id" readonly="1"/>
+                            <label for="partner_phone"/>
+                            <div>
+                                <field name="partner_id" invisible="1"/>
+                                <span t-if="partner_id.mobile">📱 <t t-esc="partner_id.mobile"/></span>
+                                <span t-if="partner_id.phone and partner_id.mobile"> • </span>
+                                <span t-if="partner_id.phone">📞 <t t-esc="partner_id.phone"/></span>
+                            </div>
+                        </group>
+                    </group>
+                    
+                    <separator string="ZNS Message History"/>
+                    <field name="zns_message_ids" nolabel="1">
+                        <tree decoration-success="status=='sent'" 
+                              decoration-danger="status=='failed'" 
+                              decoration-muted="status=='draft'">
+                            <field name="create_date"/>
+                            <field name="template_id"/>
+                            <field name="phone"/>
+                            <field name="status"/>
+                            <field name="sent_date"/>
+                            <field name="message_id"/>
+                            <field name="error_message" optional="hide"/>
+                            <button name="send_zns_message" string="Retry" type="object" 
+                                    icon="fa-refresh" attrs="{'invisible': [('status', '=', 'sent')]}"/>
+                        </tree>
+                    </field>
+                </page>
+            </xpath>
+        </field>
+    </record>
+</odoo>

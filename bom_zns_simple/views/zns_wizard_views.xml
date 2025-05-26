@@ -1,25 +1,43 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- ZNS Send Wizard Views -->
-    <record id="zns_send_wizard_form_view" model="ir.ui.view">
-        <field name="name">zns.send.wizard.form</field>
+    <!-- Enhanced ZNS Send Wizard Views -->
+    <record id="zns_send_wizard_form_enhanced" model="ir.ui.view">
+        <field name="name">zns.send.wizard.form.enhanced</field>
         <field name="model">zns.send.wizard</field>
         <field name="arch" type="xml">
             <form string="Send ZNS Message">
+                <header>
+                    <button name="action_auto_detect_template" string="Auto-Detect Template" 
+                            type="object" class="btn-info" attrs="{'invisible': [('sale_order_id', '=', False), ('invoice_id', '=', False)]}"/>
+                    <button name="action_preview_message" string="Preview" type="object" class="btn-secondary"/>
+                </header>
                 <sheet>
+                    <div class="oe_title">
+                        <h1>Send ZNS Message</h1>
+                    </div>
+                    
                     <group>
-                        <group>
-                            <field name="template_id"/>
+                        <group string="Template Selection">
+                            <field name="use_mapping"/>
+                            <field name="template_mapping_id" attrs="{'invisible': [('use_mapping', '=', False)], 'required': [('use_mapping', '=', True)]}"/>
+                            <field name="template_id" attrs="{'invisible': [('use_mapping', '=', True)]}"/>
                             <field name="connection_id" readonly="1"/>
-                            <field name="partner_id"/>
                         </group>
-                        <group>
+                        <group string="Recipient">
+                            <field name="partner_id"/>
                             <field name="phone"/>
-                            <field name="sale_order_id" invisible="1"/>
-                            <field name="invoice_id" invisible="1"/>
+                            <field name="auto_fill_params"/>
                         </group>
                     </group>
-                    <group string="Parameters">
+                    
+                    <!-- Context fields (hidden) -->
+                    <group invisible="1">
+                        <field name="sale_order_id"/>
+                        <field name="invoice_id"/>
+                    </group>
+                    
+                    <!-- Parameters Section -->
+                    <group string="Message Parameters" attrs="{'invisible': [('template_id', '=', False)]}">
                         <field name="parameter_ids" nolabel="1">
                             <tree editable="bottom">
                                 <field name="title"/>
@@ -30,9 +48,17 @@
                             </tree>
                         </field>
                     </group>
+                    
+                    <!-- Help Section -->
+                    <div class="alert alert-info" attrs="{'invisible': [('template_id', '=', False)]}">
+                        <h4>💡 Parameter Tips:</h4>
+                        <p><strong>Auto-fill:</strong> Enable "Auto-fill Parameters" to automatically populate from order/invoice data</p>
+                        <p><strong>Preview:</strong> Click "Preview" to see how your message will look</p>
+                        <p><strong>Required fields:</strong> Fields marked as required must be filled before sending</p>
+                    </div>
                 </sheet>
                 <footer>
-                    <button name="send_message" string="Send Message" type="object" class="btn-primary"/>
+                    <button name="send_message" string="Send ZNS" type="object" class="btn-primary"/>
                     <button string="Cancel" class="btn-secondary" special="cancel"/>
                 </footer>
             </form>

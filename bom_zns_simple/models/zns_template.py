@@ -26,27 +26,41 @@ class ZnsTemplate(models.Model):
     last_sync = fields.Datetime('Last Sync', readonly=True)
     
     def sync_template_params(self):
-        """Sync template parameters from BOM API using correct endpoint"""
+        """Sync template parameters from BOM API using correct endpoint and format"""
         connection = self.connection_id
         if not connection:
             raise UserError("No connection configured")
         
-        access_token = connection._get_access_token()
+        try:
+            # Get access token
+            access_token = connection._get_access_token()
+        except Exception as e:
+            raise UserError(f"Failed to get access token: {str(e)}")
+        
         # Use correct endpoint from Postman collection
         url = f"{connection.api_base_url}/get-param-zns-template"
         headers = {
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {access_token}'
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json'
         }
+        
+        # Data structure from Postman collection
         data = {
             'template_id': self.template_id
         }
         
         try:
-            response = requests.post(url, headers=headers, json=data, timeout=30)
-            response.raise_for_status()
+            _logger.info(f"Syncing template params from: {url}")
+            _logger.info(f"Template ID: {self.template_id}")
             
+            response = requests.post(url, headers=headers, json=data, timeout=30)
+            
+            _logger.info(f"Response status: {response.status_code}")
+            _logger.info(f"Response body: {response.text}")
+            
+            response.raise_for_status()
             result = response.json()
+            
             if result.get('error') == 0:
                 params_data = result.get('data', [])
                 
@@ -58,18 +72,53 @@ class ZnsTemplate(models.Model):
                     self.env['zns.template.parameter'].create({
                         'template_id': self.id,
                         'name': param.get('name'),
-                        'title': param.get('title'),
-                        'param_type': param.get('type', 'string'),
-                        'required': param.get('require', False)
+                        'title': param.get('title', param.get('name')),
+                        'param_type': self._map_param_type(param.get('type', 'string')),
+                        'required': param.get('require', False),
+                        'default_value': param.get('default_value', '')
                     })
                 
                 self.last_sync = fields.Datetime.now()
-                self.env.user.notify_success(message=f"Synced {len(params_data)} parameters")
+                
+                return {
+                    'type': 'ir.actions.client',
+                    'tag': 'display_notification',
+                    'params': {
+                        'title': 'Template Sync Successful',
+                        'message': f"✅ Successfully synced {len(params_data)} parameters!\n" +
+                                 f"Parameters: {[p.get('name') for p in params_data]}",
+                        'type': 'success',
+                        'sticky': False,
+                    }
+                }
             else:
-                raise UserError(f"API Error: {result.get('message', 'Unknown error')}")
+                error_msg = result.get('message', 'Unknown error')
+                raise UserError(f"❌ API Error: {error_msg}")
                 
         except requests.exceptions.RequestException as e:
-            raise UserError(f"Sync failed: {str(e)}")
+            raise UserError(f"❌ Sync failed: {str(e)}")
+        except Exception as e:
+            raise UserError(f"❌ Unexpected error: {str(e)}")
+    
+    def _map_param_type(self, api_type):
+        """Map API parameter types to Odoo field types"""
+        type_mapping = {
+            'string': 'string',
+            'text': 'string',
+            'number': 'number',
+            'integer': 'number',
+            'float': 'number',
+            'date': 'date',
+            'datetime': 'date',
+            'email': 'email',
+            'url': 'url',
+            'phone': 'string'
+        }
+        return type_mapping.get(api_type.lower(), 'string')
+    
+    def test_template(self):
+        """Test template by getting its parameters"""
+        return self.sync_template_params()
 
 
 class ZnsTemplateParameter(models.Model):

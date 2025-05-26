@@ -12,46 +12,179 @@ class ZnsSendWizard(models.TransientModel):
     _name = 'zns.send.wizard'
     _description = 'Send ZNS Message Wizard'
 
+    # Template Selection
+    template_mapping_id = fields.Many2one('zns.template.mapping', string='Template Mapping')
     template_id = fields.Many2one('zns.template', string='Template', required=True)
     connection_id = fields.Many2one('zns.connection', string='Connection', required=True)
+    
+    # Recipient Info
     phone = fields.Char('Phone Number', required=True)
     partner_id = fields.Many2one('res.partner', string='Contact')
+    
+    # Parameters
     parameter_ids = fields.One2many('zns.send.wizard.parameter', 'wizard_id', string='Parameters')
     
     # Context fields
     sale_order_id = fields.Many2one('sale.order', string='Sale Order')
     invoice_id = fields.Many2one('account.move', string='Invoice')
     
+    # Quick Actions
+    use_mapping = fields.Boolean('Use Template Mapping', default=True)
+    auto_fill_params = fields.Boolean('Auto-fill Parameters', default=True)
+    
+    @api.onchange('template_mapping_id')
+    def _onchange_template_mapping_id(self):
+        if self.template_mapping_id:
+            self.template_id = self.template_mapping_id.template_id
+    
     @api.onchange('template_id')
     def _onchange_template_id(self):
         if self.template_id:
             self.connection_id = self.template_id.connection_id
-            # Create parameter lines
-            params = []
-            for param in self.template_id.parameter_ids:
-                params.append((0, 0, {
-                    'parameter_id': param.id,
-                    'name': param.name,
-                    'title': param.title,
-                    'param_type': param.param_type,
-                    'required': param.required,
-                    'value': param.default_value or ''
-                }))
-            self.parameter_ids = params
+            self._update_parameters()
     
     @api.onchange('partner_id')
     def _onchange_partner_id(self):
-        if self.partner_id and self.partner_id.mobile:
-            self.phone = self.partner_id.mobile
-        elif self.partner_id and self.partner_id.phone:
-            self.phone = self.partner_id.phone
+        if self.partner_id:
+            self.phone = self.partner_id.mobile or self.partner_id.phone
+    
+    @api.onchange('sale_order_id', 'auto_fill_params')
+    def _onchange_sale_order_auto_fill(self):
+        if self.sale_order_id and self.auto_fill_params and self.template_id:
+            self._auto_fill_sale_order_params()
+    
+    @api.onchange('invoice_id', 'auto_fill_params')
+    def _onchange_invoice_auto_fill(self):
+        if self.invoice_id and self.auto_fill_params and self.template_id:
+            self._auto_fill_invoice_params()
+    
+    def _update_parameters(self):
+        """Update parameter lines based on selected template"""
+        if not self.template_id:
+            self.parameter_ids = [(5, 0, 0)]  # Clear all
+            return
+        
+        # Clear existing parameters
+        self.parameter_ids = [(5, 0, 0)]
+        
+        # Create parameter lines
+        params = []
+        for param in self.template_id.parameter_ids:
+            params.append((0, 0, {
+                'parameter_id': param.id,
+                'name': param.name,
+                'title': param.title,
+                'param_type': param.param_type,
+                'required': param.required,
+                'value': param.default_value or ''
+            }))
+        self.parameter_ids = params
+        
+        # Auto-fill if enabled
+        if self.auto_fill_params:
+            if self.sale_order_id:
+                self._auto_fill_sale_order_params()
+            elif self.invoice_id:
+                self._auto_fill_invoice_params()
+    
+    def _auto_fill_sale_order_params(self):
+        """Auto-fill parameters from sale order data"""
+        if not self.sale_order_id or not self.template_id:
+            return
+        
+        # Build parameters using helper
+        params = self.env['zns.helper'].build_sale_order_params(self.sale_order_id, self.template_id)
+        
+        # Update parameter values
+        for param_line in self.parameter_ids:
+            if param_line.name in params:
+                param_line.value = params[param_line.name]
+    
+    def _auto_fill_invoice_params(self):
+        """Auto-fill parameters from invoice data"""
+        if not self.invoice_id or not self.template_id:
+            return
+        
+        # Build parameters using helper
+        params = self.env['zns.helper'].build_invoice_params(self.invoice_id, self.template_id)
+        
+        # Update parameter values
+        for param_line in self.parameter_ids:
+            if param_line.name in params:
+                param_line.value = params[param_line.name]
+    
+    def action_auto_detect_template(self):
+        """Auto-detect best template mapping"""
+        if self.sale_order_id:
+            mapping = self.env['zns.template.mapping']._find_best_mapping('sale.order', self.sale_order_id)
+        elif self.invoice_id:
+            mapping = self.env['zns.template.mapping']._find_best_mapping('account.move', self.invoice_id)
+        else:
+            raise UserError("No document context for template detection")
+        
+        if mapping:
+            self.template_mapping_id = mapping.id
+            self.template_id = mapping.template_id.id
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': 'Template Detected',
+                    'message': f"✅ Auto-detected template: {mapping.name}",
+                    'type': 'success',
+                    'sticky': False,
+                }
+            }
+        else:
+            raise UserError("No suitable template mapping found for this document")
+    
+    def action_preview_message(self):
+        """Preview the message before sending"""
+        # Validate required parameters
+        missing_params = []
+        for param in self.parameter_ids:
+            if param.required and not param.value:
+                missing_params.append(param.title)
+        
+        if missing_params:
+            raise UserError(f"Missing required parameters: {', '.join(missing_params)}")
+        
+        # Build preview
+        params = {param.name: param.value for param in self.parameter_ids if param.value}
+        
+        preview_text = f"""
+📱 Phone: {self.phone}
+📋 Template: {self.template_id.name} ({self.template_id.template_id})
+🔗 Connection: {self.connection_id.name}
+
+📝 Parameters:
+{chr(10).join([f"• {param.title}: {param.value}" for param in self.parameter_ids if param.value])}
+
+📄 Template Type: {self.template_id.template_type.title()}
+🎯 Recipient: {self.partner_id.name if self.partner_id else 'Manual'}
+        """
+        
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': '📱 ZNS Message Preview',
+                'message': preview_text,
+                'type': 'info',
+                'sticky': True,
+            }
+        }
     
     def send_message(self):
         """Send ZNS message"""
         # Validate required parameters
+        missing_params = []
         for param in self.parameter_ids:
             if param.required and not param.value:
-                raise UserError(f"Parameter '{param.title}' is required")
+                missing_params.append(param.title)
+        
+        if missing_params:
+            raise UserError(f"Missing required parameters: {', '.join(missing_params)}")
         
         # Build parameters dict
         params = {}
@@ -71,7 +204,7 @@ class ZnsSendWizard(models.TransientModel):
         })
         
         # Send message
-        message.send_zns_message()
+        result = message.send_zns_message()
         
         return {
             'type': 'ir.actions.act_window',
