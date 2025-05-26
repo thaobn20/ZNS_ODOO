@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Enhanced ZNS Send Wizard Views -->
+    <!-- Enhanced ZNS Send Wizard Views with Parameter Mapping -->
     <record id="zns_send_wizard_form_enhanced" model="ir.ui.view">
         <field name="name">zns.send.wizard.form.enhanced</field>
         <field name="model">zns.send.wizard</field>
@@ -9,11 +9,13 @@
                 <header>
                     <button name="action_auto_detect_template" string="Auto-Detect Template" 
                             type="object" class="btn-info" attrs="{'invisible': [('sale_order_id', '=', False), ('invoice_id', '=', False)]}"/>
-                    <button name="action_preview_message" string="Preview" type="object" class="btn-secondary"/>
+                    <button name="action_auto_fill_from_template" string="Auto-Fill from Mapping" 
+                            type="object" class="btn-secondary" attrs="{'invisible': [('template_id', '=', False)]}"/>
+                    <button name="action_preview_message" string="Preview Message" type="object" class="btn-warning"/>
                 </header>
                 <sheet>
                     <div class="oe_title">
-                        <h1>Send ZNS Message</h1>
+                        <h1>📱 Send ZNS Message</h1>
                     </div>
                     
                     <group>
@@ -34,33 +36,113 @@
                     <group invisible="1">
                         <field name="sale_order_id"/>
                         <field name="invoice_id"/>
+                        <field name="show_preview"/>
                     </group>
                     
-                    <!-- Parameters Section -->
-                    <group string="Message Parameters" attrs="{'invisible': [('template_id', '=', False)]}">
-                        <field name="parameter_ids" nolabel="1">
-                            <tree editable="bottom">
-                                <field name="title"/>
-                                <field name="name" invisible="1"/>
-                                <field name="param_type" invisible="1"/>
-                                <field name="required" invisible="1"/>
-                                <field name="value"/>
-                            </tree>
-                        </field>
-                    </group>
-                    
-                    <!-- Help Section -->
-                    <div class="alert alert-info" attrs="{'invisible': [('template_id', '=', False)]}">
-                        <h4>💡 Parameter Tips:</h4>
-                        <p><strong>Auto-fill:</strong> Enable "Auto-fill Parameters" to automatically populate from order/invoice data</p>
-                        <p><strong>Preview:</strong> Click "Preview" to see how your message will look</p>
-                        <p><strong>Required fields:</strong> Fields marked as required must be filled before sending</p>
-                    </div>
+                    <notebook>
+                        <page string="Parameters" name="parameters" attrs="{'invisible': [('template_id', '=', False)]}">
+                            <div class="alert alert-info">
+                                <h4>📋 Parameter Mapping</h4>
+                                <p>Parameters are automatically mapped from the selected template field mappings. 
+                                Values in <strong>blue</strong> are auto-filled from Sale Order data.</p>
+                                <p>
+                                    <button name="action_auto_fill_from_template" string="🔄 Refresh Auto-Fill" 
+                                            type="object" class="btn btn-sm btn-secondary"/>
+                                </p>
+                            </div>
+                            
+                            <field name="parameter_ids" nolabel="1">
+                                <tree editable="bottom" decoration-info="mapping_info!=False">
+                                    <field name="title"/>
+                                    <field name="name" invisible="1"/>
+                                    <field name="param_type" invisible="1"/>
+                                    <field name="required" invisible="1"/>
+                                    <field name="value" attrs="{'required': [('required', '=', True)]}"/>
+                                    <field name="mapping_info" string="Auto-Mapped From" optional="show"/>
+                                    <field name="so_field_mapping" invisible="1"/>
+                                </tree>
+                            </field>
+                        </page>
+                        
+                        <page string="Preview" name="preview" attrs="{'invisible': [('show_preview', '=', False)]}">
+                            <div class="alert alert-success">
+                                <h4>📱 Message Preview</h4>
+                                <p>This is how your ZNS message will be sent:</p>
+                            </div>
+                            <field name="preview_message" widget="text" readonly="1" nolabel="1"/>
+                        </page>
+                        
+                        <page string="Help" name="help">
+                            <div class="alert alert-info">
+                                <h4>💡 How to Use This Wizard</h4>
+                                
+                                <h5>1. Template Selection</h5>
+                                <ul>
+                                    <li><strong>Use Template Mapping:</strong> Automatically select template based on order conditions</li>
+                                    <li><strong>Manual Selection:</strong> Choose template directly</li>
+                                    <li><strong>Auto-Detect:</strong> Find best template for current Sale Order</li>
+                                </ul>
+                                
+                                <h5>2. Parameter Auto-Fill</h5>
+                                <ul>
+                                    <li><strong>Auto-fill Parameters:</strong> Automatically populate from Sale Order data</li>
+                                    <li><strong>Template Mappings:</strong> Use field mappings configured in template</li>
+                                    <li><strong>Manual Override:</strong> Edit any parameter value manually</li>
+                                </ul>
+                                
+                                <h5>3. Common Parameters</h5>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <strong>Customer Info:</strong><br/>
+                                        • customer_name → Customer Name<br/>
+                                        • customer_phone → Mobile/Phone<br/>
+                                        • customer_email → Email<br/>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <strong>Order Info:</strong><br/>
+                                        • so_no → SO Number<br/>
+                                        • amount → Total Amount<br/>
+                                        • order_date → Order Date<br/>
+                                    </div>
+                                </div>
+                                
+                                <h5>4. Preview and Send</h5>
+                                <ul>
+                                    <li><strong>Preview Message:</strong> See exactly what will be sent</li>
+                                    <li><strong>Validation:</strong> Required parameters must be filled</li>
+                                    <li><strong>Send:</strong> Message is sent immediately via BOM API</li>
+                                </ul>
+                            </div>
+                        </page>
+                    </notebook>
                 </sheet>
                 <footer>
-                    <button name="send_message" string="Send ZNS" type="object" class="btn-primary"/>
+                    <button name="send_message" string="📤 Send ZNS" type="object" class="btn-primary"/>
                     <button string="Cancel" class="btn-secondary" special="cancel"/>
                 </footer>
+            </form>
+        </field>
+    </record>
+
+    <!-- Parameter Form View -->
+    <record id="zns_send_wizard_parameter_form" model="ir.ui.view">
+        <field name="name">zns.send.wizard.parameter.form</field>
+        <field name="model">zns.send.wizard.parameter</field>
+        <field name="arch" type="xml">
+            <form string="Parameter">
+                <group>
+                    <group>
+                        <field name="title"/>
+                        <field name="name"/>
+                        <field name="param_type"/>
+                        <field name="required"/>
+                    </group>
+                    <group>
+                        <field name="value"/>
+                        <field name="mapping_info" readonly="1"/>
+                        <field name="so_field_mapping" readonly="1"/>
+                    </group>
+                </group>
             </form>
         </field>
     </record>

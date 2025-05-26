@@ -39,12 +39,11 @@
                         </group>
                         <group string="Customer Contact">
                             <field name="partner_id" readonly="1"/>
-                            <label for="partner_phone"/>
+                            <div class="o_form_label">Customer Phone</div>
                             <div>
-                                <field name="partner_id" invisible="1"/>
-                                <span t-if="partner_id.mobile">📱 <t t-esc="partner_id.mobile"/></span>
-                                <span t-if="partner_id.phone and partner_id.mobile"> • </span>
-                                <span t-if="partner_id.phone">📞 <t t-esc="partner_id.phone"/></span>
+                                <span t-if="record.partner_id.value">
+                                    <t t-if="record.partner_id.value.mobile">📱 <field name="partner_id" readonly="1" options="{'no_open': True}" widget="char" attrs="{'invisible': [('partner_id', '=', False)]}"/></t>
+                                </span>
                             </div>
                         </group>
                     </group>

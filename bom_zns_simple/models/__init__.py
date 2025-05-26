@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 from . import zns_connection
 from . import zns_template
 from . import zns_message

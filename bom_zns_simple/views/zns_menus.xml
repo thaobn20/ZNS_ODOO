@@ -1,5 +1,148 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
+    <!-- All Actions must be defined before menus that reference them -->
+    
+    <!-- Dashboard Action -->
+    <record id="zns_dashboard_action" model="ir.actions.act_window">
+        <field name="name">ZNS Dashboard</field>
+        <field name="res_model">zns.message</field>
+        <field name="view_mode">graph,pivot,kanban,tree</field>
+        <field name="context">{
+            'graph_mode': 'line',
+            'graph_measure': '__count__',
+            'graph_groupbys': ['create_date:day'],
+            'search_default_month': 1
+        }</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                📊 Welcome to ZNS Dashboard!
+            </p>
+            <p>
+                Monitor your ZNS message performance with interactive charts and analytics.
+                Switch between different views to analyze your data.
+            </p>
+        </field>
+    </record>
+
+    <!-- Messages Action -->
+    <record id="zns_message_action" model="ir.actions.act_window">
+        <field name="name">ZNS Messages</field>
+        <field name="res_model">zns.message</field>
+        <field name="view_mode">tree,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No ZNS messages yet!
+            </p>
+            <p>
+                Start sending ZNS messages from contacts, sales orders, or invoices.
+            </p>
+        </field>
+    </record>
+
+    <!-- Send Manual Action -->
+    <record id="zns_send_manual_action" model="ir.actions.act_window">
+        <field name="name">Send ZNS Message</field>
+        <field name="res_model">zns.send.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                📱 Send a manual ZNS message!
+            </p>
+            <p>
+                Send ZNS messages manually to any phone number using your configured templates.
+            </p>
+        </field>
+    </record>
+
+    <!-- Template Action -->
+    <record id="zns_template_action" model="ir.actions.act_window">
+        <field name="name">ZNS Templates</field>
+        <field name="res_model">zns.template</field>
+        <field name="view_mode">tree,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create your first ZNS template!
+            </p>
+            <p>
+                Set up ZNS message templates from your BOM dashboard.
+            </p>
+        </field>
+    </record>
+
+    <!-- Template Mapping Action -->
+    <record id="zns_template_mapping_action" model="ir.actions.act_window">
+        <field name="name">ZNS Template Mappings</field>
+        <field name="res_model">zns.template.mapping</field>
+        <field name="view_mode">tree,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                📋 Create your first ZNS template mapping!
+            </p>
+            <p>
+                Template mappings automatically select the right ZNS template based on order conditions like:
+                • Customer type (VIP, Regular, etc.)
+                • Order amount (Large orders, small orders)
+                • Product categories (Electronics, Fashion, etc.)
+                • Custom conditions (Rush orders, special notes, etc.)
+            </p>
+        </field>
+    </record>
+
+    <!-- Template Sync Wizard Action -->
+    <record id="zns_template_sync_wizard_action" model="ir.actions.act_window">
+        <field name="name">Sync ZNS Templates</field>
+        <field name="res_model">zns.template.sync.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+
+    <!-- Analytics Action -->
+    <record id="zns_message_analytics_action" model="ir.actions.act_window">
+        <field name="name">ZNS Analytics</field>
+        <field name="res_model">zns.message</field>
+        <field name="view_mode">pivot,graph,tree</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                📊 Analyze your ZNS message performance!
+            </p>
+            <p>
+                Use pivot tables and graphs to analyze your ZNS message trends, success rates, and usage patterns.
+            </p>
+        </field>
+    </record>
+
+    <!-- Report Wizard Action -->
+    <record id="zns_report_wizard_action" model="ir.actions.act_window">
+        <field name="name">Generate ZNS Report</field>
+        <field name="res_model">zns.report.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+
+    <!-- Connection Action -->
+    <record id="zns_connection_action" model="ir.actions.act_window">
+        <field name="name">ZNS Connections</field>
+        <field name="res_model">zns.connection</field>
+        <field name="view_mode">tree,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                🔑 Create your first ZNS connection!
+            </p>
+            <p>
+                Configure your BOM ZNS API connection with your API Key to start sending Zalo messages.
+            </p>
+            <p>
+                <strong>Quick Start:</strong><br/>
+                1. Get API Key from <a href="https://zns.bom.asia" target="_blank">BOM Dashboard</a><br/>
+                2. Create new connection<br/>
+                3. Enter API Key<br/>
+                4. Test connection<br/>
+                5. If you get "No permission" error, check account setup guide!
+            </p>
+        </field>
+    </record>
+
     <!-- Main Menu -->
     <menuitem id="zns_main_menu" 
               name="Zalo ZNS" 
@@ -85,20 +228,4 @@
               parent="zns_config_menu" 
               action="zns_connection_action" 
               sequence="10"/>
-
-    <!-- Actions -->
-    <record id="zns_send_manual_action" model="ir.actions.act_window">
-        <field name="name">Send ZNS Message</field>
-        <field name="res_model">zns.send.wizard</field>
-        <field name="view_mode">form</field>
-        <field name="target">new</field>
-        <field name="help" type="html">
-            <p class="o_view_nocontent_smiling_face">
-                📱 Send a manual ZNS message!
-            </p>
-            <p>
-                Send ZNS messages manually to any phone number using your configured templates.
-            </p>
-        </field>
-    </record>
 </odoo>

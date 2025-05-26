@@ -118,6 +118,10 @@ class SaleOrder(models.Model):
             _logger.error(f"Failed to send ZNS for SO {self.name}: {e}")
             raise
     
+    def action_send_zns(self):
+        """Open ZNS send wizard - Direct method for button calls"""
+        return self.action_send_zns_manual()
+    
     def action_send_zns_manual(self):
         """Manual ZNS sending with template selection"""
         return {

@@ -1,27 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Dashboard Action -->
-    <record id="zns_dashboard_action" model="ir.actions.act_window">
-        <field name="name">ZNS Dashboard</field>
-        <field name="res_model">zns.message</field>
-        <field name="view_mode">graph,pivot,kanban,tree</field>
-        <field name="context">{
-            'graph_mode': 'line',
-            'graph_measure': '__count__',
-            'graph_groupbys': ['create_date:day'],
-            'search_default_month': 1
-        }</field>
-        <field name="help" type="html">
-            <p class="o_view_nocontent_smiling_face">
-                📊 Welcome to ZNS Dashboard!
-            </p>
-            <p>
-                Monitor your ZNS message performance with interactive charts and analytics.
-                Switch between different views to analyze your data.
-            </p>
-        </field>
-    </record>
-
     <!-- Report Wizard View -->
     <record id="zns_report_wizard_form_view" model="ir.ui.view">
         <field name="name">zns.report.wizard.form</field>
@@ -48,14 +26,6 @@
                 </footer>
             </form>
         </field>
-    </record>
-
-    <!-- Report Wizard Action -->
-    <record id="zns_report_wizard_action" model="ir.actions.act_window">
-        <field name="name">Generate ZNS Report</field>
-        <field name="res_model">zns.report.wizard</field>
-        <field name="view_mode">form</field>
-        <field name="target">new</field>
     </record>
 
     <!-- Enhanced Message List View with Statistics -->
@@ -105,8 +75,8 @@
     </record>
 
     <!-- Kanban View for Status Overview -->
-    <record id="zns_message_kanban_view" model="ir.ui.view">
-        <field name="name">zns.message.kanban</field>
+    <record id="zns_message_kanban_status_view" model="ir.ui.view">
+        <field name="name">zns.message.kanban.status</field>
         <field name="model">zns.message</field>
         <field name="arch" type="xml">
             <kanban default_group_by="status" class="o_kanban_small_column">
@@ -202,22 +172,6 @@
                     <filter string="Month" name="group_month" context="{'group_by': 'create_date:month'}"/>
                 </group>
             </search>
-        </field>
-    </record>
-
-    <!-- Analytics Action with Multiple Views -->
-    <record id="zns_message_analytics_action" model="ir.actions.act_window">
-        <field name="name">ZNS Analytics</field>
-        <field name="res_model">zns.message</field>
-        <field name="view_mode">pivot,graph,tree</field>
-        <field name="search_view_id" ref="zns_message_search_enhanced_view"/>
-        <field name="help" type="html">
-            <p class="o_view_nocontent_smiling_face">
-                📊 Analyze your ZNS message performance!
-            </p>
-            <p>
-                Use pivot tables and graphs to analyze your ZNS message trends, success rates, and usage patterns.
-            </p>
         </field>
     </record>
 </odoo>

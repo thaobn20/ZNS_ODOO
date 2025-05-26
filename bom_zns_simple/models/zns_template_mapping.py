@@ -4,7 +4,7 @@ import json
 import logging
 import requests
 from odoo import models, fields, api, _
-from odoo.exceptions import UserError
+from odoo.exceptions import UserError, ValidationError
 
 _logger = logging.getLogger(__name__)
 
@@ -18,8 +18,9 @@ class ZnsTemplateMapping(models.Model):
     priority = fields.Integer('Priority', default=10, help="Lower numbers = higher priority")
     active = fields.Boolean('Active', default=True)
     
-    # Template
-    template_id = fields.Many2one('zns.template', string='ZNS Template', required=True)
+    # Template - with better validation
+    template_id = fields.Many2one('zns.template', string='ZNS Template', required=True,
+                                help="Select the ZNS template to use for this mapping")
     
     # Model Integration
     model = fields.Selection([
@@ -35,11 +36,56 @@ class ZnsTemplateMapping(models.Model):
     amount_min = fields.Float('Minimum Amount')
     amount_max = fields.Float('Maximum Amount')
     product_category_ids = fields.Many2many('product.category', string='Product Categories')
+    condition_code = fields.Text('Custom Condition Code', help="Python code for custom conditions")
     
     # Usage Stats
     usage_count = fields.Integer('Usage Count', readonly=True)
     last_used = fields.Datetime('Last Used', readonly=True)
     
+    # Helper fields
+    template_status = fields.Char('Template Status', compute='_compute_template_status')
+    parameter_count = fields.Integer('Parameters', compute='_compute_template_info')
+    
+    @api.depends('template_id', 'template_id.active', 'template_id.parameter_ids')
+    def _compute_template_status(self):
+        for record in self:
+            if record.template_id:
+                if record.template_id.active:
+                    record.template_status = f"✅ Active ({len(record.template_id.parameter_ids)} params)"
+                else:
+                    record.template_status = "⚠️ Inactive template"
+            else:
+                record.template_status = "❌ No template selected"
+    
+    @api.depends('template_id', 'template_id.parameter_ids')
+    def _compute_template_info(self):
+        for record in self:
+            record.parameter_count = len(record.template_id.parameter_ids) if record.template_id else 0
+    
+    @api.constrains('template_id')
+    def _check_template_id(self):
+        for record in self:
+            if not record.template_id:
+                raise ValidationError(_("❌ ZNS Template is required. Please select a template before saving."))
+    
+    @api.constrains('amount_min', 'amount_max')
+    def _check_amounts(self):
+        for record in self:
+            if record.amount_min and record.amount_max and record.amount_min > record.amount_max:
+                raise ValidationError(_("Minimum amount cannot be greater than maximum amount"))
+    
+    @api.model
+    def create(self, vals):
+        """Override create to ensure template_id is provided"""
+        if not vals.get('template_id'):
+            raise ValidationError(_("❌ ZNS Template is required. Please select a template first.\n\n"
+                                  "Steps:\n"
+                                  "1. Go to Templates → Template List\n"
+                                  "2. Create a template and sync parameters\n"
+                                  "3. Then create template mappings"))
+        return super().create(vals)
+    
+    @api.model
     def _find_best_mapping(self, model, record):
         """Find the best template mapping for a record"""
         domain = [('model', '=', model), ('active', '=', True)]
@@ -95,6 +141,9 @@ class ZnsTemplateMapping(models.Model):
     
     def test_mapping(self):
         """Test this mapping with sample data"""
+        if not self.template_id:
+            raise UserError(_("❌ Cannot test mapping without a template. Please select a template first."))
+        
         # Find a sample record to test
         if self.model == 'sale.order':
             sample = self.env['sale.order'].search([('state', '!=', 'cancel')], limit=1)
@@ -105,18 +154,73 @@ class ZnsTemplateMapping(models.Model):
         
         if sample:
             matches = self._matches_conditions(sample)
-            return {
-                'type': 'ir.actions.client',
-                'tag': 'display_notification',
-                'params': {
-                    'title': 'Mapping Test Result',
-                    'message': f"✅ Mapping {'MATCHES' if matches else 'DOES NOT MATCH'} sample record: {sample.name}",
-                    'type': 'success' if matches else 'warning',
-                    'sticky': False,
+            
+            # Build test parameters
+            if matches and self.template_id:
+                try:
+                    if self.model == 'sale.order':
+                        params = self.env['zns.helper'].build_sale_order_params(sample, self.template_id)
+                    else:
+                        params = {}
+                    
+                    param_preview = "\n".join([f"• {k}: {v}" for k, v in params.items()]) if params else "No parameters"
+                    
+                    return {
+                        'type': 'ir.actions.client',
+                        'tag': 'display_notification',
+                        'params': {
+                            'title': '✅ Mapping Test Result',
+                            'message': f"Template: {self.template_id.name}\n"
+                                     f"Record: {sample.name}\n"
+                                     f"Matches: {'YES' if matches else 'NO'}\n\n"
+                                     f"Parameters would be:\n{param_preview}",
+                            'type': 'success' if matches else 'warning',
+                            'sticky': True,
+                        }
+                    }
+                except Exception as e:
+                    return {
+                        'type': 'ir.actions.client',
+                        'tag': 'display_notification',
+                        'params': {
+                            'title': '⚠️ Mapping Test Warning',
+                            'message': f"Mapping matches but parameter building failed:\n{str(e)}",
+                            'type': 'warning',
+                            'sticky': True,
+                        }
+                    }
+            else:
+                return {
+                    'type': 'ir.actions.client',
+                    'tag': 'display_notification',
+                    'params': {
+                        'title': '❌ Mapping Test Result',
+                        'message': f"Mapping DOES NOT MATCH sample record: {sample.name}\n\n"
+                                 f"Check your conditions:\n"
+                                 f"• Amount range: {self.amount_min or 0} - {self.amount_max or 'unlimited'}\n"
+                                 f"• Customer categories: {len(self.partner_category_ids)} selected\n"
+                                 f"• Product categories: {len(self.product_category_ids)} selected\n"
+                                 f"• Custom condition: {'Yes' if self.condition_code else 'No'}",
+                        'type': 'warning',
+                        'sticky': True,
+                    }
                 }
-            }
         else:
-            raise UserError("No sample records found to test mapping")
+            raise UserError(_("No sample records found to test mapping"))
+    
+    def action_view_template(self):
+        """View the associated template"""
+        if not self.template_id:
+            raise UserError(_("No template associated with this mapping"))
+        
+        return {
+            'type': 'ir.actions.act_window',
+            'name': f'Template: {self.template_id.name}',
+            'res_model': 'zns.template',
+            'res_id': self.template_id.id,
+            'view_mode': 'form',
+            'target': 'current',
+        }
 
 
 class ZnsTemplateSyncWizard(models.TransientModel):
@@ -181,25 +285,8 @@ class ZnsTemplateSyncWizard(models.TransientModel):
     
     def _fetch_templates_from_api(self, token):
         """Fetch templates list from BOM API"""
-        # This is a placeholder - you'll need the actual BOM API endpoint for templates list
-        url = f"{self.connection_id.api_base_url}/templates"  # Adjust endpoint as needed
-        headers = {
-            'Authorization': f'Bearer {token}',
-            'Content-Type': 'application/json'
-        }
-        
-        try:
-            response = requests.get(url, headers=headers, timeout=30)
-            
-            if response.status_code == 200:
-                result = response.json()
-                if result.get('error') == 0:
-                    return result.get('data', [])
-        except:
-            pass
-        
-        # If templates list endpoint doesn't exist, return sample data
-        # You can remove this and implement the actual API call
+        # This would be the actual BOM API endpoint for templates list
+        # For now, return sample data since we don't have the exact endpoint
         return [
             {
                 'template_id': '227805',

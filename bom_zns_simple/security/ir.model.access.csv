@@ -16,3 +16,5 @@ access_zns_template_mapping_manager,zns.template.mapping.manager,model_zns_templ
 access_zns_parameter_help_user,zns.parameter.help.user,model_zns_parameter_help,bom_zns_simple.group_zns_user,1,1,1,1
 access_zns_template_sync_wizard_user,zns.template.sync.wizard.user,model_zns_template_sync_wizard,bom_zns_simple.group_zns_user,1,1,1,1
 access_zns_template_sync_wizard_manager,zns.template.sync.wizard.manager,model_zns_template_sync_wizard,bom_zns_simple.group_zns_manager,1,1,1,1
+access_zns_dashboard_user,zns.dashboard.user,model_zns_dashboard,bom_zns_simple.group_zns_user,1,0,0,0
+access_zns_dashboard_manager,zns.dashboard.manager,model_zns_dashboard,bom_zns_simple.group_zns_manager,1,1,1,1

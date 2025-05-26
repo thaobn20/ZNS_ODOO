@@ -86,21 +86,29 @@ For more information, visit: https://zns.bom.asia/api/docs/version-2/
         'python': ['requests'],
     },
     'data': [
+        # Security files first
         'security/zns_security.xml',
         'security/ir.model.access.csv',
+        
+        # Data files
         'data/zns_data.xml',
+        
+        # Views - Order matters! Base views first, then extended views
         'views/zns_connection_views.xml',
         'views/zns_template_views.xml',
+        'views/zns_template_mapping_views.xml',
         'views/zns_message_views.xml',
         'views/zns_wizard_views.xml',
         'views/zns_dashboard_views.xml',
+        
+        # Model extensions
         'views/res_partner_views.xml',
         'views/sale_order_views.xml',
-        'views/account_move_views.xml',
-        'views/zns_menus.xml',
-        # New enhanced views
         'views/sale_order_enhanced_views.xml',
-        'views/zns_template_mapping_views.xml',
+        'views/account_move_views.xml',
+        
+        # Menus last (after all actions are defined)
+        'views/zns_menus.xml',
     ],
     'qweb': [],
     'demo': [
