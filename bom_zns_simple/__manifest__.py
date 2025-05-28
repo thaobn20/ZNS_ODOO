@@ -100,7 +100,7 @@ For more information, visit: https://zns.bom.asia/api/docs/version-2/
         'views/zns_message_views.xml',
         'views/zns_wizard_views.xml',
         'views/zns_dashboard_views.xml',
-        'views/zns_auto_sync_views.xml'
+        'views/zns_auto_sync_views.xml',
         
         # Model extensions
         'views/res_partner_views.xml',
