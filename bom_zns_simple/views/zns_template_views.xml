@@ -218,4 +218,5 @@
         <field name="target">new</field>
         <field name="context">{'default_action': 'sync_all'}</field>
     </record>
+	
 </odoo>

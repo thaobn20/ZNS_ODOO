@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Simple server action to check templates without modifying Python code -->
+    <record id="action_check_templates_simple" model="ir.actions.server">
+        <field name="name">Check Templates in Database</field>
+        <field name="model_id" ref="model_zns_template"/>
+        <field name="state">code</field>
+        <field name="code">
+# Simple template check using server action
+templates = env['zns.template'].search([])
+template_count = len(templates)
+
+if template_count > 0:
+    template_list = []
+    for t in templates:
+        template_list.append(f"• {t.name} (ID: {t.template_id}, Active: {t.active})")
+    
+    message = f"✅ Found {template_count} templates in database:\n\n" + "\n".join(template_list[:10])
+    if template_count > 10:
+        message += f"\n... and {template_count - 10} more"
+    
+    message += "\n\n🔧 If you can't see them in menu:\n1. Restart Odoo\n2. Update Apps List\n3. Hard refresh browser (Ctrl+F5)"
+    
+    action = {
+        'type': 'ir.actions.client',
+        'tag': 'display_notification',
+        'params': {
+            'title': f'📊 Found {template_count} Templates!',
+            'message': message,
+            'type': 'success',
+            'sticky': True,
+        }
+    }
+else:
+    action = {
+        'type': 'ir.actions.client',
+        'tag': 'display_notification', 
+        'params': {
+            'title': '❌ No Templates Found',
+            'message': "No templates found in database.\n\nThis means Auto Sync didn't actually create them.\nTry running Auto Sync again or create templates manually.",
+            'type': 'warning',
+            'sticky': True,
+        }
+    }
+        </field>
+    </record>
+
+    <!-- Add menu item to check templates -->
+    <menuitem 
+        id="menu_check_templates"
+        name="🔍 Check Templates"
+        parent="zns_templates_menu"
+        action="action_check_templates_simple"
+        sequence="1"/>
+
+    <!-- Fixed template action without inheritance issues -->
+    <record id="zns_template_action_working" model="ir.actions.act_window">
+        <field name="name">ZNS Templates (Working)</field>
+        <field name="res_model">zns.template</field>
+        <field name="view_mode">tree,form</field>
+        <field name="domain">[]</field>
+        <field name="context">{}</field>
+        <field name="view_id" ref="zns_template_tree_view"/>
+    </record>
+
+    <!-- Add working menu -->
+    <menuitem 
+        id="menu_templates_working"
+        name="📋 Templates (Working)"
+        parent="zns_templates_menu"
+        action="zns_template_action_working"
+        sequence="2"/>
+</odoo>
