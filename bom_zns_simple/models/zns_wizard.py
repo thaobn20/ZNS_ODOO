@@ -32,6 +32,29 @@ class ZnsSendWizard(models.TransientModel):
     # Preview fields
     preview_message = fields.Text('Message Preview', readonly=True)
     show_preview = fields.Boolean('Show Preview', default=False)
+
+    @api.model
+    def format_phone_number(self, phone):
+        """Format phone number for ZNS (Vietnamese format)"""
+        if not phone:
+            return False
+        
+        # Remove all non-digit characters
+        phone = re.sub(r'\D', '', phone)
+        
+        # Handle Vietnamese phone numbers
+        if phone.startswith('84'):
+            # Convert 84xxx to 0xxx for ZNS
+            return '0' + phone[2:]
+        elif phone.startswith('0'):
+            # Already in correct format
+            return phone
+        elif len(phone) == 9:
+            # 9 digit number, add leading 0
+            return '0' + phone
+        else:
+            # Return as is
+            return phone
     
     @api.model
     def default_get(self, fields_list):

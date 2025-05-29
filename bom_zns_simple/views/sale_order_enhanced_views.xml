@@ -25,14 +25,31 @@
             </div>
             
             <!-- Add ZNS tab with message history only -->
+			<!-- Add ZNS tab with auto-send option -->
             <notebook position="inside">
                 <page string="Zalo ZNS" name="zns_messages_tab">
                     <group>
-                        <button name="action_send_zns_manual" 
-                                string="Send ZNS Message Now" 
-                                type="object" 
-                                class="btn-primary"
-                                icon="fa-paper-plane"/>
+                        <group string="ZNS Configuration">
+                            <field name="zns_auto_send" widget="boolean_toggle"/>
+                            <div class="text-muted" attrs="{'invisible': [('zns_auto_send', '=', False)]}">
+                                <i class="fa fa-info-circle"/> When enabled, ZNS will be sent automatically when order is confirmed.
+                                <br/>The system will use the first active transaction template.
+                            </div>
+                        </group>
+                        <group>
+                            <button name="action_send_zns_manual" 
+                                    string="Send ZNS Message" 
+                                    type="object" 
+                                    class="btn-primary"
+                                    icon="fa-paper-plane"/>
+                            <button name="action_test_auto_send_zns" 
+                                    string="Test Auto-Send" 
+                                    type="object" 
+                                    class="btn-warning"
+                                    icon="fa-bug"
+                                    attrs="{'invisible': [('zns_auto_send', '=', False)]}"
+                                    help="Test the auto-send without confirming the order"/>
+                        </group>
                     </group>
                     
                     <separator string="ZNS Message History"/>
@@ -46,12 +63,7 @@
                             <field name="phone"/>
                             <field name="status"/>
                             <field name="sent_date"/>
-                            <field name="message_id" optional="hide"/>
                             <field name="error_message" optional="hide"/>
-                            <button name="send_zns_message" string="Retry" type="object" 
-                                    icon="fa-refresh" 
-                                    attrs="{'invisible': [('status', '=', 'sent')]}"
-                                    confirm="Are you sure you want to retry sending this message?"/>
                         </tree>
                     </field>
                 </page>
