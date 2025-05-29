@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Enhanced ZNS Connection Views with Debugging -->
+    <!-- Clean ZNS Connection Views without inheritance issues -->
     <record id="zns_connection_form_view" model="ir.ui.view">
         <field name="name">zns.connection.form</field>
         <field name="model">zns.connection</field>
@@ -8,10 +8,7 @@
             <form string="ZNS Connection">
                 <header>
                     <button name="test_connection" string="Test Connection" type="object" class="btn-primary"/>
-                    <button name="test_template_params" string="Test Template" type="object" class="btn-info"/>
-                    <button name="test_raw_api" string="Raw API Test" type="object" class="btn-warning"/>
-                    <button name="check_account_status" string="Check Account" type="object" class="btn-warning"/>
-                    <button name="debug_api_info" string="Debug API" type="object" class="btn-secondary"/>
+                    <button name="check_account_status" string="Check Account" type="object" class="btn-info"/>
                 </header>
                 <sheet>
                     <div class="oe_title">
@@ -36,60 +33,37 @@
                             <field name="access_token" readonly="1" widget="text" attrs="{'invisible': [('access_token', '=', False)]}"/>
                             <field name="token_expires_at" readonly="1"/>
                             <field name="last_sync" readonly="1"/>
+                            <field name="auth_method" readonly="1" attrs="{'invisible': [('auth_method', '=', False)]}"/>
                         </group>
                     </group>
                     <notebook>
                         <page string="Setup Guide">
                             <group>
                                 <div class="alert alert-info" role="alert">
-                                    <h4>🔑 How to get your API Key (JWT Token):</h4>
+                                    <h4>🔑 How to get your API Key:</h4>
                                     <ol>
                                         <li>Login to BOM dashboard: <a href="https://zns.bom.asia" target="_blank">https://zns.bom.asia</a></li>
                                         <li>Go to <strong>API Settings</strong> or <strong>Developer</strong> section</li>
-                                        <li>Copy your <strong>JWT Token</strong> (looks like: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...)</li>
+                                        <li>Copy your <strong>API Key</strong> or <strong>JWT Token</strong></li>
                                         <li>Paste it in the "API Key" field above</li>
                                         <li>Click "Test Connection"</li>
                                     </ol>
                                     <hr/>
-                                    <h5>📋 API Flow (Based on BOM Documentation):</h5>
-                                    <ul>
-                                        <li><strong>Step 1:</strong> Your JWT Token → Get Access Token</li>
-                                        <li><strong>Step 2:</strong> Access Token → Make API calls</li>
-                                        <li><strong>Step 3:</strong> Refresh Token → Renew Access Token</li>
-                                    </ul>
-                                    <hr/>
                                     <h5>⚠️ Common Issues:</h5>
                                     <ul>
-                                        <li><strong>"No permission"</strong> → Check if ZNS feature is enabled in your BOM account</li>
-                                        <li><strong>Invalid JWT</strong> → Make sure you're using the JWT token, not API Secret</li>
-                                        <li><strong>Token expired</strong> → Get a fresh JWT token from BOM dashboard</li>
-                                        <li><strong>Account not verified</strong> → Complete account verification in BOM dashboard</li>
+                                        <li><strong>"Access token not exist"</strong> → Wrong API Key format or expired</li>
+                                        <li><strong>"No permission"</strong> → Account not verified or ZNS not enabled</li>
+                                        <li><strong>"Invalid token"</strong> → Check API Key format</li>
                                     </ul>
-                                </div>
-                            </group>
-                        </page>
-                        <page string="Account Verification">
-                            <group>
-                                <div class="alert alert-warning" role="alert">
-                                    <h4>✅ Account Checklist:</h4>
-                                    <p>Make sure your BOM account has:</p>
+                                    <hr/>
+                                    <h5>🔧 Testing:</h5>
+                                    <p>Use the buttons above to test your connection:</p>
                                     <ul>
-                                        <li>✅ <strong>Email verified</strong></li>
-                                        <li>✅ <strong>Phone verified</strong></li>
-                                        <li>✅ <strong>Business information completed</strong></li>
-                                        <li>✅ <strong>Zalo Official Account connected</strong></li>
-                                        <li>✅ <strong>ZNS feature enabled</strong></li>
-                                        <li>✅ <strong>Active subscription</strong></li>
+                                        <li><strong>Test Connection</strong> → Tests BOM API authentication</li>
+                                        <li><strong>Check Account</strong> → Account setup checklist</li>
                                     </ul>
                                     
-                                    <hr/>
-                                    <h5>🔍 Debug Steps:</h5>
-                                    <ol>
-                                        <li>Click <strong>"Debug API"</strong> button above</li>
-                                        <li>Check Odoo logs for detailed error messages</li>
-                                        <li>Verify your API key in BOM dashboard</li>
-                                        <li>Contact BOM support if issue persists</li>
-                                    </ol>
+                                    <p><strong>For Template Testing:</strong> Go to Templates → Template List → Click template → "Sync Parameters from BOM"</p>
                                 </div>
                             </group>
                         </page>
@@ -98,6 +72,7 @@
                                 <field name="refresh_token" readonly="1"/>
                                 <field name="api_secret" readonly="1"/>
                                 <field name="last_error" readonly="1"/>
+                                <field name="auth_method" readonly="1"/>
                             </group>
                         </page>
                     </notebook>
@@ -115,6 +90,7 @@
                 <field name="name"/>
                 <field name="api_base_url"/>
                 <field name="active"/>
+                <field name="auth_method"/>
                 <field name="token_expires_at"/>
                 <field name="last_sync"/>
                 <field name="last_error" optional="hide"/>
@@ -140,7 +116,7 @@
                 2. Create new connection<br/>
                 3. Enter API Key<br/>
                 4. Test connection<br/>
-                5. If you get "No permission" error, check account setup guide!
+                5. The system will automatically try different authentication methods!
             </p>
         </field>
     </record>

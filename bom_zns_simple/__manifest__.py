@@ -100,9 +100,12 @@ For more information, visit: https://zns.bom.asia/api/docs/version-2/
         'views/zns_message_views.xml',
         'views/zns_wizard_views.xml',
         'views/zns_dashboard_views.xml',
+        'views/zns_auto_sync_views.xml',
+        'views/zns_template_check.xml',
         
         # Model extensions
         'views/res_partner_views.xml',
+        #'views/sale_order_minimal.xml', 
         'views/sale_order_views.xml',
         'views/sale_order_enhanced_views.xml',
         'views/account_move_views.xml',

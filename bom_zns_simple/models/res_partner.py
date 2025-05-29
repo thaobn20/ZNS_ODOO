@@ -43,7 +43,12 @@ class SaleOrder(models.Model):
     zns_auto_send = fields.Boolean('Auto Send ZNS', default=True, help="Automatically send ZNS when order is confirmed")
     zns_template_mapping_id = fields.Many2one('zns.template.mapping', string='ZNS Template Mapping', 
                                             help="Template mapping based on order conditions")
+    domain_count = fields.Integer('Domain Count', compute='_compute_domain_count', store=False)
     
+    def _compute_domain_count(self):
+        for order in self:
+            order.domain_count = 0
+            
     @api.depends('zns_message_ids')
     def _compute_zns_message_count(self):
         for order in self:

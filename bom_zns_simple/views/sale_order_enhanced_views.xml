@@ -5,67 +5,57 @@
         <field name="name">sale.order.form.zns.enhanced</field>
         <field name="model">sale.order</field>
         <field name="inherit_id" ref="sale.view_order_form"/>
+        <field name="priority">20</field>
         <field name="arch" type="xml">
-            <!-- Add ZNS button to header -->
-            <div name="button_box" position="inside">
-                <button type="object" name="action_view_zns_messages" 
-                        class="oe_stat_button" icon="fa-paper-plane">
-                    <field name="zns_message_count" widget="statinfo" string="ZNS Messages"/>
-                </button>
-            </div>
-            
-            <!-- Add manual ZNS send button -->
+            <!-- Add Send ZNS button to header -->
             <button name="action_confirm" position="after">
-                <button name="action_send_zns_manual" string="Send ZNS" type="object" 
-                        class="btn-secondary" icon="fa-paper-plane"
+                <button name="action_send_zns_manual" 
+                        string="Send ZNS" 
+                        type="object" 
+                        class="btn-secondary"
                         attrs="{'invisible': [('state', 'in', ['draft', 'cancel'])]}"/>
             </button>
             
-            <!-- Add ZNS configuration in order details -->
-            <field name="partner_id" position="after">
-                <field name="zns_auto_send" attrs="{'invisible': [('state', '!=', 'draft')]}"/>
-                <field name="zns_template_mapping_id" 
-                       attrs="{'invisible': [('state', '!=', 'draft')]}"
-                       options="{'no_create': True, 'no_edit': True}"/>
-            </field>
+            <!-- Add ZNS button to button box -->
+            <div name="button_box" position="inside">
+                <button type="object" name="action_view_zns_messages" 
+                        class="oe_stat_button" icon="fa-comments">
+                    <field name="zns_message_count" widget="statinfo" string="ZNS"/>
+                </button>
+            </div>
             
-            <!-- Add ZNS tab -->
-            <xpath expr="//notebook[last()]" position="inside">
-                <page string="Zalo ZNS" name="zns_messages">
+            <!-- Add ZNS tab with message history only -->
+            <notebook position="inside">
+                <page string="Zalo ZNS" name="zns_messages_tab">
                     <group>
-                        <group string="ZNS Configuration">
-                            <field name="zns_auto_send"/>
-                            <field name="zns_template_mapping_id" options="{'no_create': True}"/>
-                        </group>
-                        <group string="Customer Contact">
-                            <field name="partner_id" readonly="1"/>
-                            <div class="o_form_label">Customer Phone</div>
-                            <div>
-                                <span t-if="record.partner_id.value">
-                                    <t t-if="record.partner_id.value.mobile">📱 <field name="partner_id" readonly="1" options="{'no_open': True}" widget="char" attrs="{'invisible': [('partner_id', '=', False)]}"/></t>
-                                </span>
-                            </div>
-                        </group>
+                        <button name="action_send_zns_manual" 
+                                string="Send ZNS Message Now" 
+                                type="object" 
+                                class="btn-primary"
+                                icon="fa-paper-plane"/>
                     </group>
                     
                     <separator string="ZNS Message History"/>
-                    <field name="zns_message_ids" nolabel="1">
+                    <field name="zns_message_ids" nolabel="1" readonly="1">
                         <tree decoration-success="status=='sent'" 
                               decoration-danger="status=='failed'" 
-                              decoration-muted="status=='draft'">
-                            <field name="create_date"/>
+                              decoration-muted="status=='draft'"
+                              create="false" edit="false">
+                            <field name="create_date" string="Created"/>
                             <field name="template_id"/>
                             <field name="phone"/>
                             <field name="status"/>
                             <field name="sent_date"/>
-                            <field name="message_id"/>
+                            <field name="message_id" optional="hide"/>
                             <field name="error_message" optional="hide"/>
                             <button name="send_zns_message" string="Retry" type="object" 
-                                    icon="fa-refresh" attrs="{'invisible': [('status', '=', 'sent')]}"/>
+                                    icon="fa-refresh" 
+                                    attrs="{'invisible': [('status', '=', 'sent')]}"
+                                    confirm="Are you sure you want to retry sending this message?"/>
                         </tree>
                     </field>
                 </page>
-            </xpath>
+            </notebook>
         </field>
     </record>
 </odoo>

@@ -1,32 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Extend Sale Order Form View -->
+    <!-- Extend Sale Order Form View - Just add button -->
     <record id="sale_order_form_zns_inherit" model="ir.ui.view">
         <field name="name">sale.order.form.zns.inherit</field>
         <field name="model">sale.order</field>
         <field name="inherit_id" ref="sale.view_order_form"/>
         <field name="arch" type="xml">
+            <!-- Add ZNS button to button box -->
             <div name="button_box" position="inside">
                 <button type="object" name="action_send_zns_manual" 
                         class="oe_stat_button" icon="fa-paper-plane">
                     <div class="o_stat_info">
-                        <field name="zns_message_count" string="ZNS Messages"/>
+                        <field name="zns_message_count" widget="statinfo"/>
+                        <span class="o_stat_text">ZNS</span>
                     </div>
                 </button>
             </div>
-            <notebook position="inside">
-                <page string="Zalo ZNS" name="zns_messages">
-                    <field name="zns_message_ids" nolabel="1">
-                        <tree>
-                            <field name="template_id"/>
-                            <field name="phone"/>
-                            <field name="status"/>
-                            <field name="sent_date"/>
-                            <field name="create_date"/>
-                        </tree>
-                    </field>
-                </page>
-            </notebook>
         </field>
     </record>
 </odoo>
