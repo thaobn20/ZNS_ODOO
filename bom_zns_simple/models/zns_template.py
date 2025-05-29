@@ -234,12 +234,12 @@ class ZnsTemplate(models.Model):
             _logger.info(f"URL: {list_url}")
             _logger.info(f"Headers: {headers}")
             
-            # POST with empty form data like in Postman
-            response = requests.post(list_url, headers=headers, data={}, timeout=30)
+            # POST with empty JSON body (might work better than empty form data)
+            response = requests.post(list_url, headers=headers, json={}, timeout=30)
             
             _logger.info(f"📨 Template list response:")
             _logger.info(f"Status: {response.status_code}")
-            _logger.info(f"Body: {response.text}")
+            _logger.info(f"Body: {response.text[:500]}...")  # First 500 chars to avoid huge logs
             
             if response.status_code != 200:
                 error_msg = f"Failed to get template list: HTTP {response.status_code} - {response.text}"
@@ -260,6 +260,7 @@ class ZnsTemplate(models.Model):
             
             # Process template list
             templates_data = result.get('data', [])
+            _logger.info(f"📋 BOM returned {len(templates_data)} templates: {templates_data}")
             if not templates_data:
                 return {
                     'type': 'ir.actions.client',
@@ -284,25 +285,28 @@ class ZnsTemplate(models.Model):
                     template_name = template_data.get('name') or template_data.get('title') or f"Template {template_id}"
                     template_type = template_data.get('type', 'transaction').lower()
                     template_status = template_data.get('status', 'unknown')
+                    template_status = template_data.get('status', 'active')  # Default to active
                     
                     if not template_id:
                         _logger.warning(f"Skipping template without ID: {template_data}")
                         continue
                     
                     _logger.info(f"Processing template: {template_name} ({template_id})")
-                    
-                    # Check if template already exists
+                    _logger.info(f"Checking if template {template_id} exists in Odoo...")
+                    # Check if template already exists (check both string and number formats)
                     existing_template = self.search([
+                        '|',
                         ('template_id', '=', str(template_id)),
+                        ('template_id', '=', template_id),
                         ('connection_id', '=', connection.id)
-                    ])
+                    ], limit=1)
                     
                     if existing_template:
                         # Update existing template
                         existing_template.write({
                             'name': template_name,
                             'template_type': self._map_template_type(template_type),
-                            'active': template_status.lower() in ['active', 'approved', 'enabled', 'published']
+                            'active': True  # Always create as active
                         })
                         
                         # Sync parameters for this template
@@ -315,15 +319,19 @@ class ZnsTemplate(models.Model):
                             errors.append(f"{template_name}: Parameter sync failed")
                             error_count += 1
                     else:
-                        # Create new template
+                        # Get template status - default to active if not specified
+                        is_active = True  # Default to active
+                        if template_status:
+                            is_active = template_status.lower() in ['active', 'approved', 'enabled', 'published', 'live', '1', 'true']
+                        
                         new_template = self.create({
                             'name': template_name,
                             'template_id': str(template_id),
                             'template_type': self._map_template_type(template_type),
                             'connection_id': connection.id,
-                            'active': template_status.lower() in ['active', 'approved', 'enabled', 'published']
+                            'active': is_active  # Use the determined status
                         })
-                        
+                        _logger.info(f"✅ CREATED new template in DB: {new_template.name} (ID: {new_template.id}, Template ID: {template_id})")
                         # Sync parameters for new template
                         try:
                             new_template._sync_single_template_params(access_token)
