@@ -15,26 +15,45 @@ class ZnsHelper(models.AbstractModel):
 
     @api.model
     def format_phone_number(self, phone):
-        """Format phone number for ZNS (Vietnamese format)"""
+        """Format phone number for ZNS (Vietnamese format) - Enhanced"""
         if not phone:
             return False
         
         # Remove all non-digit characters
         phone = re.sub(r'\D', '', phone)
         
+        # Handle different Vietnamese phone number formats
+        if not phone:
+            return False
+            
         # Handle Vietnamese phone numbers
         if phone.startswith('84'):
-            # Already has country code
-            return phone
+            # Already has country code - validate length
+            if len(phone) >= 10 and len(phone) <= 12:
+                return phone
+            else:
+                _logger.warning(f"Invalid phone length with country code: {phone}")
+                return False
+                
         elif phone.startswith('0'):
             # Remove leading 0 and add country code
-            return '84' + phone[1:]
-        elif len(phone) == 9:
-            # 9 digit number, add country code
+            phone_without_0 = phone[1:]
+            if len(phone_without_0) >= 8 and len(phone_without_0) <= 10:
+                return '84' + phone_without_0
+            else:
+                _logger.warning(f"Invalid Vietnamese phone length: {phone}")
+                return False
+                
+        elif len(phone) >= 8 and len(phone) <= 10:
+            # Assume it's Vietnamese number without 0 prefix
             return '84' + phone
-        else:
-            # Return as is, might be international
+            
+        elif len(phone) >= 10 and len(phone) <= 15:
+            # Might be international number, return as is
             return phone
+        else:
+            _logger.warning(f"Cannot format phone number: {phone} (length: {len(phone)})")
+            return False
 
     @api.model
     def build_sale_order_params(self, sale_order, template):

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 {
     'name': 'BOM ZNS Integration - Enhanced',
-    'version': '15.0.3.0.0',
+    'version': '15.0.3.2.0',
     'category': 'Marketing',
     'summary': 'Advanced Zalo ZNS integration with automatic sending and template mapping',
     'description': """
@@ -71,7 +71,7 @@ Available parameters include:
 For more information, visit: https://zns.bom.asia/api/docs/version-2/
     """,
     'author': 'Your Company',
-    'website': 'https://www.yourcompany.com',
+    'website': 'https://www.bom.asia',
     'license': 'LGPL-3',
     'depends': [
         'base',
@@ -105,6 +105,7 @@ For more information, visit: https://zns.bom.asia/api/docs/version-2/
         
         # Model extensions
         'views/res_partner_views.xml',
+        #'views/sale_order_minimal.xml', 
         'views/sale_order_views.xml',
         'views/sale_order_enhanced_views.xml',
         'views/account_move_views.xml',

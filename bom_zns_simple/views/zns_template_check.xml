@@ -13,11 +13,11 @@ template_count = len(templates)
 if template_count > 0:
     template_list = []
     for t in templates:
-        template_list.append(f"• {t.name} (ID: {t.template_id}, Active: {t.active})")
+        template_list.append("• " + str(t.name) + " (ID: " + str(t.template_id) + ", Active: " + str(t.active) + ")")
     
-    message = f"✅ Found {template_count} templates in database:\n\n" + "\n".join(template_list[:10])
+    message = "✅ Found " + str(template_count) + " templates in database:\n\n" + "\n".join(template_list[:10])
     if template_count > 10:
-        message += f"\n... and {template_count - 10} more"
+        message += "\n... and " + str(template_count - 10) + " more"
     
     message += "\n\n🔧 If you can't see them in menu:\n1. Restart Odoo\n2. Update Apps List\n3. Hard refresh browser (Ctrl+F5)"
     
@@ -25,7 +25,7 @@ if template_count > 0:
         'type': 'ir.actions.client',
         'tag': 'display_notification',
         'params': {
-            'title': f'📊 Found {template_count} Templates!',
+            'title': '📊 Found ' + str(template_count) + ' Templates!',
             'message': message,
             'type': 'success',
             'sticky': True,
@@ -70,4 +70,103 @@ else:
         parent="zns_templates_menu"
         action="zns_template_action_working"
         sequence="2"/>
+
+    <!-- Cleanup duplicate templates -->
+    <record id="action_cleanup_duplicate_templates" model="ir.actions.server">
+        <field name="name">Clean Up Duplicate Templates</field>
+        <field name="model_id" ref="model_zns_template"/>
+        <field name="state">code</field>
+        <field name="code">
+# Clean up duplicate templates
+templates = env['zns.template'].search([], order='id asc')
+seen_templates = {}
+to_delete = env['zns.template']
+to_activate = env['zns.template']
+
+for template in templates:
+    key = str(template.template_id) + "_" + str(template.connection_id.id)
+    if key in seen_templates:
+        # This is a duplicate - add to delete list
+        to_delete |= template
+    else:
+        # First occurrence - keep it
+        seen_templates[key] = template
+        if not template.active:
+            to_activate |= template
+
+# Count before actions
+kept_count = len(seen_templates)
+delete_count = len(to_delete)
+activate_count = len(to_activate)
+
+# Build message before deleting
+deleted_names = []
+for t in to_delete[:10]:
+    deleted_names.append("• " + t.name + " (ID: " + str(t.template_id) + ")")
+
+# Perform actions
+if to_activate:
+    to_activate.write({'active': True})
+
+if to_delete:
+    to_delete.unlink()
+
+# Build result message
+message = "🧹 Cleanup Complete!\n\n"
+message += "✅ Kept " + str(kept_count) + " unique templates\n"
+message += "🗑️ Deleted " + str(delete_count) + " duplicates\n"
+message += "💡 Activated " + str(activate_count) + " inactive templates"
+
+if deleted_names:
+    message += "\n\nDeleted duplicates:\n" + "\n".join(deleted_names)
+    if delete_count > 10:
+        message += "\n... and " + str(delete_count - 10) + " more"
+
+action = {
+    'type': 'ir.actions.client',
+    'tag': 'display_notification',
+    'params': {
+        'title': '🧹 Template Cleanup Complete',
+        'message': message,
+        'type': 'success',
+        'sticky': True,
+    }
+}
+        </field>
+    </record>
+
+    <!-- Add cleanup menu -->
+    <menuitem 
+        id="menu_cleanup_templates"
+        name="🧹 Clean Up Duplicates"
+        parent="zns_templates_menu"
+        action="action_cleanup_duplicate_templates"
+        sequence="6"/>
+
+    <!-- Direct template list without filters -->
+    <record id="action_show_all_templates_no_filter" model="ir.actions.server">
+        <field name="name">Show ALL Templates (No Filters)</field>
+        <field name="model_id" ref="model_zns_template"/>
+        <field name="state">code</field>
+        <field name="code">
+# Show all templates directly
+action = {
+    'type': 'ir.actions.act_window',
+    'name': 'ALL Templates in Database',
+    'res_model': 'zns.template',
+    'view_mode': 'tree,form',
+    'domain': [],  # No domain filter at all
+    'context': {'search_default_active': 0},  # Don't filter by active
+    'target': 'current',
+}
+        </field>
+    </record>
+
+    <!-- Add menu item -->
+    <menuitem 
+        id="menu_show_all_templates"
+        name="📋 ALL Templates (Debug)"
+        parent="zns_templates_menu"
+        action="action_show_all_templates_no_filter"
+        sequence="3"/>
 </odoo>
