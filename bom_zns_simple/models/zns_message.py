@@ -43,7 +43,7 @@ class ZnsMessage(models.Model):
                 record.display_name = f"ZNS Message #{record.id}"
     
     def send_zns_message(self):
-        """Send ZNS message using correct BOM API format from Postman collection"""
+        """Send ZNS message using correct BOM API format with enhanced error handling"""
         if self.status == 'sent':
             raise UserError("Message already sent")
         
@@ -54,23 +54,39 @@ class ZnsMessage(models.Model):
         if not connection.api_key:
             raise UserError("No API key configured")
         
+        _logger.info(f"=== SENDING ZNS MESSAGE ID {self.id} ===")
+        _logger.info(f"Template: {self.template_id.name} ({self.template_id.template_id})")
+        _logger.info(f"Phone: {self.phone}")
+        _logger.info(f"Connection: {connection.name}")
+        
         try:
             # Get access token
+            _logger.info("Getting access token...")
             access_token = connection._get_access_token()
+            _logger.info(f"✅ Access token obtained: {access_token[:30]}...")
         except Exception as e:
+            error_msg = f"Failed to get access token: {str(e)}"
+            _logger.error(f"❌ {error_msg}")
             self.write({
                 'status': 'failed',
-                'error_message': f"Failed to get access token: {str(e)}"
+                'error_message': error_msg
             })
-            raise UserError(f"❌ Token error: {str(e)}")
+            raise UserError(f"❌ Token error: {error_msg}")
         
         # Parse parameters
         try:
             params = json.loads(self.parameters) if self.parameters else {}
-        except json.JSONDecodeError:
-            params = {}
+            _logger.info(f"Parameters: {params}")
+        except json.JSONDecodeError as e:
+            error_msg = f"Invalid parameters JSON: {str(e)}"
+            _logger.error(f"❌ {error_msg}")
+            self.write({
+                'status': 'failed',
+                'error_message': error_msg
+            })
+            raise UserError(f"❌ {error_msg}")
         
-        # Format phone number (remove leading 0, don't add country code if already present)
+        # Format phone number
         phone = self.phone
         if phone.startswith('0'):
             phone = phone  # Keep as is for Vietnamese numbers
@@ -90,48 +106,60 @@ class ZnsMessage(models.Model):
         }
         
         try:
-            _logger.info(f"Sending ZNS message to: {url}")
+            _logger.info(f"🚀 Sending ZNS request...")
+            _logger.info(f"URL: {url}")
             _logger.info(f"Headers: {headers}")
             _logger.info(f"Data: {data}")
             
             response = requests.post(url, headers=headers, json=data, timeout=30)
             
-            _logger.info(f"Response status: {response.status_code}")
-            _logger.info(f"Response body: {response.text}")
+            _logger.info(f"📨 Response received:")
+            _logger.info(f"Status: {response.status_code}")
+            _logger.info(f"Body: {response.text}")
             
             response.raise_for_status()
             result = response.json()
             
             # Check for success (BOM API returns error: 0 for success)
-            if result.get('error') == 0:
+            if result.get('error') == 0 or result.get('error') == '0':
                 message_data = result.get('data', {})
+                message_id = message_data.get('message_id', str(response.status_code))
+                
                 self.write({
                     'status': 'sent',
-                    'message_id': message_data.get('message_id', str(response.status_code)),
+                    'message_id': message_id,
                     'sent_date': fields.Datetime.now(),
                     'error_message': False
                 })
+                
+                _logger.info(f"✅ ZNS message sent successfully! Message ID: {message_id}")
                 
                 return {
                     'type': 'ir.actions.client',
                     'tag': 'display_notification',
                     'params': {
-                        'title': 'ZNS Message Sent',
-                        'message': f"✅ ZNS message sent successfully!\nMessage ID: {self.message_id}",
+                        'title': '✅ ZNS Message Sent',
+                        'message': f"ZNS message sent successfully!\nMessage ID: {message_id}",
                         'type': 'success',
                         'sticky': False,
                     }
                 }
             else:
+                error_code = result.get('error', 'unknown')
                 error_msg = result.get('message', 'Unknown API error')
+                full_error = f"API Error {error_code}: {error_msg}"
+                
+                _logger.error(f"❌ {full_error}")
+                
                 self.write({
                     'status': 'failed',
-                    'error_message': f"API Error: {error_msg}"
+                    'error_message': full_error
                 })
-                raise UserError(f"❌ Send failed: {error_msg}")
+                raise UserError(f"❌ Send failed: {full_error}")
                 
         except requests.exceptions.RequestException as e:
             error_msg = f"Connection error: {str(e)}"
+            _logger.error(f"❌ {error_msg}")
             self.write({
                 'status': 'failed',
                 'error_message': error_msg
@@ -139,6 +167,7 @@ class ZnsMessage(models.Model):
             raise UserError(f"❌ Send failed: {error_msg}")
         except Exception as e:
             error_msg = f"Unexpected error: {str(e)}"
+            _logger.error(f"❌ {error_msg}")
             self.write({
                 'status': 'failed',
                 'error_message': error_msg

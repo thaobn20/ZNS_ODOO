@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- All Actions must be defined before menus that reference them -->
+    <!-- Clean ZNS Menu Structure - Remove template mapping from main menu -->
     
     <!-- Dashboard Action -->
     <record id="zns_dashboard_action" model="ir.actions.act_window">
@@ -65,36 +65,17 @@
                 Create your first ZNS template!
             </p>
             <p>
-                Set up ZNS message templates from your BOM dashboard.
-            </p>
-        </field>
-    </record>
-
-    <!-- Template Mapping Action -->
-    <record id="zns_template_mapping_action" model="ir.actions.act_window">
-        <field name="name">ZNS Template Mappings</field>
-        <field name="res_model">zns.template.mapping</field>
-        <field name="view_mode">tree,form</field>
-        <field name="help" type="html">
-            <p class="o_view_nocontent_smiling_face">
-                📋 Create your first ZNS template mapping!
+                Set up ZNS message templates from your BOM dashboard and configure parameter mappings.
             </p>
             <p>
-                Template mappings automatically select the right ZNS template based on order conditions like:
-                • Customer type (VIP, Regular, etc.)
-                • Order amount (Large orders, small orders)
-                • Product categories (Electronics, Fashion, etc.)
-                • Custom conditions (Rush orders, special notes, etc.)
+                <strong>Quick Start:</strong><br/>
+                1. Create new template<br/>
+                2. Enter Template ID from BOM<br/>
+                3. Click "Sync Parameters from BOM"<br/>
+                4. Map parameters to SO/Invoice fields<br/>
+                5. Templates will be auto-selected based on conditions
             </p>
         </field>
-    </record>
-
-    <!-- Template Sync Wizard Action -->
-    <record id="zns_template_sync_wizard_action" model="ir.actions.act_window">
-        <field name="name">Sync ZNS Templates</field>
-        <field name="res_model">zns.template.sync.wizard</field>
-        <field name="view_mode">form</field>
-        <field name="target">new</field>
     </record>
 
     <!-- Analytics Action -->
@@ -138,7 +119,7 @@
                 2. Create new connection<br/>
                 3. Enter API Key<br/>
                 4. Test connection<br/>
-                5. If you get "No permission" error, check account setup guide!
+                5. Create templates and start sending!
             </p>
         </field>
     </record>
@@ -186,17 +167,11 @@
               action="zns_template_action" 
               sequence="10"/>
     
-    <menuitem id="zns_template_mapping_menu" 
-              name="Template Mappings" 
-              parent="zns_templates_menu" 
-              action="zns_template_mapping_action" 
-              sequence="20"/>
-    
     <menuitem id="zns_template_sync_menu" 
-              name="Sync from BOM" 
+              name="🔄 Auto Sync from BOM" 
               parent="zns_templates_menu" 
-              action="zns_template_sync_wizard_action" 
-              sequence="30"/>
+              action="action_sync_all_templates_from_bom" 
+              sequence="20"/>
     
     <!-- Analytics -->
     <menuitem id="zns_analytics_menu" 

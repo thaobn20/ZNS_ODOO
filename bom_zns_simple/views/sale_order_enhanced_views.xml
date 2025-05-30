@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Enhanced Sale Order Form View -->
+    <!-- Enhanced Sale Order Form View - NO template_mapping_id references -->
     <record id="sale_order_form_zns_enhanced" model="ir.ui.view">
         <field name="name">sale.order.form.zns.enhanced</field>
         <field name="model">sale.order</field>
@@ -14,6 +14,12 @@
                         type="object" 
                         class="btn-secondary"
                         attrs="{'invisible': [('state', 'in', ['draft', 'cancel'])]}"/>
+                <button name="action_test_auto_send_zns" 
+                        string="Test Auto ZNS" 
+                        type="object" 
+                        class="btn-info"
+                        groups="base.group_no_one"
+                        attrs="{'invisible': [('state', 'in', ['draft', 'cancel'])]}"/>
             </button>
             
             <!-- Add ZNS button to button box -->
@@ -24,32 +30,31 @@
                 </button>
             </div>
             
-            <!-- Add ZNS tab with message history only -->
-			<!-- Add ZNS tab with auto-send option -->
+            <!-- Add ZNS configuration in Other Info tab -->
+            <page name="other_information" position="inside">
+                <group string="ZNS Configuration">
+                    <field name="zns_auto_send"/>
+                    <field name="zns_template_id" 
+                           attrs="{'invisible': [('zns_auto_send', '=', False)]}"
+                           help="Auto-selected from active templates"/>
+                </group>
+            </page>
+            
+            <!-- Add ZNS tab with message history -->
             <notebook position="inside">
                 <page string="Zalo ZNS" name="zns_messages_tab">
                     <group>
-                        <group string="ZNS Configuration">
-                            <field name="zns_auto_send" widget="boolean_toggle"/>
-                            <div class="text-muted" attrs="{'invisible': [('zns_auto_send', '=', False)]}">
-                                <i class="fa fa-info-circle"/> When enabled, ZNS will be sent automatically when order is confirmed.
-                                <br/>The system will use the first active transaction template.
-                            </div>
-                        </group>
-                        <group>
-                            <button name="action_send_zns_manual" 
-                                    string="Send ZNS Message" 
-                                    type="object" 
-                                    class="btn-primary"
-                                    icon="fa-paper-plane"/>
-                            <button name="action_test_auto_send_zns" 
-                                    string="Test Auto-Send" 
-                                    type="object" 
-                                    class="btn-warning"
-                                    icon="fa-bug"
-                                    attrs="{'invisible': [('zns_auto_send', '=', False)]}"
-                                    help="Test the auto-send without confirming the order"/>
-                        </group>
+                        <button name="action_send_zns_manual" 
+                                string="Send ZNS Message Now" 
+                                type="object" 
+                                class="btn-primary"
+                                icon="fa-paper-plane"/>
+                        <button name="action_test_auto_send_zns" 
+                                string="Test Auto Send" 
+                                type="object" 
+                                class="btn-warning"
+                                icon="fa-bug"
+                                groups="base.group_no_one"/>
                     </group>
                     
                     <separator string="ZNS Message History"/>
@@ -63,7 +68,12 @@
                             <field name="phone"/>
                             <field name="status"/>
                             <field name="sent_date"/>
+                            <field name="message_id" optional="hide"/>
                             <field name="error_message" optional="hide"/>
+                            <button name="send_zns_message" string="Retry" type="object" 
+                                    icon="fa-refresh" 
+                                    attrs="{'invisible': [('status', '=', 'sent')]}"
+                                    confirm="Are you sure you want to retry sending this message?"/>
                         </tree>
                     </field>
                 </page>

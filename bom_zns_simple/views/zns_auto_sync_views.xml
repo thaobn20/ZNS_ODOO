@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-<!-- Auto Sync Templates Action -->
+    <!-- Auto Sync Templates Action -->
     <record id="action_sync_all_templates_from_bom" model="ir.actions.server">
         <field name="name">Auto Sync All Templates from BOM</field>
         <field name="model_id" ref="model_zns_template"/>
@@ -14,14 +14,6 @@ else:
     action = env['zns.template'].sync_all_templates_from_bom()
         </field>
     </record>
-
-    <!-- Add Auto Sync Menu Item -->
-    <menuitem 
-        id="menu_sync_templates_from_bom"
-        name="🔄 Auto Sync from BOM"
-        parent="zns_templates_menu"
-        action="action_sync_all_templates_from_bom"
-        sequence="5"/>
 
     <!-- Add Auto Sync Button to Template List -->
     <record id="zns_template_tree_view_with_auto_sync" model="ir.ui.view">

@@ -25,41 +25,19 @@ class ZnsSendWizard(models.TransientModel):
     # Parameters
     parameter_ids = fields.One2many('zns.send.wizard.parameter', 'wizard_id', string='Parameters')
     
-    # Context fields
+    # Context fields - REMOVED template_mapping_id completely
     sale_order_id = fields.Many2one('sale.order', string='Sale Order')
     invoice_id = fields.Many2one('account.move', string='Invoice')
     
     # Preview fields
     preview_message = fields.Text('Message Preview', readonly=True)
     show_preview = fields.Boolean('Show Preview', default=False)
-
-    @api.model
-    def format_phone_number(self, phone):
-        """Format phone number for ZNS (Vietnamese format)"""
-        if not phone:
-            return False
-        
-        # Remove all non-digit characters
-        phone = re.sub(r'\D', '', phone)
-        
-        # Handle Vietnamese phone numbers
-        if phone.startswith('84'):
-            # Convert 84xxx to 0xxx for ZNS
-            return '0' + phone[2:]
-        elif phone.startswith('0'):
-            # Already in correct format
-            return phone
-        elif len(phone) == 9:
-            # 9 digit number, add leading 0
-            return '0' + phone
-        else:
-            # Return as is
-            return phone
     
+
     @api.model
     def default_get(self, fields_list):
         """Set default values and auto-fill parameters"""
-        defaults = super().default_get(fields_list)
+        defaults = super(ZnsSendWizard, self).default_get(fields_list)
         
         # If coming from Sale Order
         if self.env.context.get('default_sale_order_id'):
@@ -72,42 +50,55 @@ class ZnsSendWizard(models.TransientModel):
                         defaults['phone'] = self.env['zns.helper'].format_phone_number(phone)
                 defaults['partner_id'] = sale_order.partner_id.id
                 
-                # If template is provided in context (from SO default template)
+                # Get template - directly from context or auto-select
+                template = None
                 if self.env.context.get('default_template_id'):
                     template = self.env['zns.template'].browse(self.env.context['default_template_id'])
-                    if template and template.exists():
-                        # Set parameters with auto-filled values
-                        param_values = []
-                        for param in template.parameter_ids:
-                            param_title = param.title or param.name or 'Parameter'
-                            value = param.default_value or ''
-                            
-                            # Try to get mapped value from template configuration
-                            if param.so_field_mapping:
-                                try:
-                                    mapped_value = param.get_mapped_value(sale_order)
-                                    if mapped_value:
-                                        value = str(mapped_value)
-                                except Exception as e:
-                                    _logger.warning(f"Error getting mapped value for {param.name}: {e}")
-                            
-                            # If no mapping, try standard parameters
-                            if not value and param.name:
+                
+                # If no template, find first available
+                if not template:
+                    template = self.env['zns.template'].search([
+                        ('active', '=', True),
+                        ('template_type', '=', 'transaction')
+                    ], limit=1)
+                
+                if template and template.exists():
+                    defaults['template_id'] = template.id
+                    # Set parameters with auto-filled values
+                    param_values = []
+                    for param in template.parameter_ids:
+                        param_title = param.title or param.name or 'Parameter'
+                        value = param.default_value or ''
+                        
+                        # Try to get mapped value from template configuration
+                        if hasattr(param, 'so_field_mapping') and param.so_field_mapping:
+                            try:
+                                mapped_value = param.get_mapped_value(sale_order)
+                                if mapped_value:
+                                    value = str(mapped_value)
+                            except Exception as e:
+                                _logger.warning(f"Error getting mapped value for {param.name}: {e}")
+                        
+                        # If no mapping, try standard parameters
+                        if not value and param.name:
+                            try:
                                 standard_params = self.env['zns.helper'].build_sale_order_params(sale_order, template)
                                 if param.name in standard_params:
                                     value = str(standard_params[param.name])
-                            
-                            param_values.append((0, 0, {
-                                'parameter_id': param.id,
-                                'name': param.name,
-                                'title': param_title,
-                                'param_type': param.param_type,
-                                'required': param.required,
-                                'value': value,
-                            }))
+                            except Exception as e:
+                                _logger.warning(f"Error building standard params: {e}")
                         
-                        if param_values:
-                            defaults['parameter_ids'] = param_values
+                        param_values.append((0, 0, {
+                            'parameter_id': param.id,
+                            'name': param.name,
+                            'title': param_title,
+                            'param_type': param.param_type,
+                            'required': param.required,
+                            'value': value,
+                        }))
+                    
+                    if param_values:
+                        defaults['parameter_ids'] = param_values
         
         return defaults
     
@@ -149,7 +140,7 @@ class ZnsSendWizard(models.TransientModel):
             default_value = param.default_value or ''
             
             # If we're in SO context and parameter has mapping, get mapped value
-            if self.sale_order_id and param.so_field_mapping:
+            if self.sale_order_id and hasattr(param, 'so_field_mapping') and param.so_field_mapping:
                 try:
                     mapped_value = param.get_mapped_value(self.sale_order_id)
                     if mapped_value:
@@ -174,7 +165,7 @@ class ZnsSendWizard(models.TransientModel):
         
         # For each parameter, check if it has SO field mapping in template
         for param_line in self.parameter_ids:
-            if param_line.parameter_id and param_line.parameter_id.so_field_mapping:
+            if param_line.parameter_id and hasattr(param_line.parameter_id, 'so_field_mapping') and param_line.parameter_id.so_field_mapping:
                 try:
                     # Get mapped value from template parameter configuration
                     mapped_value = param_line.parameter_id.get_mapped_value(self.sale_order_id)
@@ -185,10 +176,13 @@ class ZnsSendWizard(models.TransientModel):
             
             # If no mapping but we have standard parameter names, try to fill them
             elif param_line.name:
-                # Use helper to get standard parameters
-                standard_params = self.env['zns.helper'].build_sale_order_params(self.sale_order_id, self.template_id)
-                if param_line.name in standard_params:
-                    param_line.value = str(standard_params[param_line.name])
+                try:
+                    # Use helper to get standard parameters
+                    standard_params = self.env['zns.helper'].build_sale_order_params(self.sale_order_id, self.template_id)
+                    if param_line.name in standard_params:
+                        param_line.value = str(standard_params[param_line.name])
+                except Exception as e:
+                    _logger.warning(f"Error getting standard params for {param_line.name}: {e}")
     
     def _auto_fill_invoice_params(self):
         """Auto-fill parameters from invoice data"""
@@ -197,7 +191,7 @@ class ZnsSendWizard(models.TransientModel):
         
         # For each parameter, check if it has mapping in template
         for param_line in self.parameter_ids:
-            if param_line.parameter_id and param_line.parameter_id.so_field_mapping:
+            if param_line.parameter_id and hasattr(param_line.parameter_id, 'so_field_mapping') and param_line.parameter_id.so_field_mapping:
                 try:
                     # Adapt SO mapping for invoice
                     invoice_mapping = self.env['zns.helper']._adapt_so_mapping_to_invoice(
@@ -216,9 +210,12 @@ class ZnsSendWizard(models.TransientModel):
             
             # Use standard parameters as fallback
             elif param_line.name:
-                standard_params = self.env['zns.helper'].build_invoice_params(self.invoice_id, self.template_id)
-                if param_line.name in standard_params:
-                    param_line.value = str(standard_params[param_line.name])
+                try:
+                    standard_params = self.env['zns.helper'].build_invoice_params(self.invoice_id, self.template_id)
+                    if param_line.name in standard_params:
+                        param_line.value = str(standard_params[param_line.name])
+                except Exception as e:
+                    _logger.warning(f"Error getting invoice standard params: {e}")
     
     def action_preview_message(self):
         """Preview the message before sending"""
