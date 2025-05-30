@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Enhanced Sale Order Form View - NO template_mapping_id references -->
+    <!-- Enhanced Sale Order Form View - Fixed without template_mapping_id -->
     <record id="sale_order_form_zns_enhanced" model="ir.ui.view">
         <field name="name">sale.order.form.zns.enhanced</field>
         <field name="model">sale.order</field>
