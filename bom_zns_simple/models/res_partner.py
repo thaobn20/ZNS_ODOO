@@ -37,7 +37,7 @@ class ResPartner(models.Model):
 class SaleOrder(models.Model):
     _inherit = 'sale.order'
     
-    # Simple ZNS Integration Fields - No mappings, just direct template
+    # Simple ZNS Integration Fields - Only basic fields, no template mapping
     zns_message_ids = fields.One2many('zns.message', 'sale_order_id', string='ZNS Messages')
     zns_message_count = fields.Integer('ZNS Message Count', compute='_compute_zns_message_count')
     zns_auto_send = fields.Boolean('Auto Send ZNS', default=True, help="Automatically send ZNS when order is confirmed")

@@ -25,10 +25,9 @@ class ZnsSendWizard(models.TransientModel):
     # Parameters
     parameter_ids = fields.One2many('zns.send.wizard.parameter', 'wizard_id', string='Parameters')
     
-    # Context fields
+    # Context fields - REMOVED template_mapping_id completely
     sale_order_id = fields.Many2one('sale.order', string='Sale Order')
     invoice_id = fields.Many2one('account.move', string='Invoice')
-    template_mapping_id = fields.Many2one('zns.template.mapping', string='Template Mapping')
     
     # Preview fields
     preview_message = fields.Text('Message Preview', readonly=True)

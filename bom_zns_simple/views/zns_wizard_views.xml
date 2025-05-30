@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Simplified ZNS Send Wizard View -->
+    <!-- Completely Fixed ZNS Send Wizard View - NO template_mapping_id references -->
     <record id="zns_send_wizard_form_enhanced" model="ir.ui.view">
         <field name="name">zns.send.wizard.form.enhanced</field>
         <field name="model">zns.send.wizard</field>
@@ -26,7 +26,7 @@
                         </group>
                     </group>
                     
-                    <!-- Context fields (hidden) -->
+                    <!-- Context fields (hidden) - NO template_mapping_id -->
                     <group invisible="1">
                         <field name="sale_order_id"/>
                         <field name="invoice_id"/>
