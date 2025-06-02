@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Completely Fixed ZNS Send Wizard View - NO template_mapping_id references -->
+    <record id="zns_send_wizard_form_enhanced" model="ir.ui.view">
+        <field name="name">zns.send.wizard.form.enhanced</field>
+        <field name="model">zns.send.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Send ZNS Message">
+                <header>
+                    <button name="action_preview_message" string="Preview Message" type="object" class="btn-warning"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1>📱 Send ZNS Message</h1>
+                    </div>
+                    
+                    <group>
+                        <group string="Template Selection">
+                            <field name="template_id" required="1" 
+                                   options="{'no_create': True}"/>
+                            <field name="connection_id" readonly="1" force_save="1"/>
+                        </group>
+                        <group string="Recipient">
+                            <field name="partner_id" readonly="1" attrs="{'invisible': [('partner_id', '=', False)]}"/>
+                            <field name="phone" required="1" placeholder="e.g. 0987654321 or 84987654321"/>
+                        </group>
+                    </group>
+                    
+                    <!-- Context fields (hidden) - NO template_mapping_id -->
+                    <group invisible="1">
+                        <field name="sale_order_id"/>
+                        <field name="invoice_id"/>
+                        <field name="show_preview"/>
+                    </group>
+                    
+                    <notebook>
+                        <page string="Parameters" name="parameters" attrs="{'invisible': [('template_id', '=', False)]}">
+                            <div class="alert alert-info">
+                                <h4>📋 Template Parameters</h4>
+                                <p>Fill in the template parameters below. Required fields are marked with *.</p>
+                                <p class="text-muted">Parameters are automatically filled from Sale Order data when available.</p>
+                            </div>
+                            
+                            <field name="parameter_ids" nolabel="1">
+                                <tree editable="bottom" create="false" delete="false">
+                                    <field name="title" readonly="1"/>
+                                    <field name="name" invisible="1"/>
+                                    <field name="param_type" invisible="1"/>
+                                    <field name="required" invisible="1"/>
+                                    <field name="value" 
+                                           attrs="{'required': [('required', '=', True)]}"
+                                           placeholder="Enter value..."/>
+                                </tree>
+                            </field>
+                        </page>
+                        
+                        <page string="Preview" name="preview" attrs="{'invisible': [('show_preview', '=', False)]}">
+                            <div class="alert alert-success">
+                                <h4>📱 Message Preview</h4>
+                                <p>This is a preview of your ZNS message:</p>
+                            </div>
+                            <field name="preview_message" widget="text" readonly="1" nolabel="1"/>
+                        </page>
+                        
+                        <page string="Help" name="help">
+                            <div class="alert alert-info">
+                                <h4>💡 How to Send ZNS Message</h4>
+                                
+                                <h5>1. Select Template</h5>
+                                <p>Choose from templates configured in Zalo ZNS → Templates. Each template has predefined parameters.</p>
+                                
+                                <h5>2. Review Recipient</h5>
+                                <p>Phone number is auto-filled from the customer record. You can change it if needed.</p>
+                                <p>Format: Vietnamese numbers (0987654321) or international (84987654321)</p>
+                                
+                                <h5>3. Fill Parameters</h5>
+                                <p>Parameters are auto-filled from Sale Order data when available:</p>
+                                <ul>
+                                    <li><strong>customer_name</strong>: Customer name from the order</li>
+                                    <li><strong>order_id / so_no</strong>: Sale order number</li>
+                                    <li><strong>amount</strong>: Total order amount</li>
+                                    <li><strong>order_date</strong>: Order date (formatted)</li>
+                                    <li><strong>product_name</strong>: Main product from order</li>
+                                </ul>
+                                
+                                <h5>4. Preview and Send</h5>
+                                <ul>
+                                    <li>Click "Preview Message" to see what will be sent</li>
+                                    <li>Check all parameters are correct</li>
+                                    <li>Click "Send ZNS" to send the message</li>
+                                </ul>
+                            </div>
+                        </page>
+                    </notebook>
+                </sheet>
+                <footer>
+                    <button name="send_message" string="📤 Send ZNS" type="object" class="btn-primary"/>
+                    <button string="Cancel" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <!-- Parameter Form View -->
+    <record id="zns_send_wizard_parameter_form" model="ir.ui.view">
+        <field name="name">zns.send.wizard.parameter.form</field>
+        <field name="model">zns.send.wizard.parameter</field>
+        <field name="arch" type="xml">
+            <form string="Parameter">
+                <group>
+                    <group>
+                        <field name="title"/>
+                        <field name="name"/>
+                        <field name="param_type"/>
+                        <field name="required"/>
+                    </group>
+                    <group>
+                        <field name="value"/>
+                    </group>
+                </group>
+            </form>
+        </field>
+    </record>
+</odoo>

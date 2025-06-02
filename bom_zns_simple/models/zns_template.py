@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+# Complete zns_template.py with Template-Level Mapping
 
 import requests
 import logging
@@ -22,10 +22,41 @@ class ZnsTemplate(models.Model):
     ], string='Template Type', default='transaction')
     connection_id = fields.Many2one('zns.connection', string='ZNS Connection', required=True)
     active = fields.Boolean('Active', default=True)
+    
+    # NEW: Template-level mapping type (choose once per template)
+    default_mapping_type = fields.Selection([
+        ('so', 'Sale Order Fields'),
+        ('invoice', 'Invoice Fields'), 
+        ('contact', 'Contact Fields'),
+        ('custom', 'Custom Values Only'),
+    ], string='Default Mapping Type', default='so', 
+       help='Choose which type of records this template is primarily used for')
+    
     parameter_ids = fields.One2many('zns.template.parameter', 'template_id', string='Parameters')
     last_sync = fields.Datetime('Last Sync', readonly=True)
     sync_status = fields.Text('Last Sync Status', readonly=True)
     
+    # Computed field to show mapping summary
+    mapping_summary = fields.Char('Mapping Summary', compute='_compute_mapping_summary')
+    
+    @api.depends('default_mapping_type', 'parameter_ids')
+    def _compute_mapping_summary(self):
+        for template in self:
+            param_count = len(template.parameter_ids)
+            mapped_count = len(template.parameter_ids.filtered(lambda p: p.field_mapping))
+            custom_count = len(template.parameter_ids.filtered(lambda p: p.field_mapping == 'custom'))
+            
+            template.mapping_summary = f"{mapped_count}/{param_count} mapped ({custom_count} custom)"
+    
+    @api.onchange('default_mapping_type')
+    def _onchange_default_mapping_type(self):
+        """When mapping type changes, reset all parameter mappings"""
+        if self.default_mapping_type and self.parameter_ids:
+            for param in self.parameter_ids:
+                param.field_mapping = False
+                param.custom_value = ''
+    
+    # Keep all your existing sync methods...
     def sync_template_params(self):
         """Sync template parameters from BOM API using the EXACT same method that works for connection test"""
         connection = self.connection_id
@@ -201,311 +232,6 @@ class ZnsTemplate(models.Model):
             'context': {'default_template_id': self.id}
         }
     
-    @api.model
-    def sync_all_templates_from_bom(self, connection_id=None):
-        """Automatically sync ALL templates from BOM dashboard - no manual creation needed!"""
-        
-        # Get connection
-        if connection_id:
-            connection = self.env['zns.connection'].browse(connection_id)
-        else:
-            connection = self.env['zns.connection'].search([('active', '=', True)], limit=1)
-        
-        if not connection:
-            raise UserError("❌ No active ZNS connection found. Please create and test a connection first.")
-        
-        try:
-            # Get fresh access token using proven working method
-            access_token = connection._get_new_access_token()
-            _logger.info(f"✅ Got access token for template list sync: {access_token[:30]}...")
-        except Exception as e:
-            error_msg = f"Failed to get access token: {str(e)}"
-            raise UserError(f"❌ {error_msg}")
-        
-        # Use exact format from your Postman collection
-        list_url = f"{connection.api_base_url}/get-list-all-template"
-        headers = {
-            'Authorization': f'Bearer {access_token}'
-            # NO Content-Type header - matching your Postman
-        }
-        
-        try:
-            _logger.info(f"🔄 Getting template list from BOM...")
-            _logger.info(f"URL: {list_url}")
-            _logger.info(f"Headers: {headers}")
-            
-            # POST with empty JSON body (might work better than empty form data)
-            response = requests.post(list_url, headers=headers, json={}, timeout=30)
-            
-            _logger.info(f"📨 Template list response:")
-            _logger.info(f"Status: {response.status_code}")
-            _logger.info(f"Body: {response.text[:500]}...")  # First 500 chars to avoid huge logs
-            
-            if response.status_code != 200:
-                error_msg = f"Failed to get template list: HTTP {response.status_code} - {response.text}"
-                raise UserError(f"❌ {error_msg}")
-            
-            # Parse response
-            try:
-                result = response.json()
-                _logger.info(f"📋 Parsed template list: {result}")
-            except Exception as json_err:
-                error_msg = f"Invalid JSON response: {response.text}"
-                raise UserError(f"❌ {error_msg}")
-            
-            # Check for success (your format: error: "0" for success)
-            if result.get('error') != '0' and result.get('error') != 0:
-                error_msg = result.get('message', 'Failed to get template list')
-                raise UserError(f"❌ API Error: {error_msg}")
-            
-            # Process template list
-            templates_data = result.get('data', [])
-            _logger.info(f"📋 BOM returned {len(templates_data)} templates: {templates_data}")
-            if not templates_data:
-                return {
-                    'type': 'ir.actions.client',
-                    'tag': 'display_notification',
-                    'params': {
-                        'title': '⚠️ No Templates Found',
-                        'message': "No templates found in your BOM dashboard.\n\nPlease create templates in BOM dashboard first.",
-                        'type': 'warning',
-                        'sticky': True,
-                    }
-                }
-            
-            # Sync each template
-            synced_count = 0
-            updated_count = 0
-            error_count = 0
-            errors = []
-            
-            for template_data in templates_data:
-                try:
-                    template_id = template_data.get('id') or template_data.get('template_id')
-                    template_name = template_data.get('name') or template_data.get('title') or f"Template {template_id}"
-                    template_type = template_data.get('type', 'transaction').lower()
-                    template_status = template_data.get('status', 'unknown')
-                    template_status = template_data.get('status', 'active')  # Default to active
-                    
-                    if not template_id:
-                        _logger.warning(f"Skipping template without ID: {template_data}")
-                        continue
-                    
-                    _logger.info(f"Processing template: {template_name} ({template_id})")
-                    _logger.info(f"Checking if template {template_id} exists in Odoo...")
-                    # Check if template already exists (check both string and number formats)
-                    existing_template = self.search([
-                        '|',
-                        ('template_id', '=', str(template_id)),
-                        ('template_id', '=', template_id),
-                        ('connection_id', '=', connection.id)
-                    ], limit=1)
-                    
-                    if existing_template:
-                        # Update existing template
-                        existing_template.write({
-                            'name': template_name,
-                            'template_type': self._map_template_type(template_type),
-                            'active': True  # Always create as active
-                        })
-                        
-                        # Sync parameters for this template
-                        try:
-                            existing_template._sync_single_template_params(access_token)
-                            updated_count += 1
-                            _logger.info(f"✅ Updated template: {template_name}")
-                        except Exception as param_error:
-                            _logger.warning(f"Failed to sync parameters for {template_name}: {param_error}")
-                            errors.append(f"{template_name}: Parameter sync failed")
-                            error_count += 1
-                    else:
-                        # Get template status - default to active if not specified
-                        is_active = True  # Default to active
-                        if template_status:
-                            is_active = template_status.lower() in ['active', 'approved', 'enabled', 'published', 'live', '1', 'true']
-                        
-                        new_template = self.create({
-                            'name': template_name,
-                            'template_id': str(template_id),
-                            'template_type': self._map_template_type(template_type),
-                            'connection_id': connection.id,
-                            'active': is_active  # Use the determined status
-                        })
-                        _logger.info(f"✅ CREATED new template in DB: {new_template.name} (ID: {new_template.id}, Template ID: {template_id})")
-                        # Sync parameters for new template
-                        try:
-                            new_template._sync_single_template_params(access_token)
-                            synced_count += 1
-                            _logger.info(f"✅ Created template: {template_name}")
-                        except Exception as param_error:
-                            _logger.warning(f"Failed to sync parameters for new {template_name}: {param_error}")
-                            errors.append(f"{template_name}: Parameter sync failed")
-                            error_count += 1
-                            
-                except Exception as e:
-                    error_count += 1
-                    template_name = template_data.get('name', 'Unknown')
-                    error_msg = f"{template_name}: {str(e)}"
-                    errors.append(error_msg)
-                    _logger.error(f"Failed to process template {template_name}: {e}")
-            
-            # Build success message
-            total_processed = synced_count + updated_count
-            result_msg = f"🎉 Template sync completed!\n\n"
-            result_msg += f"✅ New templates: {synced_count}\n"
-            result_msg += f"🔄 Updated templates: {updated_count}\n"
-            result_msg += f"❌ Errors: {error_count}\n"
-            result_msg += f"📊 Total processed: {total_processed}"
-            
-            if errors and len(errors) <= 3:
-                result_msg += f"\n\nErrors:\n" + "\n".join(errors)
-            elif errors:
-                result_msg += f"\n\nFirst 3 errors:\n" + "\n".join(errors[:3])
-                result_msg += f"\n... and {len(errors) - 3} more errors"
-            
-            return {
-                'type': 'ir.actions.client',
-                'tag': 'display_notification',
-                'params': {
-                    'title': 'Auto Template Sync Complete',
-                    'message': result_msg,
-                    'type': 'success' if error_count == 0 else 'warning',
-                    'sticky': True,
-                }
-            }
-            
-        except requests.exceptions.RequestException as e:
-            error_msg = f"Request failed: {str(e)}"
-            raise UserError(f"❌ {error_msg}")
-        except Exception as e:
-            error_msg = f"Unexpected error: {str(e)}"
-            _logger.error(f"Template list sync error: {e}", exc_info=True)
-            raise UserError(f"❌ {error_msg}")
-
-    def _sync_single_template_params(self, access_token):
-        """Sync parameters for a single template using provided access token"""
-        connection = self.connection_id
-        
-        # Use exact format from your working Postman for get-param-zns-template
-        param_url = f"{connection.api_base_url}/get-param-zns-template"
-        headers = {
-            'Authorization': f'Bearer {access_token}'
-            # NO Content-Type header
-        }
-        data = {
-            'template_id': self.template_id
-        }
-        
-        _logger.info(f"🔄 Syncing parameters for template {self.name} ({self.template_id})")
-        
-        response = requests.post(param_url, headers=headers, json=data, timeout=30)
-        
-        _logger.info(f"Parameter sync response for {self.template_id}: {response.status_code} - {response.text}")
-        
-        if response.status_code != 200:
-            raise Exception(f"HTTP {response.status_code}: {response.text}")
-        
-        result = response.json()
-        
-        if result.get('error') == '0' or result.get('error') == 0:
-            # Success - process parameters
-            params_data = result.get('data', [])
-            
-            # Clear existing parameters
-            self.parameter_ids.unlink()
-            
-            # Create new parameters
-            for param in params_data:
-                param_name = param.get('name') or param.get('key') or param.get('parameter_name')
-                if param_name:
-                    self.env['zns.template.parameter'].create({
-                        'template_id': self.id,
-                        'name': param_name,
-                        'title': param.get('title') or param.get('label') or param_name,
-                        'param_type': self._map_param_type(param.get('type', 'string')),
-                        'required': param.get('require') or param.get('required', False),
-                        'default_value': param.get('default_value') or param.get('default', ''),
-                        'description': param.get('description', '')
-                    })
-            
-            # Update sync status
-            self.write({
-                'last_sync': fields.Datetime.now(),
-                'sync_status': f"Successfully synced {len(params_data)} parameters"
-            })
-            
-            _logger.info(f"✅ Synced {len(params_data)} parameters for {self.name}")
-        else:
-            error_msg = result.get('message', 'Unknown parameter sync error')
-            _logger.warning(f"Parameter sync failed for {self.name}: {error_msg}")
-            
-            # Still update the template but note the parameter sync failure
-            self.write({
-                'last_sync': fields.Datetime.now(),
-                'sync_status': f"Template synced but parameter sync failed: {error_msg}"
-            })
-
-    def _map_template_type(self, bom_type):
-        """Map BOM template type to Odoo selection"""
-        type_mapping = {
-            'transaction': 'transaction',
-            'otp': 'otp',
-            'promotion': 'promotion',
-            'marketing': 'promotion',
-            'notification': 'transaction',
-            'order': 'transaction',
-            'confirm': 'transaction'
-        }
-        return type_mapping.get(str(bom_type).lower(), 'transaction')
-
-    # Add action method for calling from menu
-    @api.model
-    def action_sync_all_templates_from_bom(self):
-        """Menu action to sync all templates from BOM"""
-        return self.sync_all_templates_from_bom()
-    
-    @api.model
-    def action_sync_all_templates(self):
-        """Sync all active templates - called from tree view action"""
-        templates = self.search([('active', '=', True), ('connection_id', '!=', False)])
-        
-        if not templates:
-            raise UserError("❌ No active templates with connections found")
-        
-        success_count = 0
-        error_count = 0
-        errors = []
-        
-        for template in templates:
-            try:
-                template.sync_template_params()
-                success_count += 1
-                _logger.info(f"✅ Synced template: {template.name}")
-            except Exception as e:
-                error_count += 1
-                error_msg = f"{template.name}: {str(e)}"
-                errors.append(error_msg)
-                _logger.warning(f"❌ Failed to sync template {template.name}: {e}")
-        
-        # Build result message
-        result_msg = f"✅ Sync completed!\nSuccess: {success_count}\nErrors: {error_count}"
-        if errors:
-            result_msg += f"\n\nErrors:\n" + "\n".join(errors[:3])  # Show first 3 errors
-            if len(errors) > 3:
-                result_msg += f"\n... and {len(errors) - 3} more errors"
-        
-        return {
-            'type': 'ir.actions.client',
-            'tag': 'display_notification',
-            'params': {
-                'title': 'Bulk Template Sync Complete',
-                'message': result_msg,
-                'type': 'success' if error_count == 0 else 'warning',
-                'sticky': True,
-            }
-        }
-
-
 class ZnsTemplateParameter(models.Model):
     _name = 'zns.template.parameter'
     _description = 'ZNS Template Parameter'
@@ -525,25 +251,73 @@ class ZnsTemplateParameter(models.Model):
     default_value = fields.Char('Default Value')
     description = fields.Text('Description', help='Parameter description from BOM API')
     
-    # Mapping fields for SO integration
+    # COMPLETE MAPPING FIELDS - Including company_id.vat
     so_field_mapping = fields.Selection([
+        # Customer Information
         ('partner_id.name', 'Customer Name'),
         ('partner_id.mobile', 'Customer Mobile'),
         ('partner_id.phone', 'Customer Phone'),
         ('partner_id.email', 'Customer Email'),
+        ('partner_id.ref', 'Customer Code'),
+        ('partner_id.vat', 'Customer VAT'),
+        ('partner_id.street', 'Customer Street'),
+        ('partner_id.city', 'Customer City'),
+        ('partner_id.state_id.name', 'Customer State'),
+        ('partner_id.country_id.name', 'Customer Country'),
+        ('partner_id.zip', 'Customer ZIP'),
+        ('partner_id.function', 'Customer Job Position'),
+        ('partner_id.website', 'Customer Website'),
+        
+        # Order Information
         ('name', 'SO Number'),
         ('date_order', 'Order Date'),
-        ('amount_total', 'Total Amount'),
-        ('amount_untaxed', 'Subtotal'),
-        ('amount_tax', 'Tax Amount'),
-        ('user_id.name', 'Salesperson'),
-        ('company_id.name', 'Company Name'),
         ('client_order_ref', 'Customer Reference'),
         ('commitment_date', 'Delivery Date'),
         ('note', 'Order Notes'),
         ('state', 'Order Status'),
+        ('validity_date', 'Validity Date'),
+        
+        # Amounts and Financial
+        ('amount_total', 'Total Amount'),
+        ('amount_untaxed', 'Subtotal'),
+        ('amount_tax', 'Tax Amount'),
         ('currency_id.name', 'Currency'),
+        ('currency_id.symbol', 'Currency Symbol'),
         ('payment_term_id.name', 'Payment Terms'),
+        
+        # Product Information  
+        ('order_line.product_id.name', 'First Product Name'),
+        ('order_line.product_uom_qty', 'First Product Quantity'),
+        ('order_line.price_unit', 'First Product Price'),
+        
+        # Company Information
+        ('company_id.name', 'Company Name'),
+        ('company_id.vat', 'Company VAT'),  # THIS WAS MISSING
+        ('company_id.phone', 'Company Phone'),
+        ('company_id.email', 'Company Email'),
+        ('company_id.street', 'Company Street'),
+        ('company_id.city', 'Company City'),
+        ('company_id.country_id.name', 'Company Country'),
+        ('company_id.website', 'Company Website'),
+        
+        # User Information
+        ('user_id.name', 'Salesperson'),
+        ('user_id.email', 'Salesperson Email'),
+        ('user_id.phone', 'Salesperson Phone'),
+        ('user_id.mobile', 'Salesperson Mobile'),
+        
+        # Team Information
+        ('team_id.name', 'Sales Team'),
+        
+        # Warehouse Information
+        ('warehouse_id.name', 'Warehouse'),
+        ('warehouse_id.code', 'Warehouse Code'),
+        
+        # Pricelist Information
+        ('pricelist_id.name', 'Pricelist'),
+        ('pricelist_id.currency_id.name', 'Pricelist Currency'),
+        
+        # Custom Value
         ('custom', 'Custom Value'),
     ], string='Map to SO Field', help='Automatically map this parameter to Sale Order field')
     
@@ -560,10 +334,25 @@ class ZnsTemplateParameter(models.Model):
         try:
             # Handle nested field access like 'partner_id.name'
             obj = sale_order
-            for field_part in self.so_field_mapping.split('.'):
-                obj = getattr(obj, field_part, '')
+            field_parts = self.so_field_mapping.split('.')
+            
+            for field_part in field_parts:
                 if not obj:
                     break
+                    
+                # Handle special cases for One2many fields like order_line
+                if field_part == 'order_line' and hasattr(obj, 'order_line'):
+                    # Get first order line
+                    if obj.order_line:
+                        obj = obj.order_line[0]
+                    else:
+                        obj = None
+                        break
+                else:
+                    obj = getattr(obj, field_part, None)
+            
+            if obj is None:
+                return self.default_value or ''
             
             # Format based on parameter type
             if self.param_type == 'date' and hasattr(obj, 'strftime'):
@@ -576,3 +365,132 @@ class ZnsTemplateParameter(models.Model):
         except Exception as e:
             _logger.warning(f"Error mapping parameter {self.name}: {e}")
             return self.default_value or ''
+    
+    def get_mapped_value_for_record(self, record):
+        """Get mapped value for any record type (SO, Invoice, Contact)"""
+        if not self.so_field_mapping:
+            return self.default_value or ''
+        
+        if self.so_field_mapping == 'custom':
+            return self.custom_value or ''
+        
+        try:
+            # Determine record type and adapt mapping
+            if record._name == 'sale.order':
+                return self.get_mapped_value(record)
+            elif record._name == 'account.move':
+                # Adapt SO mapping to invoice fields
+                invoice_mapping = self._adapt_so_mapping_to_invoice(self.so_field_mapping)
+                if invoice_mapping:
+                    obj = record
+                    for field_part in invoice_mapping.split('.'):
+                        obj = getattr(obj, field_part, None)
+                        if obj is None:
+                            break
+                    
+                    if obj is None:
+                        return self.default_value or ''
+                    
+                    if self.param_type == 'date' and hasattr(obj, 'strftime'):
+                        return obj.strftime('%d/%m/%Y')
+                    elif self.param_type == 'number':
+                        return str(obj) if obj else '0'
+                    else:
+                        return str(obj) if obj else ''
+            elif record._name == 'res.partner':
+                # Adapt SO mapping to contact fields
+                contact_mapping = self._adapt_so_mapping_to_contact(self.so_field_mapping)
+                if contact_mapping:
+                    obj = record
+                    for field_part in contact_mapping.split('.'):
+                        obj = getattr(obj, field_part, None)
+                        if obj is None:
+                            break
+                    return str(obj) if obj else ''
+            
+            return self.default_value or ''
+                
+        except Exception as e:
+            _logger.warning(f"Error mapping parameter {self.name} for record {record._name}: {e}")
+            return self.default_value or ''
+    
+    def _adapt_so_mapping_to_invoice(self, so_mapping):
+        """Adapt Sale Order field mapping to Invoice fields"""
+        mapping_conversions = {
+            # Basic fields
+            'name': 'name',  # Invoice number
+            'date_order': 'invoice_date',
+            'amount_total': 'amount_total',
+            'amount_untaxed': 'amount_untaxed',
+            'amount_tax': 'amount_tax',
+            'client_order_ref': 'ref',
+            'commitment_date': 'invoice_date_due',
+            'note': 'narration',
+            'state': 'state',
+            'currency_id.name': 'currency_id.name',
+            'currency_id.symbol': 'currency_id.symbol',
+            'payment_term_id.name': 'invoice_payment_term_id.name',
+            
+            # Partner fields (same)
+            'partner_id.name': 'partner_id.name',
+            'partner_id.mobile': 'partner_id.mobile',
+            'partner_id.phone': 'partner_id.phone',
+            'partner_id.email': 'partner_id.email',
+            'partner_id.ref': 'partner_id.ref',
+            'partner_id.vat': 'partner_id.vat',
+            'partner_id.street': 'partner_id.street',
+            'partner_id.city': 'partner_id.city',
+            'partner_id.state_id.name': 'partner_id.state_id.name',
+            'partner_id.country_id.name': 'partner_id.country_id.name',
+            'partner_id.zip': 'partner_id.zip',
+            
+            # Company fields (same)
+            'company_id.name': 'company_id.name',
+            'company_id.vat': 'company_id.vat',
+            'company_id.phone': 'company_id.phone',
+            'company_id.email': 'company_id.email',
+            'company_id.street': 'company_id.street',
+            'company_id.city': 'company_id.city',
+            'company_id.country_id.name': 'company_id.country_id.name',
+            'company_id.website': 'company_id.website',
+            
+            # User fields
+            'user_id.name': 'invoice_user_id.name',
+            'user_id.email': 'invoice_user_id.email',
+            'user_id.phone': 'invoice_user_id.phone',
+            'user_id.mobile': 'invoice_user_id.mobile',
+            
+            # Line fields
+            'order_line.product_id.name': 'invoice_line_ids.product_id.name',
+        }
+        return mapping_conversions.get(so_mapping, so_mapping)
+    
+    def _adapt_so_mapping_to_contact(self, so_mapping):
+        """Adapt Sale Order field mapping to Contact fields"""
+        mapping_conversions = {
+            # Partner to contact direct mapping
+            'partner_id.name': 'name',
+            'partner_id.mobile': 'mobile',
+            'partner_id.phone': 'phone', 
+            'partner_id.email': 'email',
+            'partner_id.ref': 'ref',
+            'partner_id.vat': 'vat',
+            'partner_id.street': 'street',
+            'partner_id.city': 'city',
+            'partner_id.state_id.name': 'state_id.name',
+            'partner_id.country_id.name': 'country_id.name',
+            'partner_id.zip': 'zip',
+            'partner_id.function': 'function',
+            'partner_id.website': 'website',
+            
+            # Company fields for contacts
+            'company_id.name': 'company_id.name',
+            'company_id.vat': 'company_id.vat',
+            'company_id.phone': 'company_id.phone',
+            'company_id.email': 'company_id.email',
+            
+            # Other mappings
+            'name': 'ref',  # Contact reference
+            'note': 'comment',
+        }
+        return mapping_conversions.get(so_mapping, None)  # Return None if no mapping

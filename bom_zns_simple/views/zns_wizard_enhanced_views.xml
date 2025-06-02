@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Enhanced ZNS Send Wizard with Template Selection -->
+    <record id="zns_send_wizard_form_template_selection" model="ir.ui.view">
+        <field name="name">zns.send.wizard.form.template.selection</field>
+        <field name="model">zns.send.wizard</field>
+        <field name="inherit_id" ref="zns_send_wizard_form_enhanced"/>
+        <field name="arch" type="xml">
+            <!-- Replace the simple template selection with enhanced selection -->
+            <group string="Template Selection" position="replace">
+                <group string="Template Selection">
+                    <field name="template_selection_mode" widget="radio" options="{'horizontal': true}"/>
+                    <field name="recommended_template_id" readonly="1" 
+                           attrs="{'invisible': [('recommended_template_id', '=', False)]}"/>
+                    <field name="template_id" 
+                           attrs="{'invisible': [('template_selection_mode', '=', 'recommended')], 'required': [('template_selection_mode', '!=', 'recommended')]}"/>
+                </group>
+            </group>
+            
+            <!-- Add template recommendation info -->
+            <group string="Recipient" position="after">
+                <group string="Template Recommendation" attrs="{'invisible': [('template_recommendation_info', '=', False)]}">
+                    <field name="template_recommendation_info" readonly="1" widget="text" nolabel="1"/>
+                </group>
+            </group>
+            
+            <!-- Add template selection actions -->
+            <button name="action_preview_message" position="before">
+                <button name="action_refresh_templates" string="🔄 Refresh Templates" type="object" class="btn-secondary"/>
+                <button name="action_configure_template_defaults" string="⚙️ Configure Defaults" type="object" class="btn-info"/>
+                <span class="oe_separator"/>
+            </button>
+            
+            <!-- Add template info tab -->
+            <page string="Help" position="before">
+                <page string="Template Info" name="template_info" attrs="{'invisible': [('show_template_info', '=', False)]}">
+                    <div class="alert alert-success">
+                        <h4>📋 Selected Template Information</h4>
+                        <p>Details about the currently selected template:</p>
+                    </div>
+                    <field name="template_info_text" widget="text" readonly="1" nolabel="1"/>
+                    
+                    <group>
+                        <button name="action_show_template_selection_help" 
+                                string="💡 Template Selection Help" 
+                                type="object" 
+                                class="btn-info"/>
+                    </group>
+                </page>
+            </page>
+            
+            <!-- Add hidden fields -->
+            <group invisible="1" position="inside">
+                <field name="show_template_selection"/>
+                <field name="available_template_ids"/>
+                <field name="show_template_info"/>
+            </group>
+            
+            <!-- Enhanced help page -->
+            <page string="Help" position="replace">
+                <page string="Help" name="help">
+                    <div class="alert alert-info">
+                        <h4>💡 How to Send ZNS Message</h4>
+                        
+                        <h5>1. Template Selection</h5>
+                        <p><strong>📋 Use Recommended:</strong> System suggests the best template based on:</p>
+                        <ul>
+                            <li>Template mappings (condition-based rules)</li>
+                            <li>Default templates for the module (SO/Invoice/Contact)</li>
+                            <li>Templates with parameter mappings</li>
+                        </ul>
+                        
+                        <p><strong>✋ Manual Selection:</strong> Choose any template manually</p>
+                        <p><strong>📋 Choose from All:</strong> See all templates with details</p>
+                        
+                        <h5>2. Review Recipient</h5>
+                        <p>Phone number is auto-filled from the customer record. Format: 0987654321 or 84987654321</p>
+                        
+                        <h5>3. Fill Parameters</h5>
+                        <p>Parameters are auto-filled from order/invoice data when template has mappings:</p>
+                        <ul>
+                            <li><strong>customer_name</strong>: Customer name</li>
+                            <li><strong>order_id / so_no</strong>: Order/Invoice number</li>
+                            <li><strong>amount</strong>: Total amount</li>
+                            <li><strong>order_date</strong>: Order/Invoice date</li>
+                        </ul>
+                        
+                        <h5>4. Send Message</h5>
+                        <ul>
+                            <li>Preview message to check parameters</li>
+                            <li>Click "Send ZNS" to send immediately</li>
+                            <li>Check message status in ZNS Messages tab</li>
+                        </ul>
+                        
+                        <h5>🔧 Template Configuration</h5>
+                        <p>Configure default templates using "Configure Defaults" button or in Templates menu.</p>
+                    </div>
+                </page>
+            </page>
+        </field>
+    </record>
+
+    <!-- Template Selection List View (for choose from all mode) -->
+    <record id="zns_template_selection_tree" model="ir.ui.view">
+        <field name="name">zns.template.selection.tree</field>
+        <field name="model">zns.template</field>
+        <field name="arch" type="xml">
+            <tree string="Select ZNS Template" create="false" edit="false">
+                <field name="name"/>
+                <field name="template_id"/>
+                <field name="template_type"/>
+                <field name="is_default_for_so" string="SO Default"/>
+                <field name="is_default_for_invoice" string="Invoice Default"/>
+                <field name="is_default_for_contact" string="Contact Default"/>
+                <field name="so_usage_count" string="SO Usage"/>
+                <field name="invoice_usage_count" string="Invoice Usage"/>
+                <field name="contact_usage_count" string="Contact Usage"/>
+                <field name="last_sync"/>
+                <field name="connection_id"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Quick Template Overview Action -->
+    <record id="action_template_overview" model="ir.actions.act_window">
+        <field name="name">Template Overview</field>
+        <field name="res_model">zns.template</field>
+        <field name="view_mode">tree</field>
+        <field name="view_id" ref="zns_template_selection_tree"/>
+        <field name="domain">[('active', '=', True)]</field>
+        <field name="context">{'create': False}</field>
+    </record>
+</odoo>

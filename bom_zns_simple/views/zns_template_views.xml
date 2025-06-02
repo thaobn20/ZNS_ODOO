@@ -139,7 +139,7 @@
         </field>
     </record>
 
-    <!-- Template Tree View -->
+    <!-- Template Tree View - FIXED: Removed non-existent fields -->
     <record id="zns_template_tree_view" model="ir.ui.view">
         <field name="name">zns.template.tree</field>
         <field name="model">zns.template</field>
@@ -209,14 +209,4 @@
             </p>
         </field>
     </record>
-
-    <!-- Sync All Templates Action (safe method call) -->
-    <record id="zns_template_sync_all_action" model="ir.actions.act_window">
-        <field name="name">Sync All Templates</field>
-        <field name="res_model">zns.template</field>
-        <field name="view_mode">form</field>
-        <field name="target">new</field>
-        <field name="context">{'default_action': 'sync_all'}</field>
-    </record>
-	
 </odoo>

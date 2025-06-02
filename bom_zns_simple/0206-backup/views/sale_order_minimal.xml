@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Minimal ZNS button for testing -->
+    <record id="sale_order_zns_minimal_button" model="ir.ui.view">
+        <field name="name">sale.order.zns.minimal</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_form"/>
+        <field name="priority">100</field>
+        <field name="arch" type="xml">
+            <!-- Just add a simple button to test -->
+            <xpath expr="//header/button[@name='action_confirm']" position="after">
+                <button string="ZNS Test" type="object" name="action_send_zns_manual" class="btn-info"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>

@@ -14,46 +14,52 @@ class ZnsHelper(models.AbstractModel):
     _description = 'ZNS Helper Functions'
 
     @api.model
-    def format_phone_number(self, phone):
-        """Format phone number for ZNS (Vietnamese format) - Enhanced"""
+    def format_phone_vietnamese(self, phone):
+        """Format phone number for ZNS - KEEP VIETNAMESE FORMAT (0xxxxxxxxx)"""
         if not phone:
             return False
         
         # Remove all non-digit characters
         phone = re.sub(r'\D', '', phone)
         
-        # Handle different Vietnamese phone number formats
         if not phone:
             return False
             
-        # Handle Vietnamese phone numbers
+        _logger.info(f"Formatting phone: {phone}")
+        
+        # Handle different Vietnamese phone number formats
         if phone.startswith('84'):
-            # Already has country code - validate length
+            # Convert from international format (84xxxxxxxxx) to Vietnamese (0xxxxxxxxx)
             if len(phone) >= 10 and len(phone) <= 12:
-                return phone
+                vietnamese_phone = '0' + phone[2:]  # Remove 84, add 0
+                _logger.info(f"Converted 84{phone[2:]} → {vietnamese_phone}")
+                return vietnamese_phone
             else:
-                _logger.warning(f"Invalid phone length with country code: {phone}")
+                _logger.warning(f"Invalid international phone length: {phone}")
                 return False
                 
         elif phone.startswith('0'):
-            # Remove leading 0 and add country code
-            phone_without_0 = phone[1:]
-            if len(phone_without_0) >= 8 and len(phone_without_0) <= 10:
-                return '84' + phone_without_0
+            # Already Vietnamese format - validate length
+            if len(phone) >= 10 and len(phone) <= 11:
+                _logger.info(f"Vietnamese format confirmed: {phone}")
+                return phone
             else:
                 _logger.warning(f"Invalid Vietnamese phone length: {phone}")
                 return False
                 
-        elif len(phone) >= 8 and len(phone) <= 10:
+        elif len(phone) >= 9 and len(phone) <= 10:
             # Assume it's Vietnamese number without 0 prefix
-            return '84' + phone
-            
-        elif len(phone) >= 10 and len(phone) <= 15:
-            # Might be international number, return as is
-            return phone
+            vietnamese_phone = '0' + phone
+            _logger.info(f"Added 0 prefix: {phone} → {vietnamese_phone}")
+            return vietnamese_phone
         else:
             _logger.warning(f"Cannot format phone number: {phone} (length: {len(phone)})")
             return False
+
+    @api.model
+    def format_phone_number(self, phone):
+        """Alias for backward compatibility"""
+        return self.format_phone_vietnamese(phone)
 
     @api.model
     def build_sale_order_params(self, sale_order, template):
@@ -87,7 +93,7 @@ class ZnsHelper(models.AbstractModel):
         param_mappings = {
             # Customer details
             'customer_name': sale_order.partner_id.name,
-            'customer_phone': self.format_phone_number(sale_order.partner_id.mobile or sale_order.partner_id.phone),
+            'customer_phone': self.format_phone_vietnamese(sale_order.partner_id.mobile or sale_order.partner_id.phone),
             'customer_email': sale_order.partner_id.email,
             'customer_code': sale_order.partner_id.ref,
             'customer_address': sale_order.partner_id.contact_address,
@@ -136,6 +142,262 @@ class ZnsHelper(models.AbstractModel):
         }
         
         return param_mappings.get(param_name, '')
+
+    def _number_to_words_vn(self, amount):
+        """Convert number to Vietnamese words (simplified)"""
+        if amount >= 1000000000:
+            return f"{amount/1000000000:.1f} tỷ"
+        elif amount >= 1000000:
+            return f"{amount/1000000:.1f} triệu"
+        elif amount >= 1000:
+            return f"{amount/1000:.0f} nghìn"
+        else:
+            return f"{amount:.0f}"
+
+    # Enhanced helper functions - Add these methods to your zns_helper.py
+
+    @api.model
+    def build_invoice_params(self, invoice, template):
+        """Enhanced parameter building for invoices using new mapping system"""
+        params = {}
+        
+        # Use template parameter mappings
+        for param in template.parameter_ids:
+            value = param.get_mapped_value_for_record(invoice)
+            
+            # If no value from mapping, try standard invoice parameters
+            if not value:
+                value = self._get_standard_invoice_param_value(invoice, param.name)
+            
+            # Use default if no value found
+            if not value:
+                value = param.default_value or ''
+            
+            if value:
+                params[param.name] = str(value)
+        
+        return params
+
+    @api.model
+    def build_contact_params(self, contact, template):
+        """Build parameters for contact using new mapping system"""
+        params = {}
+        
+        # Use template parameter mappings
+        for param in template.parameter_ids:
+            value = param.get_mapped_value_for_record(contact)
+            
+            # If no value from mapping, try standard contact parameters
+            if not value:
+                value = self._get_standard_contact_param_value(contact, param.name)
+            
+            # Use default if no value found
+            if not value:
+                value = param.default_value or ''
+            
+            if value:
+                params[param.name] = str(value)
+        
+        return params
+
+    def _get_standard_contact_param_value(self, contact, param_name):
+        """Get standard parameter values for contact by common names"""
+        param_mappings = {
+            # Contact details
+            'customer_name': contact.name,
+            'contact_name': contact.name,
+            'name': contact.name,
+            'customer_phone': self.format_phone_vietnamese(contact.mobile or contact.phone),
+            'customer_mobile': self.format_phone_vietnamese(contact.mobile),
+            'phone': contact.phone,
+            'mobile': contact.mobile,
+            'customer_email': contact.email,
+            'email': contact.email,
+            'customer_code': contact.ref,
+            'reference': contact.ref,
+            'job_position': contact.function,
+            'function': contact.function,
+            'website': contact.website,
+            
+            # Address details
+            'customer_address': contact.contact_address,
+            'full_address': contact.contact_address,
+            'street': contact.street,
+            'street2': contact.street2,
+            'city': contact.city,
+            'state': contact.state_id.name if contact.state_id else '',
+            'country': contact.country_id.name if contact.country_id else '',
+            'zip': contact.zip,
+            'zip_code': contact.zip,
+            
+            # Business details
+            'company_name': contact.company_id.name if contact.company_id else contact.name,
+            'customer_company': contact.company_id.name if contact.company_id else '',
+            'tax_id': contact.vat,
+            'vat': contact.vat,
+            'customer_vat': contact.vat,
+            
+            # Categories and tags
+            'customer_tags': ', '.join(contact.category_id.mapped('name')) if contact.category_id else '',
+            'tags': ', '.join(contact.category_id.mapped('name')) if contact.category_id else '',
+            
+            # Contact type
+            'is_company': 'Yes' if contact.is_company else 'No',
+            'contact_type': 'Company' if contact.is_company else 'Person',
+            
+            # Notes
+            'notes': contact.comment,
+            'comment': contact.comment,
+        }
+        
+        return param_mappings.get(param_name, '')
+
+    @api.model
+    def send_contact_zns(self, contact, template_id=None):
+        """Send ZNS for contact using enhanced parameter mapping"""
+        if not template_id:
+            # Find best template for contact
+            template = self.env['zns.template'].search([
+                ('template_type', '=', 'transaction'),
+                ('active', '=', True),
+                ('parameter_ids.mapping_type', '=', 'contact')  # Prefer templates with contact mappings
+            ], limit=1)
+            
+            if not template:
+                # Fallback to any active template
+                template = self.env['zns.template'].search([
+                    ('active', '=', True)
+                ], limit=1)
+        else:
+            template = self.env['zns.template'].browse(template_id)
+        
+        if not template:
+            raise UserError(_("No ZNS template found"))
+        
+        phone = self.format_phone_vietnamese(contact.mobile or contact.phone)
+        if not phone:
+            raise UserError(_("No phone number found for contact"))
+        
+        # Use enhanced parameter building for contacts
+        params = self.build_contact_params(contact, template)
+        
+        # Create and send message
+        message = self.env['zns.message'].create({
+            'template_id': template.id,
+            'connection_id': template.connection_id.id,
+            'phone': phone,
+            'parameters': json.dumps(params),
+            'partner_id': contact.id,
+        })
+        
+        message.send_zns_message()
+        return message
+
+    @api.model
+    def build_sale_order_params(self, sale_order, template):
+        """Enhanced parameter building for sale orders using new mapping system"""
+        params = {}
+        
+        # Use template parameter mappings with new system
+        for param in template.parameter_ids:
+            value = param.get_mapped_value_for_record(sale_order)
+            
+            # If no value from mapping, try standard SO parameters
+            if not value:
+                value = self._get_standard_so_param_value(sale_order, param.name)
+            
+            # Use default if no value found
+            if not value:
+                value = param.default_value or ''
+            
+            if value:
+                params[param.name] = str(value)
+        
+        return params
+
+    @api.model
+    def send_sale_order_zns(self, sale_order, template_id=None):
+        """Quick send ZNS for sale order with enhanced parameter mapping"""
+        if not template_id:
+            # Find best template mapping
+            template_mapping = self.env['zns.template.mapping']._find_best_mapping('sale.order', sale_order)
+            if template_mapping:
+                template = template_mapping.template_id
+            else:
+                # Find default sale order template
+                template = self.env['zns.template'].search([
+                    ('template_type', '=', 'transaction'),
+                    ('active', '=', True)
+                ], limit=1, order='id')
+        else:
+            template = self.env['zns.template'].browse(template_id)
+        
+        if not template:
+            raise UserError(_("No ZNS template found"))
+        
+        phone = self.format_phone_vietnamese(
+            sale_order.partner_id.mobile or sale_order.partner_id.phone
+        )
+        if not phone:
+            raise UserError(_("No phone number found for customer"))
+        
+        # Use enhanced parameter building
+        params = self.build_sale_order_params(sale_order, template)
+        
+        # Create and send message
+        message = self.env['zns.message'].create({
+            'template_id': template.id,
+            'connection_id': template.connection_id.id,
+            'phone': phone,
+            'parameters': json.dumps(params),
+            'partner_id': sale_order.partner_id.id,
+            'sale_order_id': sale_order.id,
+        })
+        
+        message.send_zns_message()
+        return message
+
+    @api.model
+    def send_invoice_zns(self, invoice, template_id=None):
+        """Quick send ZNS for invoice with enhanced parameter mapping"""
+        if not template_id:
+            # Find best template mapping
+            template_mapping = self.env['zns.template.mapping']._find_best_mapping('account.move', invoice)
+            if template_mapping:
+                template = template_mapping.template_id
+            else:
+                # Find default invoice template
+                template = self.env['zns.template'].search([
+                    ('template_type', '=', 'transaction'),
+                    ('active', '=', True)
+                ], limit=1, order='id')
+        else:
+            template = self.env['zns.template'].browse(template_id)
+        
+        if not template:
+            raise UserError(_("No ZNS template found"))
+        
+        phone = self.format_phone_vietnamese(
+            invoice.partner_id.mobile or invoice.partner_id.phone
+        )
+        if not phone:
+            raise UserError(_("No phone number found for customer"))
+        
+        # Use enhanced parameter building
+        params = self.build_invoice_params(invoice, template)
+        
+        # Create and send message
+        message = self.env['zns.message'].create({
+            'template_id': template.id,
+            'connection_id': template.connection_id.id,
+            'phone': phone,
+            'parameters': json.dumps(params),
+            'partner_id': invoice.partner_id.id,
+            'invoice_id': invoice.id,
+        })
+        
+        message.send_zns_message()
+        return messageings.get(param_name, '')
 
     @api.model
     def build_invoice_params(self, invoice, template):
@@ -205,7 +467,7 @@ class ZnsHelper(models.AbstractModel):
         param_mappings = {
             # Customer details
             'customer_name': invoice.partner_id.name,
-            'customer_phone': self.format_phone_number(invoice.partner_id.mobile or invoice.partner_id.phone),
+            'customer_phone': self.format_phone_vietnamese(invoice.partner_id.mobile or invoice.partner_id.phone),
             'customer_email': invoice.partner_id.email,
             'customer_code': invoice.partner_id.ref,
             'customer_address': invoice.partner_id.contact_address,
@@ -237,99 +499,4 @@ class ZnsHelper(models.AbstractModel):
             'is_paid': 'Yes' if invoice.amount_residual == 0 else 'No',
         }
         
-        return param_mappings.get(param_name, '')
-
-    def _number_to_words_vn(self, amount):
-        """Convert number to Vietnamese words (simplified)"""
-        if amount >= 1000000000:
-            return f"{amount/1000000000:.1f} tỷ"
-        elif amount >= 1000000:
-            return f"{amount/1000000:.1f} triệu"
-        elif amount >= 1000:
-            return f"{amount/1000:.0f} nghìn"
-        else:
-            return f"{amount:.0f}"
-
-    @api.model
-    def send_sale_order_zns(self, sale_order, template_id=None):
-        """Quick send ZNS for sale order with enhanced parameter mapping"""
-        if not template_id:
-            # Find best template mapping
-            template_mapping = self.env['zns.template.mapping']._find_best_mapping('sale.order', sale_order)
-            if template_mapping:
-                template = template_mapping.template_id
-            else:
-                # Find default sale order template
-                template = self.env['zns.template'].search([
-                    ('template_type', '=', 'transaction'),
-                    ('active', '=', True)
-                ], limit=1, order='id')
-        else:
-            template = self.env['zns.template'].browse(template_id)
-        
-        if not template:
-            raise UserError(_("No ZNS template found"))
-        
-        phone = self.format_phone_number(
-            sale_order.partner_id.mobile or sale_order.partner_id.phone
-        )
-        if not phone:
-            raise UserError(_("No phone number found for customer"))
-        
-        # Use enhanced parameter building
-        params = self.build_sale_order_params(sale_order, template)
-        
-        # Create and send message
-        message = self.env['zns.message'].create({
-            'template_id': template.id,
-            'connection_id': template.connection_id.id,
-            'phone': phone,
-            'parameters': json.dumps(params),
-            'partner_id': sale_order.partner_id.id,
-            'sale_order_id': sale_order.id,
-        })
-        
-        message.send_zns_message()
-        return message
-
-    @api.model
-    def send_invoice_zns(self, invoice, template_id=None):
-        """Quick send ZNS for invoice with enhanced parameter mapping"""
-        if not template_id:
-            # Find best template mapping
-            template_mapping = self.env['zns.template.mapping']._find_best_mapping('account.move', invoice)
-            if template_mapping:
-                template = template_mapping.template_id
-            else:
-                # Find default invoice template
-                template = self.env['zns.template'].search([
-                    ('template_type', '=', 'transaction'),
-                    ('active', '=', True)
-                ], limit=1, order='id')
-        else:
-            template = self.env['zns.template'].browse(template_id)
-        
-        if not template:
-            raise UserError(_("No ZNS template found"))
-        
-        phone = self.format_phone_number(
-            invoice.partner_id.mobile or invoice.partner_id.phone
-        )
-        if not phone:
-            raise UserError(_("No phone number found for customer"))
-        
-        # Use enhanced parameter building
-        params = self.build_invoice_params(invoice, template)
-        
-        # Create and send message
-        message = self.env['zns.message'].create({
-            'template_id': template.id,
-            'connection_id': template.connection_id.id,
-            'phone': phone,
-            'parameters': json.dumps(params),
-            'partner_id': invoice.partner_id.id,
-            'invoice_id': invoice.id,
-        })
-        
-        message.send_zns_message()
-        return message
+        return param_mapp

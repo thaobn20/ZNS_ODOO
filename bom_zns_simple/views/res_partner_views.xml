@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Extend Contact Form View -->
+    <!-- Contact Form View with Display-Only ZNS Tab -->
     <record id="res_partner_form_zns_inherit" model="ir.ui.view">
         <field name="name">res.partner.form.zns.inherit</field>
         <field name="model">res.partner</field>
@@ -16,12 +16,51 @@
             </div>
             <notebook position="inside">
                 <page string="Zalo ZNS" name="zns_messages">
-                    <field name="zns_message_ids" nolabel="1">
-                        <tree>
-                            <field name="template_id"/>
-                            <field name="status"/>
-                            <field name="sent_date"/>
-                            <field name="create_date"/>
+                    <div class="alert alert-info">
+                        <h4>📱 Available ZNS Templates for Contacts</h4>
+                        <p>These templates are configured for contact messaging and will be used when sending ZNS from this contact.</p>
+                    </div>
+                    
+                    <!-- Show Available Templates for Contact -->
+                    <group string="Available Templates">
+                        <field name="available_contact_templates" nolabel="1" readonly="1">
+                            <tree create="false" edit="false" delete="false">
+                                <field name="name"/>
+                                <field name="template_id"/>
+                                <field name="template_type"/>
+                                <field name="default_mapping_type"/>
+                                <field name="mapping_summary"/>
+                                <field name="active"/>
+                            </tree>
+                        </field>
+                    </group>
+                    
+                    <group>
+                        <button name="action_send_zns" 
+                                string="📤 Send ZNS Message" 
+                                type="object" 
+                                class="btn-primary"
+                                icon="fa-paper-plane"/>
+                    </group>
+                    
+                    <separator string="📋 ZNS Message History"/>
+                    <field name="zns_message_ids" nolabel="1" readonly="1">
+                        <tree decoration-success="status=='sent'" 
+                              decoration-danger="status=='failed'" 
+                              decoration-muted="status=='draft'"
+                              create="false" edit="false">
+                            <field name="create_date" string="Created"/>
+                            <field name="template_id" string="Template Used"/>
+                            <field name="status" string="Status"/>
+                            <field name="sent_date" string="Sent"/>
+                            <field name="message_id" string="Message ID" optional="hide"/>
+                            <field name="error_message" string="Error" optional="hide"/>
+                            <button name="send_zns_message" 
+                                    string="Retry" 
+                                    type="object" 
+                                    icon="fa-refresh" 
+                                    attrs="{'invisible': [('status', '=', 'sent')]}"
+                                    confirm="Retry sending this ZNS message?"/>
                         </tree>
                     </field>
                 </page>
