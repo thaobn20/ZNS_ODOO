@@ -56,38 +56,11 @@
                                     class="btn-primary"
                                     help="Open wizard to send ZNS message"
                                     attrs="{'invisible': [('move_type', 'not in', ['out_invoice', 'out_refund'])]}"/>
-                            <button name="action_test_zns_template" 
-                                    string="🧪 Test ZNS Setup" 
-                                    type="object" 
-                                    class="btn-warning"
-                                    help="Test ZNS configuration step by step"
-                                    attrs="{'invisible': [('move_type', 'not in', ['out_invoice', 'out_refund'])]}"/>
-                            <button name="action_debug_auto_send" 
-                                    string="🔍 Debug Auto-Send" 
-                                    type="object" 
-                                    class="btn-info"
-                                    help="Debug why auto-send didn't work"
-                                    attrs="{'invisible': [('move_type', 'not in', ['out_invoice', 'out_refund'])]}"/>
-                            <button name="action_retry_auto_zns" 
-                                    string="🔄 Retry Auto Send" 
-                                    type="object" 
-                                    class="btn-secondary"
-                                    help="Manually retry automatic ZNS sending"
-                                    attrs="{'invisible': [('move_type', 'not in', ['out_invoice', 'out_refund'])]}"/>
                         </group>
                         <group string="Invoice Information">
                             <field name="partner_id" readonly="1" string="Customer"/>
                             <field name="amount_total" readonly="1" string="Total Amount"/>
                             <field name="state" readonly="1" string="Status"/>
-                            <field name="zns_template_info" readonly="1" string="Template Info" 
-                                   attrs="{'invisible': [('zns_template_info', '=', False)]}"/>
-                        </group>
-                        <group string="ZNS Configuration">
-                            <field name="zns_auto_send" string="Auto Send ZNS" 
-                                   help="Automatically send ZNS when invoice is posted"/>
-                            <field name="zns_last_error" readonly="1" string="Last Error"
-                                   attrs="{'invisible': [('zns_last_error', '=', False)]}"
-                                   widget="text"/>
                         </group>
                     </group>
                     

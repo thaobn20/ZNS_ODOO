@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- ZNS Message Form View -->
+    <record id="zns_message_form_view" model="ir.ui.view">
+        <field name="name">zns.message.form</field>
+        <field name="model">zns.message</field>
+        <field name="arch" type="xml">
+            <form string="ZNS Message">
+                <header>
+                    <button name="send_zns_message" string="Send Message" type="object" 
+                            class="btn-primary" attrs="{'invisible': [('status', '=', 'sent')]}"/>
+                    <field name="status" widget="statusbar" statusbar_visible="draft,sent,failed"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="display_name"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="template_id"/>
+                            <field name="connection_id"/>
+                            <field name="phone"/>
+                            <field name="partner_id"/>
+                        </group>
+                        <group>
+                            <field name="message_id" readonly="1"/>
+                            <field name="sent_date" readonly="1"/>
+                            <field name="sale_order_id"/>
+                            <field name="invoice_id"/>
+                        </group>
+                    </group>
+                    <group string="Parameters" attrs="{'invisible': [('parameters', '=', False)]}">
+                        <field name="parameters" widget="ace" options="{'mode': 'json'}" nolabel="1"/>
+                    </group>
+                    <group string="Error Details" attrs="{'invisible': [('error_message', '=', False)]}">
+                        <field name="error_message" nolabel="1"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- ZNS Message Tree View -->
+    <record id="zns_message_tree_view" model="ir.ui.view">
+        <field name="name">zns.message.tree</field>
+        <field name="model">zns.message</field>
+        <field name="arch" type="xml">
+            <tree string="ZNS Messages" decoration-success="status=='sent'" 
+                  decoration-danger="status=='failed'" decoration-muted="status=='draft'">
+                <field name="display_name"/>
+                <field name="template_id"/>
+                <field name="phone"/>
+                <field name="partner_id"/>
+                <field name="status"/>
+                <field name="sent_date"/>
+                <field name="create_date"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- ZNS Message Search View -->
+    <record id="zns_message_search_view" model="ir.ui.view">
+        <field name="name">zns.message.search</field>
+        <field name="model">zns.message</field>
+        <field name="arch" type="xml">
+            <search string="ZNS Messages">
+                <field name="phone"/>
+                <field name="template_id"/>
+                <field name="partner_id"/>
+                <filter string="Draft" name="draft" domain="[('status', '=', 'draft')]"/>
+                <filter string="Sent" name="sent" domain="[('status', '=', 'sent')]"/>
+                <filter string="Failed" name="failed" domain="[('status', '=', 'failed')]"/>
+                <separator/>
+                <filter string="Today" name="today" domain="[('create_date', '&gt;=', context_today().strftime('%Y-%m-%d'))]"/>
+                <filter string="This Week" name="week" domain="[('create_date', '&gt;=', (context_today() - datetime.timedelta(days=7)).strftime('%Y-%m-%d'))]"/>
+                <group expand="0" string="Group By">
+                    <filter string="Status" name="group_status" context="{'group_by': 'status'}"/>
+                    <filter string="Template" name="group_template" context="{'group_by': 'template_id'}"/>
+                    <filter string="Contact" name="group_partner" context="{'group_by': 'partner_id'}"/>
+                    <filter string="Date" name="group_date" context="{'group_by': 'create_date:day'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- ZNS Message Action -->
+    <record id="zns_message_action" model="ir.actions.act_window">
+        <field name="name">ZNS Messages</field>
+        <field name="res_model">zns.message</field>
+        <field name="view_mode">tree,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No ZNS messages yet!
+            </p>
+            <p>
+                Start sending ZNS messages from contacts, sales orders, or invoices.
+            </p>
+        </field>
+    </record>
+</odoo>

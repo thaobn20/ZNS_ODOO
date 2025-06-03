@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- ZNS Template Mapping Views -->
+    <record id="zns_template_mapping_form_view" model="ir.ui.view">
+        <field name="name">zns.template.mapping.form</field>
+        <field name="model">zns.template.mapping</field>
+        <field name="arch" type="xml">
+            <form string="ZNS Template Mapping">
+                <header>
+                    <button name="test_mapping" string="Test Mapping" type="object" class="btn-info"/>
+                    <button name="action_view_template" string="View Template" type="object" class="btn-secondary" attrs="{'invisible': [('template_id', '=', False)]}"/>
+                    <field name="active" widget="boolean_toggle"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name" placeholder="Mapping Rule Name"/>
+                        </h1>
+                    </div>
+                    
+                    <!-- Template Selection Alert -->
+                    <div class="alert alert-warning" role="alert" attrs="{'invisible': [('template_id', '!=', False)]}">
+                        <h4>⚠️ Template Required</h4>
+                        <p>You must select a ZNS Template before saving this mapping.</p>
+                        <p><strong>Steps:</strong></p>
+                        <ol>
+                            <li>Go to <strong>Templates → Template List</strong></li>
+                            <li>Create a template with your BOM Template ID</li>
+                            <li>Click <strong>"Sync Parameters from BOM"</strong></li>
+                            <li>Return here and select the template</li>
+                        </ol>
+                    </div>
+                    
+                    <group>
+                        <group string="Basic Configuration">
+                            <field name="template_id" options="{'no_create': True}"/>
+                            <field name="template_status" readonly="1" attrs="{'invisible': [('template_id', '=', False)]}"/>
+                            <field name="model"/>
+                            <field name="priority"/>
+                        </group>
+                        <group string="Usage Statistics">
+                            <field name="usage_count" readonly="1"/>
+                            <field name="last_used" readonly="1"/>
+                            <field name="parameter_count" readonly="1" attrs="{'invisible': [('template_id', '=', False)]}"/>
+                        </group>
+                    </group>
+                    
+                    <notebook>
+                        <page string="Conditions" name="conditions">
+                            <div class="alert alert-info">
+                                <h4>📋 Mapping Conditions</h4>
+                                <p>Set conditions to determine when this template should be used. Leave empty to apply to all records.</p>
+                            </div>
+                            
+                            <group>
+                                <group string="Customer Conditions">
+                                    <field name="partner_ids" widget="many2many_tags"/>
+                                    <field name="partner_category_ids" widget="many2many_tags"/>
+                                </group>
+                                <group string="Amount Conditions">
+                                    <field name="amount_min"/>
+                                    <field name="amount_max"/>
+                                </group>
+                            </group>
+                            <group string="Product Conditions">
+                                <field name="product_category_ids" widget="many2many_tags"/>
+                            </group>
+                            <group string="Custom Condition">
+                                <field name="condition_code" widget="ace" options="{'mode': 'python'}" 
+                                       placeholder="# Python code to evaluate custom conditions&#10;# Use 'record' variable to access the document&#10;# Set 'result = True/False'&#10;&#10;# Example:&#10;# result = record.amount_total > 1000000 and 'VIP' in record.partner_id.name"/>
+                            </group>
+                        </page>
+                        
+                        <page string="Template Info" name="template_info" attrs="{'invisible': [('template_id', '=', False)]}">
+                            <group string="Template Details">
+                                <field name="template_id" readonly="1" options="{'no_open': True}"/>
+                                <field name="template_status" readonly="1"/>
+                                <field name="parameter_count" readonly="1"/>
+                            </group>
+                            
+                            <div class="alert alert-success" attrs="{'invisible': [('parameter_count', '=', 0)]}">
+                                <h5>✅ Template Ready</h5>
+                                <p>This template has <field name="parameter_count" readonly="1"/> parameters and is ready to use.</p>
+                                <p>
+                                    <button name="action_view_template" string="View Template Details" type="object" class="btn btn-sm btn-primary"/>
+                                </p>
+                            </div>
+                            
+                            <div class="alert alert-warning" attrs="{'invisible': [('parameter_count', '!=', 0)]}">
+                                <h5>⚠️ No Parameters</h5>
+                                <p>This template has no parameters. You may need to sync parameters from BOM.</p>
+                            </div>
+                        </page>
+                        
+                        <page string="Examples" name="examples">
+                            <div class="alert alert-info">
+                                <h4>📋 Mapping Examples:</h4>
+                                <p><strong>VIP Customers:</strong> Partner Categories = "VIP", Amount Min = 10,000,000 VND</p>
+                                <p><strong>Electronics Orders:</strong> Product Categories = "Electronics", Custom Condition = "len(record.order_line) > 5"</p>
+                                <p><strong>Rush Orders:</strong> Custom Condition = "'rush' in record.note.lower() if record.note else False"</p>
+                                <p><strong>Large Orders:</strong> Amount Min = 50,000,000 VND</p>
+                                <p><strong>Specific Customer:</strong> Partner = "ABC Company Ltd"</p>
+                                
+                                <h5>Custom Condition Examples:</h5>
+                                <code>
+# High value orders<br/>
+result = record.amount_total >= 5000000<br/><br/>
+
+# VIP customers with electronics<br/>
+result = ('VIP' in record.partner_id.category_id.mapped('name') and <br/>
+          'Electronics' in record.order_line.mapped('product_id.categ_id.name'))<br/><br/>
+
+# Rush orders<br/>
+result = 'rush' in (record.note or '').lower()
+                                </code>
+                            </div>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="zns_template_mapping_tree_view" model="ir.ui.view">
+        <field name="name">zns.template.mapping.tree</field>
+        <field name="model">zns.template.mapping</field>
+        <field name="arch" type="xml">
+            <tree string="ZNS Template Mappings" decoration-muted="not active">
+                <field name="priority" widget="priority"/>
+                <field name="name"/>
+                <field name="model"/>
+                <field name="template_id"/>
+                <field name="usage_count"/>
+                <field name="last_used"/>
+                <field name="active"/>
+                <button name="test_mapping" string="Test" type="object" icon="fa-play" class="btn-link"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="zns_template_mapping_action" model="ir.actions.act_window">
+        <field name="name">ZNS Template Mappings</field>
+        <field name="res_model">zns.template.mapping</field>
+        <field name="view_mode">tree,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                📋 Create your first ZNS template mapping!
+            </p>
+            <p>
+                Template mappings automatically select the right ZNS template based on order conditions like:
+                • Customer type (VIP, Regular, etc.)
+                • Order amount (Large orders, small orders)
+                • Product categories (Electronics, Fashion, etc.)
+                • Custom conditions (Rush orders, special notes, etc.)
+            </p>
+        </field>
+    </record>
+
+    <!-- Template Sync Wizard Views -->
+    <record id="zns_template_sync_wizard_form_view" model="ir.ui.view">
+        <field name="name">zns.template.sync.wizard.form</field>
+        <field name="model">zns.template.sync.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Sync ZNS Templates">
+                <sheet>
+                    <div class="oe_title">
+                        <h1>Sync Templates from BOM API</h1>
+                    </div>
+                    
+                    <group>
+                        <field name="connection_id"/>
+                        <field name="sync_mode"/>
+                    </group>
+                    
+                    <div class="alert alert-info">
+                        <h4>📋 Sync Modes:</h4>
+                        <p><strong>Add new only:</strong> Only create templates that don't exist in Odoo</p>
+                        <p><strong>Update existing:</strong> Only update templates that already exist in Odoo</p>
+                        <p><strong>Full sync:</strong> Add new templates and update existing ones</p>
+                    </div>
+                </sheet>
+                <footer>
+                    <button name="sync_templates" string="Start Sync" type="object" class="btn-primary"/>
+                    <button string="Cancel" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="zns_template_sync_wizard_action" model="ir.actions.act_window">
+        <field name="name">Sync ZNS Templates</field>
+        <field name="res_model">zns.template.sync.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+</odoo>

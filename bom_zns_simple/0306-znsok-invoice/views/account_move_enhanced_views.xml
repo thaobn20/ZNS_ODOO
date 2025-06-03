@@ -1,51 +1,67 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- FIXED Sale Order Form View - NO field reference errors -->
-    <record id="sale_order_form_zns_complete_clean" model="ir.ui.view">
-        <field name="name">sale.order.form.zns.complete.clean</field>
-        <field name="model">sale.order</field>
-        <field name="inherit_id" ref="sale.view_order_form"/>
-        <field name="priority">30</field>
+    <!-- Enhanced Invoice Form View with ZNS Integration -->
+    <record id="account_move_form_zns_enhanced" model="ir.ui.view">
+        <field name="name">account.move.form.zns.enhanced</field>
+        <field name="model">account.move</field>
+        <field name="inherit_id" ref="account.view_move_form"/>
+        <field name="priority">20</field>
         <field name="arch" type="xml">
             <!-- Add ZNS button to button box -->
             <div name="button_box" position="inside">
                 <button type="object" name="action_view_zns_messages" 
-                        class="oe_stat_button" icon="fa-comments">
+                        class="oe_stat_button" icon="fa-comments"
+                        attrs="{'invisible': [('move_type', 'not in', ['out_invoice', 'out_refund'])]}">
                     <field name="zns_message_count" widget="statinfo" string="ZNS"/>
                 </button>
             </div>
             
             <!-- Add Send ZNS button to header -->
-            <button name="action_confirm" position="after">
+            <button name="action_post" position="after">
                 <button name="action_send_zns" 
                         string="Send ZNS" 
                         type="object" 
                         class="btn-secondary"
-                        attrs="{'invisible': [('state', 'in', ['draft', 'cancel'])]}"/>
+                        attrs="{'invisible': [('move_type', 'not in', ['out_invoice', 'out_refund'])]}"/>
+                <button name="action_test_auto_send_zns" 
+                        string="Test Auto ZNS" 
+                        type="object" 
+                        class="btn-info"
+                        groups="base.group_no_one"
+                        attrs="{'invisible': [('move_type', 'not in', ['out_invoice', 'out_refund'])]}"/>
             </button>
             
-            <!-- Add ZNS Configuration in Other Info (only auto-send flag) -->
-            <page name="other_information" position="inside">
-                <group string="ZNS Configuration">
-                    <field name="zns_auto_send" help="Automatically send ZNS when order is confirmed"/>
+            <!-- Add ZNS Configuration in Other Info tab -->
+            <xpath expr="//page[@name='other_tab']" position="inside">
+                <group string="ZNS Configuration" attrs="{'invisible': [('move_type', 'not in', ['out_invoice', 'out_refund'])]}">
+                    <field name="zns_auto_send" help="Automatically send ZNS when invoice is posted"/>
+                    <field name="zns_best_template_info" readonly="1" string="Selected Template"/>
                 </group>
-            </page>
+            </xpath>
             
             <!-- Add ZNS Messages Tab -->
             <xpath expr="//notebook[last()]" position="inside">
-                <page string="Zalo ZNS" name="zns_messages">
+                <page string="Zalo ZNS" name="zns_messages" attrs="{'invisible': [('move_type', 'not in', ['out_invoice', 'out_refund'])]}">
                     <div class="alert alert-info">
-                        <h4>📱 Zalo ZNS Messages</h4>
-                        <p>ZNS messages will be automatically sent when the order is confirmed (if auto-send is enabled).</p>
-                        <p>Template will be automatically selected based on available templates.</p>
+                        <h4>📱 Zalo ZNS Messages for Invoice</h4>
+                        <p>ZNS messages will be automatically sent when the invoice is posted (if auto-send is enabled).</p>
+                        <p>Template will be automatically selected based on template mappings configured in Templates menu.</p>
                     </div>
                     
                     <group>
                         <button name="action_send_zns" 
                                 string="📤 Send ZNS Now" 
                                 type="object" 
-                                class="btn-primary"
-                                attrs="{'invisible': [('state', 'in', ['draft', 'cancel'])]}"/>
+                                class="btn-primary"/>
+                        <button name="action_manual_test_zns" 
+                                string="🧪 Manual Test ZNS" 
+                                type="object" 
+                                class="btn-warning"/>
+                        <button name="action_test_auto_send_zns" 
+                                string="🔍 Test Auto Send" 
+                                type="object" 
+                                class="btn-info"
+                                groups="base.group_no_one"/>
                     </group>
                     
                     <separator string="📋 Message History"/>
@@ -93,6 +109,19 @@
                     </field>
                 </page>
             </xpath>
+        </field>
+    </record>
+    
+    <!-- Enhanced Invoice Tree View with ZNS Status -->
+    <record id="account_move_tree_zns_enhanced" model="ir.ui.view">
+        <field name="name">account.move.tree.zns.enhanced</field>
+        <field name="model">account.move</field>
+        <field name="inherit_id" ref="account.view_invoice_tree"/>
+        <field name="priority">20</field>
+        <field name="arch" type="xml">
+            <field name="amount_total" position="after">
+                <field name="zns_message_count" string="ZNS" optional="hide"/>
+            </field>
         </field>
     </record>
 </odoo>

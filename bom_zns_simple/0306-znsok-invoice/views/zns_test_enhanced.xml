@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- SAFE TEST: Check if basic fields work -->
+    <record id="zns_template_test_form" model="ir.ui.view">
+        <field name="name">zns.template.test.form</field>
+        <field name="model">zns.template</field>
+        <field name="arch" type="xml">
+            <form string="ZNS Template Test">
+                <sheet>
+                    <group>
+                        <field name="name"/>
+                        <field name="template_id"/>
+                        <field name="active"/>
+                        
+                        <!-- Test new fields one by one -->
+                        <!-- Uncomment these one by one to test -->
+                        <!-- <field name="is_default_for_so"/> -->
+                        <!-- <field name="default_priority"/> -->
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Test action -->  
+    <record id="zns_template_test_action" model="ir.actions.act_window">
+        <field name="name">Test Template Form</field>
+        <field name="res_model">zns.template</field>
+        <field name="view_mode">form</field>
+        <field name="view_id" ref="zns_template_test_form"/>
+    </record>
+
+    <!-- Test menu -->
+    <menuitem id="zns_test_menu" 
+              name="🧪 Test Enhanced" 
+              parent="zns_main_menu" 
+              action="zns_template_test_action" 
+              sequence="999"/>
+</odoo>
