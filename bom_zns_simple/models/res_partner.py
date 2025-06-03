@@ -112,7 +112,7 @@ class SaleOrder(models.Model):
         message.send_zns_message()
     
     def action_send_zns(self):
-        """Manual ZNS sending for SO"""
+        """Manual ZNS sending for SO - FIXED method name"""
         return {
             'type': 'ir.actions.act_window',
             'name': 'Send ZNS Message',
@@ -126,6 +126,79 @@ class SaleOrder(models.Model):
                 'default_document_type': 'sale_order',
             }
         }
+    
+    def action_send_zns_manual(self):
+        """Alias for backward compatibility - ADDED MISSING METHOD"""
+        return self.action_send_zns()
+    
+    def action_test_auto_send_zns(self):
+        """Test auto-send ZNS functionality - ADDED MISSING METHOD"""
+        try:
+            # Test basic validations
+            if not self.partner_id:
+                raise UserError("❌ No customer found")
+            
+            phone = self.partner_id.mobile or self.partner_id.phone
+            if not phone:
+                raise UserError("❌ No phone number found for customer")
+            
+            # Test phone formatting
+            formatted_phone = self.env['zns.helper'].format_phone_vietnamese(phone)
+            if not formatted_phone:
+                raise UserError(f"❌ Cannot format phone number: {phone}")
+            
+            # Find template
+            template = self.env['zns.template'].search([
+                ('apply_to', 'in', ['sale_order', 'all']),
+                ('active', '=', True)
+            ], limit=1)
+            
+            if not template:
+                raise UserError("❌ No ZNS template found for Sales Orders")
+            
+            # Test connection
+            if not template.connection_id or not template.connection_id.active:
+                raise UserError(f"❌ Template '{template.name}' has no active connection")
+            
+            # Test parameter building
+            params = {}
+            for param in template.parameter_ids:
+                value = param.get_mapped_value(self)
+                if value:
+                    params[param.name] = str(value)
+            
+            # Test access token
+            access_token = template.connection_id._get_access_token()
+            
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': '✅ Auto Send Test Successful',
+                    'message': f"Auto-send test completed successfully!\n\n"
+                             f"Customer: {self.partner_id.name}\n"
+                             f"Phone: {phone} → {formatted_phone}\n"
+                             f"Template: {template.name} (BOM ID: {template.template_id})\n"
+                             f"Type: {template.template_type}\n"
+                             f"Parameters: {len(params)} found\n\n"
+                             f"The message will be sent when order is confirmed.",
+                    'type': 'success',
+                    'sticky': True,
+                }
+            }
+                
+        except Exception as e:
+            _logger.error(f"❌ Auto-send test failed: {e}")
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': '❌ Auto Send Test Failed',
+                    'message': f"Test failed: {str(e)}\n\nCheck the logs for more details.",
+                    'type': 'danger',
+                    'sticky': True,
+                }
+            }
     
     def action_view_zns_messages(self):
         """View ZNS messages for this order"""

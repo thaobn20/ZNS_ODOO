@@ -37,15 +37,15 @@
                         attrs="{'invisible': [('move_type', 'not in', ['out_invoice', 'out_refund'])]}"/>
             </button>
             
-            <!-- Add ZNS Configuration in Other Info tab -->
-            <xpath expr="//page[@name='other_tab']" position="inside">
+            <!-- Add ZNS Configuration - Using generic group instead of specific page -->
+            <group name="header_right_group" position="after">
                 <group string="ZNS Configuration" attrs="{'invisible': [('move_type', 'not in', ['out_invoice', 'out_refund'])]}">
                     <field name="zns_auto_send" help="Auto-send ZNS when invoice is posted or paid"/>
                 </group>
-            </xpath>
+            </group>
             
-            <!-- Add ZNS Messages Tab -->
-            <xpath expr="//notebook[last()]" position="inside">
+            <!-- Add ZNS Messages Tab - Using notebook instead of specific page -->
+            <notebook position="inside">
                 <page string="Zalo ZNS" name="zns_messages" attrs="{'invisible': [('move_type', 'not in', ['out_invoice', 'out_refund'])]}">
                     <div class="alert alert-info">
                         <h4>📱 Invoice ZNS Messages</h4>
@@ -118,5 +118,29 @@
                         </form>
                     </field>
                 </page>
-            </xpath>
+            </notebook>
         </field>
+    </record>
+    
+    <!-- Enhanced Invoice Tree View -->
+    <record id="account_move_tree_zns_enhanced" model="ir.ui.view">
+        <field name="name">account.move.tree.zns.enhanced</field>
+        <field name="model">account.move</field>
+        <field name="inherit_id" ref="account.view_invoice_tree"/>
+        <field name="priority">20</field>
+        <field name="arch" type="xml">
+            <field name="amount_total" position="after">
+                <field name="zns_message_count" string="ZNS" optional="hide"/>
+            </field>
+        </field>
+    </record>
+    
+    <!-- Action to view ZNS messages from invoice -->
+    <record id="action_view_invoice_zns_messages" model="ir.actions.act_window">
+        <field name="name">Invoice ZNS Messages</field>
+        <field name="res_model">zns.message</field>
+        <field name="view_mode">tree,form</field>
+        <field name="domain">[('invoice_id', '!=', False)]</field>
+        <field name="context">{'search_default_invoice_id': active_id}</field>
+    </record>
+</odoo>

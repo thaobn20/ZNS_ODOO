@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Enhanced Contact Form View with ZNS Tab -->
+    <!-- SAFE Contact Form View with ZNS Tab -->
     <record id="res_partner_form_zns_enhanced" model="ir.ui.view">
         <field name="name">res.partner.form.zns.enhanced</field>
         <field name="model">res.partner</field>
         <field name="inherit_id" ref="base.view_partner_form"/>
         <field name="priority">20</field>
         <field name="arch" type="xml">
-            <!-- Add ZNS stat button -->
+            <!-- Add ZNS stat button - SAFE METHOD -->
             <div name="button_box" position="inside">
                 <button type="object" name="action_send_zns" 
                         class="oe_stat_button" icon="fa-paper-plane">
@@ -17,7 +17,7 @@
                 </button>
             </div>
             
-            <!-- Add ZNS Tab -->
+            <!-- Add ZNS Tab - SAFE METHOD -->
             <notebook position="inside">
                 <page string="Zalo ZNS" name="zns_messages">
                     <div class="alert alert-info">

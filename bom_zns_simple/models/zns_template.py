@@ -109,6 +109,170 @@ class ZnsTemplate(models.Model):
             self.write({'sync_status': error_msg})
             raise UserError(error_msg)
     
+    @api.model
+    def sync_all_templates_from_bom(self):
+        """Sync ALL templates from BOM API - called from menu/action"""
+        # Get active connection
+        connection = self.env['zns.connection'].search([('active', '=', True)], limit=1)
+        if not connection:
+            raise UserError("❌ No active ZNS connection found. Please create and test a connection first.")
+        
+        try:
+            # Get fresh access token
+            access_token = connection._get_access_token()
+            _logger.info(f"✅ Got access token for auto sync: {access_token[:30]}...")
+        except Exception as e:
+            error_msg = f"Failed to get access token: {str(e)}"
+            raise UserError(f"❌ {error_msg}")
+        
+        # Get template list from BOM API
+        list_url = f"{connection.api_base_url}/get-list-all-template"
+        headers = {'Authorization': f'Bearer {access_token}'}
+        
+        try:
+            _logger.info(f"🔄 Getting template list from BOM API...")
+            response = requests.post(list_url, headers=headers, json={}, timeout=30)
+            
+            if response.status_code != 200:
+                error_msg = f"Failed to get template list: HTTP {response.status_code} - {response.text}"
+                raise UserError(f"❌ {error_msg}")
+            
+            result = response.json()
+            
+            if result.get('error') != '0' and result.get('error') != 0:
+                error_msg = result.get('message', 'Failed to get template list')
+                raise UserError(f"❌ API Error: {error_msg}")
+            
+            # Process template list
+            templates_data = result.get('data', [])
+            _logger.info(f"📋 BOM returned {len(templates_data)} templates")
+            
+            if not templates_data:
+                return {
+                    'type': 'ir.actions.client',
+                    'tag': 'display_notification',
+                    'params': {
+                        'title': '⚠️ No Templates Found',
+                        'message': "No templates found in your BOM dashboard.\n\nPlease create templates in BOM dashboard first.",
+                        'type': 'warning',
+                        'sticky': True,
+                    }
+                }
+            
+            # Sync each template
+            synced_count = 0
+            updated_count = 0
+            error_count = 0
+            errors = []
+            
+            for template_data in templates_data:
+                try:
+                    template_id = template_data.get('id') or template_data.get('template_id')
+                    template_name = template_data.get('name') or template_data.get('title') or f"Template {template_id}"
+                    template_type = template_data.get('type', 'transaction').lower()
+                    
+                    if not template_id:
+                        _logger.warning(f"Skipping template without ID: {template_data}")
+                        continue
+                    
+                    # Check if template already exists
+                    existing_template = self.search([
+                        ('template_id', '=', str(template_id)),
+                        ('connection_id', '=', connection.id)
+                    ], limit=1)
+                    
+                    if existing_template:
+                        # Update existing template
+                        existing_template.write({
+                            'name': template_name,
+                            'template_type': self._map_template_type(template_type),
+                            'active': True
+                        })
+                        
+                        # Sync parameters for this template
+                        try:
+                            existing_template.sync_template_params()
+                            updated_count += 1
+                            _logger.info(f"✅ Updated template: {template_name}")
+                        except Exception as param_error:
+                            _logger.warning(f"Failed to sync parameters for {template_name}: {param_error}")
+                            errors.append(f"{template_name}: Parameter sync failed")
+                            error_count += 1
+                    else:
+                        # Create new template
+                        new_template = self.create({
+                            'name': template_name,
+                            'template_id': str(template_id),
+                            'template_type': self._map_template_type(template_type),
+                            'connection_id': connection.id,
+                            'active': True
+                        })
+                        
+                        # Sync parameters for new template
+                        try:
+                            new_template.sync_template_params()
+                            synced_count += 1
+                            _logger.info(f"✅ Created template: {template_name}")
+                        except Exception as param_error:
+                            _logger.warning(f"Failed to sync parameters for new {template_name}: {param_error}")
+                            errors.append(f"{template_name}: Parameter sync failed")
+                            error_count += 1
+                            
+                except Exception as e:
+                    error_count += 1
+                    template_name = template_data.get('name', 'Unknown')
+                    error_msg = f"{template_name}: {str(e)}"
+                    errors.append(error_msg)
+                    _logger.error(f"Failed to process template {template_name}: {e}")
+            
+            # Build success message
+            total_processed = synced_count + updated_count
+            result_msg = f"🎉 Auto Template Sync Completed!\n\n"
+            result_msg += f"✅ New templates: {synced_count}\n"
+            result_msg += f"🔄 Updated templates: {updated_count}\n"
+            result_msg += f"❌ Errors: {error_count}\n"
+            result_msg += f"📊 Total processed: {total_processed}"
+            
+            if errors and len(errors) <= 3:
+                result_msg += f"\n\nErrors:\n" + "\n".join(errors)
+            elif errors:
+                result_msg += f"\n\nFirst 3 errors:\n" + "\n".join(errors[:3])
+                result_msg += f"\n... and {len(errors) - 3} more errors"
+            
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': 'Auto Template Sync Complete',
+                    'message': result_msg,
+                    'type': 'success' if error_count == 0 else 'warning',
+                    'sticky': True,
+                }
+            }
+            
+        except requests.exceptions.RequestException as e:
+            error_msg = f"Request failed: {str(e)}"
+            raise UserError(f"❌ {error_msg}")
+        except Exception as e:
+            error_msg = f"Unexpected error: {str(e)}"
+            _logger.error(f"Template auto sync error: {e}", exc_info=True)
+            raise UserError(f"❌ {error_msg}")
+    
+    def _map_template_type(self, bom_type):
+        """Map BOM template type to Odoo selection"""
+        type_mapping = {
+            'transaction': 'transaction',
+            'otp': 'otp',
+            'promotion': 'promotion',
+            'marketing': 'promotion',
+            'notification': 'transaction',
+            'order': 'transaction',
+            'confirm': 'transaction',
+            'customer_care': 'customer_care',
+            'support': 'customer_care'
+        }
+        return type_mapping.get(str(bom_type).lower(), 'transaction')
+    
     def _map_param_type(self, api_type):
         """Map API parameter types to Odoo field types"""
         type_mapping = {

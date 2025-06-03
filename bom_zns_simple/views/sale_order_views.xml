@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- COMPLETE CLEAN Sale Order Form View - NO zns_template_id references -->
+    <!-- SAFE Sale Order Form View - Using safe inheritance patterns -->
     <record id="sale_order_form_zns_complete_clean" model="ir.ui.view">
         <field name="name">sale.order.form.zns.complete.clean</field>
         <field name="model">sale.order</field>
         <field name="inherit_id" ref="sale.view_order_form"/>
         <field name="priority">30</field>
         <field name="arch" type="xml">
-            <!-- Add ZNS button to button box -->
+            <!-- Add ZNS button to button box - SAFE METHOD -->
             <div name="button_box" position="inside">
                 <button type="object" name="action_view_zns_messages" 
                         class="oe_stat_button" icon="fa-comments">
@@ -15,24 +15,24 @@
                 </button>
             </div>
             
-            <!-- Add Send ZNS button to header -->
+            <!-- Add Send ZNS button to header - SAFE METHOD -->
             <button name="action_confirm" position="after">
-                <button name="action_send_zns_manual" 
+                <button name="action_send_zns" 
                         string="Send ZNS" 
                         type="object" 
                         class="btn-secondary"
                         attrs="{'invisible': [('state', 'in', ['draft', 'cancel'])]}"/>
             </button>
             
-            <!-- Add ZNS Configuration in Other Info (only auto-send flag) -->
-            <page name="other_information" position="inside">
-                <group string="ZNS Configuration">
+            <!-- Add ZNS Configuration - SAFE METHOD using sheet -->
+            <sheet position="inside">
+                <group string="ZNS Configuration" attrs="{'invisible': [('state', 'in', ['draft', 'cancel'])]}">
                     <field name="zns_auto_send" help="Automatically send ZNS when order is confirmed"/>
                 </group>
-            </page>
+            </sheet>
             
-            <!-- Add ZNS Messages Tab -->
-            <xpath expr="//notebook[last()]" position="inside">
+            <!-- Add ZNS Messages Tab - SAFE METHOD -->
+            <notebook position="inside">
                 <page string="Zalo ZNS" name="zns_messages">
                     <div class="alert alert-info">
                         <h4>📱 Zalo ZNS Messages</h4>
@@ -41,7 +41,7 @@
                     </div>
                     
                     <group>
-                        <button name="action_send_zns_manual" 
+                        <button name="action_send_zns" 
                                 string="📤 Send ZNS Now" 
                                 type="object" 
                                 class="btn-primary"
@@ -97,7 +97,7 @@
                         </form>
                     </field>
                 </page>
-            </xpath>
+            </notebook>
         </field>
     </record>
 </odoo>

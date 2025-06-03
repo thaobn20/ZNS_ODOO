@@ -129,7 +129,7 @@
         </field>
     </record>
 
-    <!-- Enhanced Template Tree View -->
+    <!-- Enhanced Template Tree View - FIXED: Removed invalid action button -->
     <record id="zns_template_tree_view" model="ir.ui.view">
         <field name="name">zns.template.tree</field>
         <field name="model">zns.template</field>
