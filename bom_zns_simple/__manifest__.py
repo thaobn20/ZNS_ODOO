@@ -60,7 +60,6 @@ Requirements:
         'views/res_partner_views.xml',
         'views/sale_order_views.xml',
         'views/account_move_views.xml',
-        'views/account_move_enhanced_views.xml',  # ADD THIS LINE
         
         # Template config
         'views/zns_configuration_views.xml',

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Auto Sync Templates Server Action -->
+    <!-- Auto Sync Templates Action -->
     <record id="action_sync_all_templates_from_bom" model="ir.actions.server">
         <field name="name">Auto Sync All Templates from BOM</field>
         <field name="model_id" ref="model_zns_template"/>
@@ -12,6 +12,24 @@ if model:
 else:
     # Direct call if model context is not available
     action = env['zns.template'].sync_all_templates_from_bom()
+        </field>
+    </record>
+
+    <!-- Add Auto Sync Button to Template List -->
+    <record id="zns_template_tree_view_with_auto_sync" model="ir.ui.view">
+        <field name="name">zns.template.tree.with.auto.sync</field>
+        <field name="model">zns.template</field>
+        <field name="inherit_id" ref="zns_template_tree_view"/>
+        <field name="arch" type="xml">
+            <tree position="inside">
+                <header>
+                    <button name="sync_all_templates_from_bom" 
+                            string="🔄 Auto Sync All from BOM" 
+                            type="object" 
+                            class="btn-primary"
+                            confirm="This will sync ALL templates from BOM dashboard. Continue?"/>
+                </header>
+            </tree>
         </field>
     </record>
 </odoo>

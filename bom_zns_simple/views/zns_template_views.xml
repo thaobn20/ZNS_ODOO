@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Complete ZNS Template Views with Full Field Mapping Support -->
+    <!-- ZNS Template Views with Enhanced Parameter Mapping -->
     <record id="zns_template_form_view" model="ir.ui.view">
         <field name="name">zns.template.form</field>
         <field name="model">zns.template</field>
@@ -36,7 +36,7 @@
                                 <h4>📋 How to Set Up Parameters:</h4>
                                 <ol>
                                     <li><strong>Sync from BOM:</strong> Click "Sync Parameters from BOM" to automatically load parameters from your BOM template</li>
-                                    <li><strong>Map to Fields:</strong> For each parameter, select which document field it should get data from</li>
+                                    <li><strong>Map to SO Fields:</strong> For each parameter, select which Sale Order field it should get data from</li>
                                     <li><strong>Custom Values:</strong> Set default values or custom values for parameters</li>
                                 </ol>
                             </div>
@@ -55,38 +55,26 @@
                             </field>
                             
                             <div class="alert alert-success mt-3">
-                                <h5>✅ Available Field Mappings:</h5>
+                                <h5>✅ Available SO Field Mappings:</h5>
                                 <div class="row">
-                                    <div class="col-md-3">
+                                    <div class="col-md-4">
                                         <strong>Customer:</strong><br/>
                                         • Customer Name<br/>
                                         • Customer Mobile/Phone<br/>
                                         • Customer Email<br/>
-                                        • Customer VAT<br/>
-                                        • Customer Address<br/>
                                     </div>
-                                    <div class="col-md-3">
+                                    <div class="col-md-4">
                                         <strong>Order:</strong><br/>
-                                        • SO/Invoice Number<br/>
-                                        • Order/Invoice Date<br/>
+                                        • SO Number<br/>
+                                        • Order Date<br/>
                                         • Total Amount<br/>
                                         • Tax Amount<br/>
-                                        • Currency<br/>
                                     </div>
-                                    <div class="col-md-3">
-                                        <strong>Company:</strong><br/>
-                                        • Company Name<br/>
-                                        • Company VAT<br/>
-                                        • Company Phone<br/>
-                                        • Company Email<br/>
-                                        • Company Address<br/>
-                                    </div>
-                                    <div class="col-md-3">
+                                    <div class="col-md-4">
                                         <strong>Other:</strong><br/>
                                         • Salesperson<br/>
-                                        • Sales Team<br/>
+                                        • Company Name<br/>
                                         • Payment Terms<br/>
-                                        • Product Details<br/>
                                         • Custom Value<br/>
                                     </div>
                                 </div>
@@ -114,50 +102,35 @@
                             </div>
                         </page>
                         
-                        <page string="Mapping Guide">
+                        <page string="Usage Guide">
                             <div class="alert alert-info">
-                                <h4>📖 Field Mapping Guide</h4>
+                                <h4>📖 Template Usage Guide</h4>
                                 
-                                <h5>1. Customer Information</h5>
+                                <h5>1. Sync Parameters from BOM</h5>
+                                <p>Click "Sync Parameters from BOM" to automatically load all parameters from your BOM ZNS template. This will:</p>
                                 <ul>
-                                    <li><strong>Customer Name:</strong> partner_id.name</li>
-                                    <li><strong>Customer Phone:</strong> partner_id.mobile or partner_id.phone</li>
-                                    <li><strong>Customer Email:</strong> partner_id.email</li>
-                                    <li><strong>Customer VAT:</strong> partner_id.vat</li>
-                                    <li><strong>Customer Address:</strong> partner_id.street, city, country</li>
+                                    <li>Fetch parameter names, types, and requirements from BOM API</li>
+                                    <li>Clear existing parameters and create new ones</li>
+                                    <li>Show sync status and any errors</li>
                                 </ul>
                                 
-                                <h5>2. Order/Invoice Information</h5>
+                                <h5>2. Map Parameters to Sale Order Fields</h5>
+                                <p>For each parameter, you can map it to a Sale Order field for automatic data filling:</p>
                                 <ul>
-                                    <li><strong>Document Number:</strong> name (SO001, INV001)</li>
-                                    <li><strong>Date:</strong> date_order / invoice_date</li>
-                                    <li><strong>Amount:</strong> amount_total, amount_untaxed, amount_tax</li>
-                                    <li><strong>Currency:</strong> currency_id.name</li>
-                                    <li><strong>Payment Terms:</strong> payment_term_id.name</li>
+                                    <li><strong>Customer Name</strong> → partner_id.name</li>
+                                    <li><strong>SO Number</strong> → name</li>
+                                    <li><strong>Total Amount</strong> → amount_total</li>
+                                    <li><strong>Order Date</strong> → date_order</li>
+                                    <li><strong>Customer Phone</strong> → partner_id.mobile</li>
+                                    <li><strong>Custom Value</strong> → Use your own text</li>
                                 </ul>
                                 
-                                <h5>3. Company Information</h5>
-                                <ul>
-                                    <li><strong>Company Name:</strong> company_id.name</li>
-                                    <li><strong>Company VAT:</strong> company_id.vat</li>
-                                    <li><strong>Company Contact:</strong> company_id.phone, company_id.email</li>
-                                </ul>
+                                <h5>3. Common BOM Parameter Names</h5>
+                                <p>Common parameter names used in BOM ZNS templates:</p>
+                                <code>customer_name, so_no, amount, order_date, customer_phone, product_name, salesperson</code>
                                 
-                                <h5>4. Staff Information</h5>
-                                <ul>
-                                    <li><strong>Salesperson:</strong> user_id.name</li>
-                                    <li><strong>Sales Team:</strong> team_id.name</li>
-                                </ul>
-                                
-                                <h5>5. Product Information</h5>
-                                <ul>
-                                    <li><strong>Product Name:</strong> order_line.product_id.name (first product)</li>
-                                    <li><strong>Quantity:</strong> order_line.product_uom_qty</li>
-                                    <li><strong>Price:</strong> order_line.price_unit</li>
-                                </ul>
-                                
-                                <h5>6. Custom Values</h5>
-                                <p>Select "Custom Value" to set your own static text that will be used for this parameter.</p>
+                                <h5>4. Testing</h5>
+                                <p>Use "Test Template" to verify your parameter mapping works correctly with sample data.</p>
                             </div>
                         </page>
                     </notebook>
@@ -224,16 +197,26 @@
                 📋 Create your first ZNS template!
             </p>
             <p>
-                Set up ZNS message templates from your BOM dashboard and map parameters to document fields.
+                Set up ZNS message templates from your BOM dashboard and map parameters to Sale Order fields.
             </p>
             <p>
                 <strong>Quick Start:</strong><br/>
                 1. Create new template<br/>
                 2. Enter Template ID from BOM<br/>
                 3. Click "Sync Parameters from BOM"<br/>
-                4. Map parameters to document fields<br/>
-                5. Templates will be auto-selected based on conditions
+                4. Map parameters to SO fields<br/>
+                5. Test with sample data
             </p>
         </field>
     </record>
+
+    <!-- Sync All Templates Action (safe method call) -->
+    <record id="zns_template_sync_all_action" model="ir.actions.act_window">
+        <field name="name">Sync All Templates</field>
+        <field name="res_model">zns.template</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+        <field name="context">{'default_action': 'sync_all'}</field>
+    </record>
+	
 </odoo>
