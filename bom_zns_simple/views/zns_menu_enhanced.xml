@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Enhanced ZNS Menu Structure with Template Configuration -->
+    
+    <!-- Template Configuration Menu Items -->
+    <record id="zns_template_config_menu" model="ir.actions.act_window">
+        <field name="name">Template Defaults</field>
+        <field name="res_model">zns.template.config</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+
+    <!-- Template Overview Action -->
+    <record id="zns_template_overview_action" model="ir.actions.act_window">
+        <field name="name">Template Overview</field>
+        <field name="res_model">zns.template</field>
+        <field name="view_mode">tree</field>
+        <field name="view_id" ref="zns_template_selection_tree"/>
+        <field name="domain">[('active', '=', True)]</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                📋 Template Overview
+            </p>
+            <p>
+                Quick overview of all active ZNS templates with usage statistics and default settings.
+            </p>
+        </field>
+    </record>
+
+    <!-- Template Mapping Management -->
+    <record id="zns_template_mapping_management_action" model="ir.actions.act_window">
+        <field name="name">Template Mappings</field>
+        <field name="res_model">zns.template.mapping</field>
+        <field name="view_mode">tree,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                🗺️ Create Template Mappings
+            </p>
+            <p>
+                Set up condition-based template selection rules for automatic template selection.
+            </p>
+        </field>
+    </record>
+
+    <!-- Enhanced Menu Structure -->
+    <menuitem id="zns_templates_config_menu" 
+              name="Template Configuration" 
+              parent="zns_templates_menu" 
+              sequence="30"/>
+    
+    <menuitem id="zns_template_defaults_menu" 
+              name="Configure Defaults" 
+              parent="zns_templates_config_menu" 
+              action="zns_template_config_menu" 
+              sequence="10"/>
+    
+    <menuitem id="zns_template_overview_menu" 
+              name="Template Overview" 
+              parent="zns_templates_config_menu" 
+              action="zns_template_overview_action" 
+              sequence="20"/>
+    
+    <menuitem id="zns_template_mappings_menu" 
+              name="Template Mappings" 
+              parent="zns_templates_config_menu" 
+              action="zns_template_mapping_management_action" 
+              sequence="30"/>
+
+    <!-- Quick Actions Menu -->
+    <menuitem id="zns_quick_actions_menu" 
+              name="Quick Actions" 
+              parent="zns_main_menu" 
+              sequence="5"/>
+    
+    <menuitem id="zns_quick_so_send_menu" 
+              name="Send to SO Customer" 
+              parent="zns_quick_actions_menu" 
+              action="zns_send_manual_action" 
+              sequence="10"/>
+    
+    <!-- Enhanced Dashboard with Template Stats -->
+    <record id="zns_dashboard_enhanced_action" model="ir.actions.server">
+        <field name="name">ZNS Dashboard Enhanced</field>
+        <field name="model_id" ref="model_zns_template"/>
+        <field name="state">code</field>
+        <field name="code">
+# Enhanced dashboard with template statistics
+template_stats = []
+templates = env['zns.template'].search([('active', '=', True)])
+
+for template in templates:
+    total_usage = template.so_usage_count + template.invoice_usage_count + template.contact_usage_count
+    defaults = []
+    if template.is_default_for_so:
+        defaults.append('SO')
+    if template.is_default_for_invoice:
+        defaults.append('Invoice')
+    if template.is_default_for_contact:
+        defaults.append('Contact')
+    
+    template_stats.append({
+        'name': template.name,
+        'template_id': template.template_id,
+        'type': template.template_type,
+        'total_usage': total_usage,
+        'so_usage': template.so_usage_count,
+        'invoice_usage': template.invoice_usage_count,
+        'contact_usage': template.contact_usage_count,
+        'defaults': ', '.join(defaults) if defaults else 'None',
+        'last_sync': template.last_sync.strftime('%d/%m/%Y') if template.last_sync else 'Never',
+    })
+
+# Sort by total usage
+template_stats.sort(key=lambda x: x['total_usage'], reverse=True)
+
+# Build dashboard message
+message = "📊 ZNS Template Dashboard\n\n"
+message += f"Total Active Templates: {len(templates)}\n"
+message += f"Templates with Defaults Set: {len([t for t in templates if t.is_default_for_so or t.is_default_for_invoice or t.is_default_for_contact])}\n\n"
+
+if template_stats:
+    message += "🏆 Most Used Templates:\n"
+    for i, stat in enumerate(template_stats[:5], 1):
+        message += f"{i}. {stat['name']} - {stat['total_usage']} uses\n"
+        message += f"   SO: {stat['so_usage']}, Invoice: {stat['invoice_usage']}, Contact: {stat['contact_usage']}\n"
+        message += f"   Defaults: {stat['defaults']}\n\n"
+    
+    if len(template_stats) > 5:
+        message += f"... and {len(template_stats) - 5} more templates\n\n"
+    
+    message += "💡 Configure default templates in Templates → Template Configuration"
+else:
+    message += "⚠️ No template usage data yet\n\nStart sending ZNS messages to see statistics!"
+
+action = {
+    'type': 'ir.actions.client',
+    'tag': 'display_notification',
+    'params': {
+        'title': '📊 ZNS Template Dashboard',
+        'message': message,
+        'type': 'info',
+        'sticky': True,
+    }
+}
+        </field>
+    </record>
+
+    <!-- Add enhanced dashboard to menu -->
+    <menuitem id="zns_template_dashboard_menu" 
+              name="Template Dashboard" 
+              parent="zns_dashboard_menu" 
+              action="zns_dashboard_enhanced_action" 
+              sequence="20"/>
+</odoo>

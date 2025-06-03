@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Report Wizard View -->
+    <record id="zns_report_wizard_form_view" model="ir.ui.view">
+        <field name="name">zns.report.wizard.form</field>
+        <field name="model">zns.report.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Generate ZNS Report">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="date_from"/>
+                            <field name="date_to"/>
+                            <field name="report_type"/>
+                        </group>
+                        <group>
+                            <field name="status"/>
+                            <field name="template_ids" widget="many2many_tags"/>
+                            <field name="connection_ids" widget="many2many_tags"/>
+                        </group>
+                    </group>
+                </sheet>
+                <footer>
+                    <button name="generate_report" string="Generate Report" type="object" class="btn-primary"/>
+                    <button string="Cancel" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <!-- Enhanced Message List View with Statistics -->
+    <record id="zns_message_tree_stats_view" model="ir.ui.view">
+        <field name="name">zns.message.tree.stats</field>
+        <field name="model">zns.message</field>
+        <field name="arch" type="xml">
+            <tree string="ZNS Messages" decoration-success="status=='sent'" 
+                  decoration-danger="status=='failed'" decoration-muted="status=='draft'"
+                  sample="1">
+                <field name="create_date"/>
+                <field name="template_id"/>
+                <field name="phone"/>
+                <field name="partner_id"/>
+                <field name="status"/>
+                <field name="sent_date"/>
+                <field name="sale_order_id"/>
+                <field name="invoice_id"/>
+                <field name="error_message" optional="hide"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Pivot View for Analysis -->
+    <record id="zns_message_pivot_view" model="ir.ui.view">
+        <field name="name">zns.message.pivot</field>
+        <field name="model">zns.message</field>
+        <field name="arch" type="xml">
+            <pivot string="ZNS Message Analysis">
+                <field name="status" type="col"/>
+                <field name="template_id" type="row"/>
+                <field name="create_date" interval="day" type="row"/>
+            </pivot>
+        </field>
+    </record>
+
+    <!-- Graph View for Trend Analysis -->
+    <record id="zns_message_graph_view" model="ir.ui.view">
+        <field name="name">zns.message.graph</field>
+        <field name="model">zns.message</field>
+        <field name="arch" type="xml">
+            <graph string="ZNS Message Trends" type="line">
+                <field name="create_date" interval="day"/>
+                <field name="status" type="col"/>
+            </graph>
+        </field>
+    </record>
+
+    <!-- Kanban View for Status Overview -->
+    <record id="zns_message_kanban_status_view" model="ir.ui.view">
+        <field name="name">zns.message.kanban.status</field>
+        <field name="model">zns.message</field>
+        <field name="arch" type="xml">
+            <kanban default_group_by="status" class="o_kanban_small_column">
+                <field name="status"/>
+                <field name="template_id"/>
+                <field name="phone"/>
+                <field name="partner_id"/>
+                <field name="create_date"/>
+                <field name="sent_date"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div class="oe_kanban_card oe_kanban_global_click">
+                            <div class="oe_kanban_content">
+                                <div class="o_kanban_record_top">
+                                    <div class="o_kanban_record_headings">
+                                        <strong class="o_kanban_record_title">
+                                            <field name="template_id"/>
+                                        </strong>
+                                    </div>
+                                    <div class="o_kanban_record_body">
+                                        <field name="phone"/>
+                                        <br/>
+                                        <t t-if="record.partner_id.raw_value">
+                                            <i class="fa fa-user"/> <field name="partner_id"/>
+                                        </t>
+                                    </div>
+                                </div>
+                                <div class="o_kanban_record_bottom">
+                                    <div class="oe_kanban_bottom_left">
+                                        <span class="oe_kanban_status">
+                                            <t t-if="record.sent_date.raw_value">
+                                                <i class="fa fa-clock-o"/> <field name="sent_date"/>
+                                            </t>
+                                            <t t-else="">
+                                                <i class="fa fa-calendar"/> <field name="create_date"/>
+                                            </t>
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <!-- Enhanced Search View with Filters -->
+    <record id="zns_message_search_enhanced_view" model="ir.ui.view">
+        <field name="name">zns.message.search.enhanced</field>
+        <field name="model">zns.message</field>
+        <field name="arch" type="xml">
+            <search string="ZNS Messages">
+                <field name="phone"/>
+                <field name="template_id"/>
+                <field name="partner_id"/>
+                <field name="sale_order_id"/>
+                <field name="invoice_id"/>
+                
+                <filter string="Sent" name="sent" domain="[('status', '=', 'sent')]"/>
+                <filter string="Failed" name="failed" domain="[('status', '=', 'failed')]"/>
+                <filter string="Draft" name="draft" domain="[('status', '=', 'draft')]"/>
+                
+                <separator/>
+                <filter string="Today" name="today" 
+                        domain="[('create_date', '&gt;=', context_today().strftime('%Y-%m-%d'))]"/>
+                <filter string="This Week" name="week" 
+                        domain="[('create_date', '&gt;=', (context_today() - datetime.timedelta(days=7)).strftime('%Y-%m-%d'))]"/>
+                <filter string="This Month" name="month" 
+                        domain="[('create_date', '&gt;=', context_today().replace(day=1).strftime('%Y-%m-%d'))]"/>
+                
+                <separator/>
+                <filter string="Sales Orders" name="sales_orders" domain="[('sale_order_id', '!=', False)]"/>
+                <filter string="Invoices" name="invoices" domain="[('invoice_id', '!=', False)]"/>
+                <filter string="Contacts" name="contacts" 
+                        domain="[('partner_id', '!=', False), ('sale_order_id', '=', False), ('invoice_id', '=', False)]"/>
+                
+                <separator/>
+                <filter string="Transaction Templates" name="transaction_templates" 
+                        domain="[('template_id.template_type', '=', 'transaction')]"/>
+                <filter string="OTP Templates" name="otp_templates" 
+                        domain="[('template_id.template_type', '=', 'otp')]"/>
+                <filter string="Promotion Templates" name="promotion_templates" 
+                        domain="[('template_id.template_type', '=', 'promotion')]"/>
+                
+                <group expand="0" string="Group By">
+                    <filter string="Status" name="group_status" context="{'group_by': 'status'}"/>
+                    <filter string="Template" name="group_template" context="{'group_by': 'template_id'}"/>
+                    <filter string="Contact" name="group_partner" context="{'group_by': 'partner_id'}"/>
+                    <filter string="Connection" name="group_connection" context="{'group_by': 'connection_id'}"/>
+                    <filter string="Date" name="group_date" context="{'group_by': 'create_date:day'}"/>
+                    <filter string="Week" name="group_week" context="{'group_by': 'create_date:week'}"/>
+                    <filter string="Month" name="group_month" context="{'group_by': 'create_date:month'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+</odoo>
