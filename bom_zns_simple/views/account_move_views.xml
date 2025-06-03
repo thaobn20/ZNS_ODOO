@@ -1,43 +1,122 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Extend Invoice Form View -->
-    <record id="account_move_form_zns_inherit" model="ir.ui.view">
-        <field name="name">account.move.form.zns.inherit</field>
+    <!-- Enhanced Invoice Form View with ZNS Integration -->
+    <record id="account_move_form_zns_enhanced" model="ir.ui.view">
+        <field name="name">account.move.form.zns.enhanced</field>
         <field name="model">account.move</field>
         <field name="inherit_id" ref="account.view_move_form"/>
+        <field name="priority">20</field>
         <field name="arch" type="xml">
+            <!-- Add ZNS button to button box -->
             <div name="button_box" position="inside">
-                <button type="object" name="action_send_zns" 
-                        class="oe_stat_button" icon="fa-paper-plane"
+                <button type="object" name="action_view_zns_messages" 
+                        class="oe_stat_button" icon="fa-comments"
                         attrs="{'invisible': [('move_type', 'not in', ['out_invoice', 'out_refund'])]}">
-                    <div class="o_stat_info">
-                        <field name="zns_message_count" string="ZNS Messages"/>
-                    </div>
+                    <field name="zns_message_count" widget="statinfo" string="ZNS"/>
                 </button>
             </div>
-        </field>
-    </record>
-
-    <!-- Add ZNS tab to Invoice Form -->
-    <record id="account_move_form_zns_tab_inherit" model="ir.ui.view">
-        <field name="name">account.move.form.zns.tab.inherit</field>
-        <field name="model">account.move</field>
-        <field name="inherit_id" ref="account.view_move_form"/>
-        <field name="arch" type="xml">
+            
+            <!-- Add ZNS buttons to header -->
+            <button name="action_post" position="after">
+                <button name="action_send_zns" 
+                        string="Send ZNS" 
+                        type="object" 
+                        class="btn-secondary"
+                        attrs="{'invisible': [('move_type', 'not in', ['out_invoice', 'out_refund'])]}"/>
+                <button name="action_debug_zns" 
+                        string="Debug ZNS" 
+                        type="object" 
+                        class="btn-info"
+                        groups="base.group_no_one"
+                        attrs="{'invisible': [('move_type', 'not in', ['out_invoice', 'out_refund'])]}"/>
+                <button name="action_test_zns_send" 
+                        string="Test Send" 
+                        type="object" 
+                        class="btn-warning"
+                        groups="base.group_no_one"
+                        attrs="{'invisible': [('move_type', 'not in', ['out_invoice', 'out_refund'])]}"/>
+            </button>
+            
+            <!-- Add ZNS Configuration in Other Info tab -->
+            <xpath expr="//page[@name='other_tab']" position="inside">
+                <group string="ZNS Configuration" attrs="{'invisible': [('move_type', 'not in', ['out_invoice', 'out_refund'])]}">
+                    <field name="zns_auto_send" help="Auto-send ZNS when invoice is posted or paid"/>
+                </group>
+            </xpath>
+            
+            <!-- Add ZNS Messages Tab -->
             <xpath expr="//notebook[last()]" position="inside">
-                <page string="Zalo ZNS" name="zns_messages"
-                      attrs="{'invisible': [('move_type', 'not in', ['out_invoice', 'out_refund'])]}">
-                    <field name="zns_message_ids" nolabel="1">
-                        <tree>
-                            <field name="template_id"/>
-                            <field name="phone"/>
-                            <field name="status"/>
-                            <field name="sent_date"/>
-                            <field name="create_date"/>
+                <page string="Zalo ZNS" name="zns_messages" attrs="{'invisible': [('move_type', 'not in', ['out_invoice', 'out_refund'])]}">
+                    <div class="alert alert-info">
+                        <h4>📱 Invoice ZNS Messages</h4>
+                        <p><strong>Auto-send events:</strong></p>
+                        <ul>
+                            <li>✅ When invoice is posted</li>
+                            <li>💰 When payment is received</li>
+                        </ul>
+                        <p>Configure templates in <strong>Templates</strong> menu with "Apply To" = Invoices</p>
+                    </div>
+                    
+                    <group>
+                        <button name="action_send_zns" 
+                                string="📤 Send ZNS Now" 
+                                type="object" 
+                                class="btn-primary"/>
+                        <button name="action_debug_zns" 
+                                string="🔍 Debug ZNS" 
+                                type="object" 
+                                class="btn-info"
+                                groups="base.group_no_one"/>
+                        <button name="action_test_zns_send" 
+                                string="🧪 Test Send" 
+                                type="object" 
+                                class="btn-warning"
+                                groups="base.group_no_one"/>
+                    </group>
+                    
+                    <separator string="📋 Message History"/>
+                    <field name="zns_message_ids" nolabel="1" readonly="1">
+                        <tree decoration-success="status=='sent'" 
+                              decoration-danger="status=='failed'" 
+                              decoration-muted="status=='draft'"
+                              create="false" edit="false">
+                            <field name="create_date" string="Created"/>
+                            <field name="template_id" string="Template"/>
+                            <field name="phone" string="Phone"/>
+                            <field name="status" string="Status"/>
+                            <field name="sent_date" string="Sent"/>
+                            <field name="message_id" string="Message ID" optional="hide"/>
+                            <field name="error_message" string="Error" optional="hide"/>
+                            <button name="send_zns_message" 
+                                    string="Retry" 
+                                    type="object" 
+                                    icon="fa-refresh" 
+                                    attrs="{'invisible': [('status', '=', 'sent')]}"
+                                    confirm="Retry sending this ZNS message?"/>
                         </tree>
+                        <form>
+                            <sheet>
+                                <group>
+                                    <group>
+                                        <field name="template_id" readonly="1"/>
+                                        <field name="phone" readonly="1"/>
+                                        <field name="status" readonly="1"/>
+                                        <field name="sent_date" readonly="1"/>
+                                    </group>
+                                    <group>
+                                        <field name="message_id" readonly="1"/>
+                                        <field name="create_date" readonly="1"/>
+                                    </group>
+                                </group>
+                                <group string="Parameters" attrs="{'invisible': [('parameters', '=', False)]}">
+                                    <field name="parameters" widget="ace" options="{'mode': 'json'}" readonly="1" nolabel="1"/>
+                                </group>
+                                <group string="Error Details" attrs="{'invisible': [('error_message', '=', False)]}">
+                                    <field name="error_message" readonly="1" nolabel="1"/>
+                                </group>
+                            </sheet>
+                        </form>
                     </field>
                 </page>
             </xpath>
         </field>
-    </record>
-</odoo>
