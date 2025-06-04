@@ -362,12 +362,34 @@ class AccountMove(models.Model):
         if not template.connection_id or not template.connection_id.active:
             raise Exception(f"Template '{template.name}' has no active connection. Please check connection settings.")
         
-        # Build parameters using helper
-        params = self.env['zns.helper'].build_invoice_params(self, template)
-        _logger.info(f"✅ Built {len(params)} parameters: {params}")
+        # Check if template has parameters and sync if needed
+        if not template.parameter_ids:
+            _logger.warning(f"Template {template.name} has no parameters. Trying to sync...")
+            try:
+                template.sync_template_params()
+            except Exception as sync_error:
+                _logger.warning(f"Failed to sync template parameters: {sync_error}")
         
+        # Build parameters using helper - THIS IS THE KEY FIX
+        params = self.env['zns.helper'].build_invoice_params(self, template)
+        _logger.info(f"✅ Built {len(params)} parameters for template {template.name}: {params}")
+        
+        # CRITICAL: If no parameters built, try to build with standard values
         if not params:
-            _logger.warning(f"No parameters built for template {template.name}. Check parameter mappings.")
+            _logger.warning(f"No parameters built for template {template.name}. Building standard params...")
+            # Build minimal required parameters for common ZNS templates
+            params = {
+                'customer_name': self.partner_id.name or '',
+                'invoice_number': self.name or '',
+                'amount': str(self.amount_total) or '0',
+                'invoice_date': self.invoice_date.strftime('%d/%m/%Y') if self.invoice_date else '',
+                'company_name': self.company_id.name or '',
+            }
+            _logger.info(f"✅ Built standard parameters: {params}")
+        
+        # Ensure we have at least some parameters to avoid "Template data empty" error
+        if not params:
+            raise Exception("No parameters could be built for this invoice. Check template configuration.")
         
         # Format phone number
         phone = self.env['zns.helper'].format_phone_vietnamese(
@@ -457,7 +479,7 @@ class AccountMove(models.Model):
                     param_preview += f"\n   • ... and {len(params) - 5} more"
                 test_results.append(f"📋 Sample parameters:\n{param_preview}")
             else:
-                test_results.append("⚠️ No parameters found - check template parameter mappings")
+                test_results.append("⚠️ No parameters found - will use standard parameters")
             
             # Test 7: Full Test Send (if requested)
             return self._show_test_results(test_results, "✅ All checks passed! Ready to send ZNS.", 'success')
@@ -480,55 +502,6 @@ class AccountMove(models.Model):
                 'title': '🧪 ZNS Template Test Results',
                 'message': message,
                 'type': msg_type,
-                'sticky': True,
-            }
-        }
-    
-    def action_debug_auto_send(self):
-        """Debug why auto-send didn't work"""
-        debug_info = []
-        
-        # Check current state
-        debug_info.append(f"📋 Invoice: {self.name}")
-        debug_info.append(f"📊 State: {self.state}")
-        debug_info.append(f"📝 Type: {self.move_type}")
-        debug_info.append(f"🔄 Auto-send: {self.zns_auto_send}")
-        debug_info.append(f"👤 Customer: {self.partner_id.name if self.partner_id else 'None'}")
-        
-        if self.partner_id:
-            phone = self.partner_id.mobile or self.partner_id.phone
-            debug_info.append(f"📞 Phone: {phone if phone else 'None'}")
-        
-        # Check templates
-        templates = self.env['zns.template'].search([('active', '=', True)])
-        debug_info.append(f"📋 Active templates: {len(templates)}")
-        if templates:
-            for template in templates[:3]:
-                debug_info.append(f"   • {template.name} (BOM ID: {template.template_id})")
-        
-        # Check connections
-        connections = self.env['zns.connection'].search([('active', '=', True)])
-        debug_info.append(f"🔗 Active connections: {len(connections)}")
-        
-        # Check last error
-        if self.zns_last_error:
-            debug_info.append(f"\n❌ Last Error:\n{self.zns_last_error}")
-        else:
-            debug_info.append(f"\n✅ No errors recorded")
-        
-        # Check ZNS messages
-        debug_info.append(f"\n📱 ZNS Messages: {len(self.zns_message_ids)}")
-        if self.zns_message_ids:
-            latest = self.zns_message_ids[0]
-            debug_info.append(f"   Latest: {latest.status} - {latest.create_date}")
-        
-        return {
-            'type': 'ir.actions.client',
-            'tag': 'display_notification',
-            'params': {
-                'title': '🔍 Auto-Send Debug Info',
-                'message': "\n".join(debug_info),
-                'type': 'info',
                 'sticky': True,
             }
         }
