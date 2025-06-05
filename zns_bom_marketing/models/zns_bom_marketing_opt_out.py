@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import logging
+from datetime import datetime, timedelta
 from odoo import models, fields, api, _
 from odoo.exceptions import ValidationError
 
@@ -15,9 +16,19 @@ class ZnsBomMarketingOptOut(models.Model):
 
     # Contact Information
     contact_id = fields.Many2one('res.partner', required=True, ondelete='cascade')
-    phone_number = fields.Char('Phone Number', related='contact_id.mobile', readonly=True)
-    contact_name = fields.Char('Contact Name', related='contact_id.name', readonly=True)
+    phone_number = fields.Char('Phone Number', compute='_compute_contact_info', readonly=True)
+    contact_name = fields.Char('Contact Name', compute='_compute_contact_info', readonly=True)
     display_name = fields.Char('Display Name', compute='_compute_display_name')
+    
+    @api.depends('contact_id')
+    def _compute_contact_info(self):
+        for record in self:
+            if record.contact_id:
+                record.phone_number = record.contact_id.mobile or record.contact_id.phone or ''
+                record.contact_name = record.contact_id.name or ''
+            else:
+                record.phone_number = ''
+                record.contact_name = ''
     
     # Opt-out Details
     opt_out_date = fields.Datetime('Opt-out Date', default=fields.Datetime.now, required=True)
@@ -58,7 +69,7 @@ class ZnsBomMarketingOptOut(models.Model):
     @api.depends('contact_id', 'global_opt_out', 'campaign_types')
     def _compute_display_name(self):
         for record in self:
-            contact_name = record.contact_id.name or 'Unknown Contact'
+            contact_name = record.contact_name or 'Unknown Contact'
             if record.global_opt_out:
                 scope = 'Global'
             else:

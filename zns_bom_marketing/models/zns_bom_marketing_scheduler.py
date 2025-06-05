@@ -286,4 +286,191 @@ class ZnsBomMarketingScheduler(models.Model):
                 _logger.error(f"Failed to execute campaign {campaign.name}: {e}")
                 campaign.status = 'failed'
         
-        _logger.info(f"=== Processed {processed} scheduled campaigns
+        _logger.info(f"=== Processed {processed} scheduled campaigns ===")
+        return processed
+    
+    @api.model
+    def process_message_queue(self):
+        """Process queued messages"""
+        _logger.info("=== Processing Message Queue ===")
+        
+        # Find queued messages
+        queued_messages = self.env['zns.bom.marketing.message'].search([
+            ('status', '=', 'queued')
+        ], limit=100)  # Process in batches
+        
+        processed = 0
+        for message in queued_messages:
+            try:
+                self._send_campaign_message(message)
+                processed += 1
+            except Exception as e:
+                _logger.error(f"Failed to send message {message.id}: {e}")
+                message.write({
+                    'status': 'failed',
+                    'error_message': str(e)
+                })
+        
+        _logger.info(f"=== Processed {processed} queued messages ===")
+        return processed
+    
+    def _send_campaign_message(self, campaign_message):
+        """Send a campaign message"""
+        if not campaign_message.bom_zns_message_id:
+            # Create BOM ZNS message if not exists
+            params = json.loads(campaign_message.message_parameters) if campaign_message.message_parameters else {}
+            
+            bom_zns_message = self.env['bom.zns.message'].create({
+                'template_id': campaign_message.campaign_id.bom_zns_template_id.id,
+                'connection_id': campaign_message.campaign_id.bom_zns_template_id.connection_id.id,
+                'phone': campaign_message.phone_number,
+                'parameters': json.dumps(params),
+                'partner_id': campaign_message.contact_id.id,
+                'status': 'draft'
+            })
+            
+            campaign_message.bom_zns_message_id = bom_zns_message.id
+        
+        # Send via BOM ZNS
+        self._send_birthday_message(campaign_message.bom_zns_message_id, campaign_message)
+    
+    @api.model
+    def process_recurring_campaigns(self):
+        """Process recurring campaigns"""
+        _logger.info("=== Processing Recurring Campaigns ===")
+        
+        # Find recurring campaigns that are due
+        now = fields.Datetime.now()
+        recurring_campaigns = self.env['zns.bom.marketing.campaign'].search([
+            ('status', '=', 'running'),
+            ('send_mode', '=', 'recurring'),
+            '|',
+            ('next_run_date', '<=', now),
+            ('next_run_date', '=', False)
+        ])
+        
+        processed = 0
+        for campaign in recurring_campaigns:
+            try:
+                # Check if should run based on recurring settings
+                if self._should_run_recurring_campaign(campaign):
+                    self._execute_recurring_campaign(campaign)
+                    processed += 1
+            except Exception as e:
+                _logger.error(f"Failed to execute recurring campaign {campaign.name}: {e}")
+        
+        _logger.info(f"=== Processed {processed} recurring campaigns ===")
+        return processed
+    
+    def _should_run_recurring_campaign(self, campaign):
+        """Check if recurring campaign should run"""
+        if not campaign.last_run_date:
+            return True
+        
+        now = fields.Datetime.now()
+        last_run = campaign.last_run_date
+        
+        if campaign.recurring_type == 'daily':
+            return (now - last_run).days >= campaign.recurring_interval
+        elif campaign.recurring_type == 'weekly':
+            return (now - last_run).days >= (campaign.recurring_interval * 7)
+        elif campaign.recurring_type == 'monthly':
+            # Simple monthly check - could be improved
+            return (now - last_run).days >= (campaign.recurring_interval * 30)
+        
+        return False
+    
+    def _execute_recurring_campaign(self, campaign):
+        """Execute recurring campaign"""
+        # Check end date
+        if campaign.recurring_end_date and fields.Date.today() > campaign.recurring_end_date:
+            campaign.status = 'completed'
+            return
+        
+        # Execute campaign
+        campaign._execute_campaign()
+        
+        # Update run dates
+        campaign.write({
+            'last_run_date': fields.Datetime.now(),
+            'next_run_date': self._calculate_next_run_date(campaign)
+        })
+    
+    def _calculate_next_run_date(self, campaign):
+        """Calculate next run date for recurring campaign"""
+        now = fields.Datetime.now()
+        
+        if campaign.recurring_type == 'daily':
+            return now + timedelta(days=campaign.recurring_interval)
+        elif campaign.recurring_type == 'weekly':
+            return now + timedelta(weeks=campaign.recurring_interval)
+        elif campaign.recurring_type == 'monthly':
+            # Simple monthly calculation
+            return now + timedelta(days=campaign.recurring_interval * 30)
+        
+        return now + timedelta(days=1)
+    
+    @api.model
+    def _process_campaign_queue(self, campaign):
+        """Process campaign message queue"""
+        messages = campaign.message_ids.filtered(lambda m: m.status == 'queued')
+        
+        for message in messages:
+            self._send_campaign_message(message)
+    
+    @api.model
+    def _process_retry_messages(self):
+        """Process messages scheduled for retry"""
+        now = fields.Datetime.now()
+        retry_messages = self.env['zns.bom.marketing.message'].search([
+            ('status', '=', 'retry'),
+            ('next_retry_date', '<=', now)
+        ])
+        
+        for message in retry_messages:
+            if message.retry_count < message.campaign_id.max_retry_attempts:
+                try:
+                    self._send_campaign_message(message)
+                except Exception as e:
+                    message.write({
+                        'status': 'failed',
+                        'error_message': str(e)
+                    })
+            else:
+                message.write({
+                    'status': 'failed',
+                    'error_message': 'Max retry attempts exceeded'
+                })
+    
+    @api.model
+    def cleanup_old_messages(self):
+        """Cleanup old messages (older than 6 months)"""
+        cutoff_date = fields.Datetime.now() - timedelta(days=180)
+        old_messages = self.env['zns.bom.marketing.message'].search([
+            ('create_date', '<', cutoff_date),
+            ('status', 'in', ['sent', 'delivered', 'failed'])
+        ])
+        
+        _logger.info(f"Cleaning up {len(old_messages)} old messages")
+        old_messages.unlink()
+        
+        return len(old_messages)
+    
+    @api.model
+    def process_opt_out_bounces(self):
+        """Process bounced messages and auto opt-out"""
+        return self.env['zns.bom.marketing.opt.out'].process_bounced_messages()
+    
+    @api.model
+    def update_campaign_statistics(self):
+        """Update campaign statistics"""
+        campaigns = self.env['zns.bom.marketing.campaign'].search([
+            ('status', 'in', ['running', 'completed'])
+        ])
+        
+        for campaign in campaigns:
+            # Trigger computation of statistics
+            campaign._compute_progress()
+            campaign._compute_analytics()
+        
+        return len(campaigns)

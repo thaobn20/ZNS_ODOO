@@ -52,9 +52,30 @@ class ZnsBomMarketingMessage(models.Model):
     send_duration = fields.Float('Send Duration (seconds)')
     
     # Additional Fields
-    template_name = fields.Char('Template', related='campaign_id.bom_zns_template_id.name', readonly=True)
-    campaign_name = fields.Char('Campaign', related='campaign_id.name', readonly=True)
-    contact_name = fields.Char('Contact', related='contact_id.name', readonly=True)
+    template_name = fields.Char('Template', compute='_compute_related_fields', readonly=True)
+    campaign_name = fields.Char('Campaign', compute='_compute_related_fields', readonly=True)
+    contact_name = fields.Char('Contact', compute='_compute_related_fields', readonly=True)
+    
+    @api.depends('campaign_id', 'campaign_id.bom_zns_template_id', 'campaign_id.name', 'contact_id', 'contact_id.name')
+    def _compute_related_fields(self):
+        for record in self:
+            # Template name
+            if record.campaign_id and record.campaign_id.bom_zns_template_id:
+                record.template_name = record.campaign_id.bom_zns_template_id.name or ''
+            else:
+                record.template_name = ''
+            
+            # Campaign name
+            if record.campaign_id:
+                record.campaign_name = record.campaign_id.name or ''
+            else:
+                record.campaign_name = ''
+            
+            # Contact name
+            if record.contact_id:
+                record.contact_name = record.contact_id.name or ''
+            else:
+                record.contact_name = ''
     
     @api.depends('contact_id', 'phone_number', 'status')
     def _compute_display_name(self):

@@ -64,8 +64,17 @@ class ZnsBomMarketingAnalytics(models.Model):
     connection_id = fields.Many2one('bom.zns.connection', string='Connection')
     
     def init(self):
-        """Initialize the view"""
-        tools.drop_view_if_exists(self.env.cr, self._table)
+        """Initialize the view - skip if tables don't exist yet"""
+        try:
+            tools.drop_view_if_exists(self.env.cr, self._table)
+            self._create_analytics_view()
+        except Exception as e:
+            _logger.info(f"Analytics view creation skipped during installation: {e}")
+            # This is expected during module installation
+            pass
+    
+    def _create_analytics_view(self):
+        """Create the analytics view"""
         self.env.cr.execute("""
             CREATE OR REPLACE VIEW %s AS (
                 SELECT 
@@ -129,7 +138,7 @@ class ZnsBomMarketingAnalytics(models.Model):
                     
                     -- Template info
                     c.bom_zns_template_id AS template_id,
-                    t.name AS template_name,
+                    COALESCE(t.name, 'Unknown Template') AS template_name,
                     c.bom_zns_connection_id AS connection_id
                     
                 FROM zns_bom_marketing_campaign c
@@ -144,6 +153,15 @@ class ZnsBomMarketingAnalytics(models.Model):
                     TO_CHAR(m.create_date, 'YYYY-"W"WW')
             )
         """ % self._table)
+        
+    @api.model
+    def refresh_analytics_view(self):
+        """Method to refresh the analytics view after installation"""
+        try:
+            self._create_analytics_view()
+            _logger.info("Analytics view created successfully")
+        except Exception as e:
+            _logger.error(f"Failed to create analytics view: {e}")
 
     @api.model
     def get_campaign_performance_data(self, campaign_ids=None, date_from=None, date_to=None):

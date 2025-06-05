@@ -96,12 +96,17 @@ class ZnsBomMarketingContactList(models.Model):
                     invalid_phones += 1
                 
                 # Check opt-out status
-                opt_out = self.env['zns.bom.marketing.opt.out'].search([
-                    ('contact_id', '=', contact.id),
-                    ('global_opt_out', '=', True)
-                ], limit=1)
-                if opt_out:
-                    opt_outs += 1
+                try:
+                    opt_out = self.env['zns.bom.marketing.opt.out'].search([
+                        ('contact_id', '=', contact.id),
+                        ('global_opt_out', '=', True),
+                        ('active', '=', True)
+                    ], limit=1)
+                    if opt_out:
+                        opt_outs += 1
+                except:
+                    # Skip if opt-out model doesn't exist yet
+                    pass
             
             record.valid_phone_count = valid_phones
             record.invalid_phone_count = invalid_phones

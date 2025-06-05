@@ -1,2 +1,3 @@
 bom_zns_simple/__pycache__/*.pyc
 bom_zns_simple/models/__pycache__/*.pyc
+/zns_bom_marketing/__pycache__
