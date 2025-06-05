@@ -54,7 +54,17 @@
                                 type="object" 
                                 class="btn-secondary"
                                 attrs="{'invisible': [('zns_message_count', '=', 0)]}"/>
-                    </group>
+						<button name="action_manual_test_zns" 
+								string="🧪 Test Manual ZNS" 
+								type="object" 
+								class="btn-warning"
+								attrs="{'invisible': [('move_type', 'not in', ['out_invoice', 'out_refund'])]}"/>
+						<button name="action_test_auto_send_zns" 
+								string="🧪 Test Auto Send" 
+								type="object" 
+								class="btn-info"
+								attrs="{'invisible': [('move_type', 'not in', ['out_invoice', 'out_refund'])]}"/>
+					</group>
                     
                     <separator string="📋 Message History"/>
                     <field name="zns_message_ids" nolabel="1" readonly="1">

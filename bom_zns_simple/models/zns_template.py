@@ -313,6 +313,15 @@ class ZnsTemplateParameter(models.Model):
     default_value = fields.Char('Default Value')
     description = fields.Text('Description', help='Parameter description from BOM API')
     
+    # ADD THIS FIELD FOR BACKWARD COMPATIBILITY:
+    so_field_mapping = fields.Selection([
+        ('partner_id.name', 'Customer Name'),
+        ('name', 'SO Number'),
+        ('amount_total', 'Total Amount'),
+        ('date_order', 'Order Date'),
+        ('custom', 'Custom Value'),
+    ], string='SO Field Mapping (Legacy)', help='Legacy field mapping for Sale Orders')
+    
     # Enhanced Field Mapping for all document types
     field_mapping = fields.Selection([
         # Customer/Partner fields (works for all document types)
@@ -419,3 +428,58 @@ class ZnsTemplateParameter(models.Model):
             'note': 'comment',
         }
         return adaptations.get(field_path, field_path)
+        
+
+    def test_template_exists(self):
+        """Quick test if template exists in BOM"""
+        try:
+            access_token = self.connection_id._get_access_token()
+            
+            # Get template list
+            list_url = f"{self.connection_id.api_base_url}/get-list-all-template"
+            headers = {'Authorization': f'Bearer {access_token}'}
+            
+            response = requests.post(list_url, headers=headers, json={}, timeout=30)
+            
+            if response.status_code == 200:
+                result = response.json()
+                if result.get('error') == '0':
+                    templates = result.get('data', [])
+                    
+                    # Build template list message
+                    available_templates = []
+                    for template in templates:
+                        tid = template.get('id') or template.get('template_id')
+                        name = template.get('name', 'Unknown')
+                        status = template.get('status', 'Unknown')
+                        available_templates.append(f"• {tid} - {name} (Status: {status})")
+                    
+                    # Check if our template exists
+                    our_template_exists = any(
+                        str(t.get('id', '') or t.get('template_id', '')) == str(self.template_id) 
+                        for t in templates
+                    )
+                    
+                    message = f"Template Check Results:\n\n"
+                    message += f"Looking for Template ID: {self.template_id}\n"
+                    message += f"Found in BOM: {'✅ YES' if our_template_exists else '❌ NO'}\n\n"
+                    message += f"Available Templates in your BOM account:\n"
+                    message += "\n".join(available_templates[:10])
+                    if len(available_templates) > 10:
+                        message += f"\n... and {len(available_templates) - 10} more templates"
+                    
+                    return {
+                        'type': 'ir.actions.client',
+                        'tag': 'display_notification',
+                        'params': {
+                            'title': '🔍 Template Availability Check',
+                            'message': message,
+                            'type': 'success' if our_template_exists else 'warning',
+                            'sticky': True,
+                        }
+                    }
+            
+            raise UserError("Failed to get template list from BOM")
+            
+        except Exception as e:
+            raise UserError(f"Template check failed: {str(e)}")

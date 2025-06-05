@@ -604,6 +604,63 @@ class AccountMove(models.Model):
             except Exception as e:
                 move.zns_template_info = f"Error: {str(e)}"
     
+    def _find_best_template_for_invoice(self):
+    """Find the best template specifically for Invoices"""
+    _logger.info(f"=== Finding template for Invoice {self.name} ===")
+    
+    # 1. FIRST PRIORITY: Template mappings specifically for Invoices
+    try:
+        template_mapping = self.env['zns.template.mapping']._find_best_mapping('account.move', self)
+        if template_mapping and template_mapping.template_id:
+            template = template_mapping.template_id
+            _logger.info(f"✅ Found INVOICE template via mapping: {template.name} (BOM ID: {template.template_id})")
+            return template
+    except Exception as e:
+        _logger.warning(f"Template mapping search failed: {e}")
+    
+    # 2. SECOND PRIORITY: Templates that have invoice-related parameter names
+    invoice_param_names = [
+        'invoice_number', 'invoice_no', 'invoice_id', 'bill_number', 'due_date', 
+        'remaining_amount', 'amount', 'customer_name', 'total_amount'
+    ]
+    
+    templates_with_invoice_params = self.env['zns.template'].search([
+        ('active', '=', True),
+        ('connection_id.active', '=', True),
+        ('parameter_ids.name', 'in', invoice_param_names)
+    ], limit=1)
+    
+    if templates_with_invoice_params:
+        template = templates_with_invoice_params
+        _logger.info(f"✅ Found template with INVOICE parameters: {template.name} (BOM ID: {template.template_id})")
+        return template
+    
+    # 3. THIRD PRIORITY: Templates with field mappings
+    templates_with_field_mappings = self.env['zns.template'].search([
+        ('active', '=', True),
+        ('connection_id.active', '=', True),
+        ('parameter_ids.field_mapping', '!=', False)
+    ], limit=1)
+    
+    if templates_with_field_mappings:
+        template = templates_with_field_mappings
+        _logger.info(f"✅ Found template with field mappings: {template.name} (BOM ID: {template.template_id})")
+        return template
+    
+    # 4. LAST FALLBACK: Use any active template
+    fallback_template = self.env['zns.template'].search([
+        ('active', '=', True),
+        ('connection_id.active', '=', True)
+    ], limit=1)
+    
+    if fallback_template:
+        template = fallback_template
+        _logger.warning(f"⚠️ Using fallback template for invoice: {template.name} (BOM ID: {template.template_id})")
+        return template
+    
+    _logger.error("❌ No templates found for Invoice")
+    return False
+    
     def action_send_zns(self):
         """Open ZNS send wizard for invoice"""
         return {
@@ -629,3 +686,167 @@ class AccountMove(models.Model):
             'domain': [('invoice_id', '=', self.id)],
             'context': {'default_invoice_id': self.id}
         }
+        
+
+    # Add these methods to your AccountMove class in res_partner.py
+
+    def action_test_auto_send_zns(self):
+        """Test auto-send ZNS functionality for invoices"""
+        _logger.info(f"=== TESTING AUTO SEND ZNS FOR INVOICE {self.name} ===")
+        
+        try:
+            # Check basic requirements
+            if self.move_type not in ['out_invoice', 'out_refund']:
+                raise UserError("❌ This is not a customer invoice")
+            
+            if not self.partner_id:
+                raise UserError("❌ No customer found")
+            
+            phone = self.partner_id.mobile or self.partner_id.phone
+            if not phone:
+                raise UserError("❌ No phone number found for customer")
+            
+            # Test phone formatting
+            formatted_phone = self.env['zns.helper'].format_phone_vietnamese(phone)
+            if not formatted_phone:
+                raise UserError(f"❌ Cannot format phone number: {phone}")
+            
+            # Check auto-send setting
+            if not self.zns_auto_send:
+                return {
+                    'type': 'ir.actions.client',
+                    'tag': 'display_notification',
+                    'params': {
+                        'title': '⚠️ Auto-send Disabled',
+                        'message': 'ZNS auto-send is disabled for this invoice. Enable it in the ZNS Configuration section.',
+                        'type': 'warning',
+                        'sticky': True,
+                    }
+                }
+            
+            # Find best template
+            template = self._find_best_template_for_invoice()
+            if not template:
+                raise UserError("❌ No templates found. Please create templates in Templates menu")
+            
+            # Test connection
+            if not template.connection_id or not template.connection_id.active:
+                raise UserError(f"❌ Template '{template.name}' has no active connection")
+            
+            # Test parameter building
+            params = self.env['zns.helper'].build_invoice_params(self, template)
+            
+            # Test connection and token
+            access_token = template.connection_id._get_access_token()
+            
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': '✅ Auto Send Test Successful',
+                    'message': f"Auto-send test completed successfully!\n\n"
+                             f"Customer: {self.partner_id.name}\n"
+                             f"Phone: {phone} → {formatted_phone}\n"
+                             f"Template: {template.name} (BOM ID: {template.template_id})\n"
+                             f"Type: {template.template_type}\n"
+                             f"Parameters: {len(params)} found\n\n"
+                             f"The message will be sent when invoice is posted.",
+                    'type': 'success',
+                    'sticky': True,
+                }
+            }
+                
+        except Exception as e:
+            _logger.error(f"❌ Auto-send test failed: {e}")
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': '❌ Auto Send Test Failed',
+                    'message': f"Test failed: {str(e)}\n\nCheck the logs for more details.",
+                    'type': 'danger',
+                    'sticky': True,
+                }
+            }
+
+    def action_manual_test_zns(self):
+        """Manual test ZNS - actually send a test message for invoice"""
+        _logger.info(f"=== MANUAL TEST ZNS FOR INVOICE {self.name} ===")
+        
+        try:
+            # Basic validations
+            if self.move_type not in ['out_invoice', 'out_refund']:
+                raise UserError("❌ This is not a customer invoice")
+            
+            if not self.partner_id:
+                raise UserError("❌ No customer found")
+            
+            phone = self.partner_id.mobile or self.partner_id.phone
+            if not phone:
+                raise UserError("❌ No phone number found for customer")
+            
+            # Format phone
+            formatted_phone = self.env['zns.helper'].format_phone_vietnamese(phone)
+            if not formatted_phone:
+                raise UserError(f"❌ Cannot format phone number: {phone}")
+            
+            # Find best template
+            template = self._find_best_template_for_invoice()
+            if not template:
+                raise UserError("❌ No templates found. Please create templates in Templates menu")
+            
+            # Check connection
+            if not template.connection_id or not template.connection_id.active:
+                raise UserError(f"❌ Template '{template.name}' has no active connection")
+            
+            # Build parameters
+            params = self.env['zns.helper'].build_invoice_params(self, template)
+            _logger.info(f"Built parameters: {params}")
+            
+            # Create and send test message
+            message_vals = {
+                'template_id': template.id,
+                'connection_id': template.connection_id.id,
+                'phone': formatted_phone,
+                'parameters': json.dumps(params),
+                'partner_id': self.partner_id.id,
+                'invoice_id': self.id,
+            }
+            
+            message = self.env['zns.message'].create(message_vals)
+            _logger.info(f"✅ Created test message record: {message.id}")
+            
+            # Send the message
+            result = message.send_zns_message()
+            
+            success_message = f"Test ZNS message sent successfully!\n\n"
+            success_message += f"Customer: {self.partner_id.name}\n"
+            success_message += f"Phone: {phone} → {formatted_phone}\n"
+            success_message += f"Template: {template.name} (BOM ID: {template.template_id})\n"
+            success_message += f"Type: {template.template_type}\n"
+            success_message += f"Parameters: {len(params)} sent\n"
+            success_message += f"Message ID: {message.message_id or 'Pending'}"
+            
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': '📱 Manual Test ZNS Sent!',
+                    'message': success_message,
+                    'type': 'success',
+                    'sticky': True,
+                }
+            }
+                
+        except Exception as e:
+            _logger.error(f"❌ Manual test ZNS failed: {e}")
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': '❌ Manual Test ZNS Failed',
+                    'message': f"Test failed: {str(e)}\n\nCheck the logs for more details.",
+                    'type': 'danger',
+                    'sticky': True,
+                }
+            }
