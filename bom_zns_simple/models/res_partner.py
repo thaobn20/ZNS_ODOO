@@ -522,183 +522,301 @@ class SaleOrder(models.Model):
 class AccountMove(models.Model):
     _inherit = 'account.move'
     
-    # ALL ZNS fields that might be referenced in views
     zns_message_ids = fields.One2many('zns.message', 'invoice_id', string='ZNS Messages')
     zns_message_count = fields.Integer('ZNS Message Count', compute='_compute_zns_message_count')
     zns_auto_send = fields.Boolean('Auto Send ZNS', default=False, 
                                   help="Automatically send ZNS when invoice is posted")
     zns_best_template_info = fields.Char('Best Template Info', compute='_compute_best_template_info')
-    # ADD THE MISSING FIELD:
-    zns_template_info = fields.Char('Template Info', compute='_compute_template_info')
-    
-    # ADD ALL POSSIBLE FIELDS THAT VIEWS MIGHT REFERENCE:
-    zns_last_error = fields.Text('Last ZNS Error', readonly=True)
-    zns_last_sent = fields.Datetime('Last ZNS Sent', readonly=True)
-    zns_status = fields.Selection([
-        ('none', 'No ZNS'),
-        ('pending', 'Pending'),
-        ('sent', 'Sent'),
-        ('failed', 'Failed')
-    ], string='ZNS Status', default='none', readonly=True)
-    zns_template_id = fields.Many2one('zns.template', string='ZNS Template')
-    zns_phone = fields.Char('ZNS Phone', compute='_compute_zns_phone')
-    zns_connection_id = fields.Many2one('zns.connection', string='ZNS Connection')
-    zns_enabled = fields.Boolean('ZNS Enabled', default=True)
-    zns_retry_count = fields.Integer('ZNS Retry Count', default=0, readonly=True)
     
     @api.depends('zns_message_ids')
     def _compute_zns_message_count(self):
         for move in self:
             move.zns_message_count = len(move.zns_message_ids)
     
-    @api.depends('partner_id', 'amount_total', 'move_type')
+    @api.depends('partner_id', 'amount_total', 'state', 'move_type')
     def _compute_best_template_info(self):
-        """Show which template would be auto-selected for invoices"""
+        """Show which template would be auto-selected for invoice"""
         for move in self:
+            if move.move_type not in ['out_invoice', 'out_refund']:
+                move.zns_best_template_info = "Not applicable (not customer invoice)"
+                continue
+                
             try:
-                if move.move_type not in ['out_invoice', 'out_refund']:
-                    move.zns_best_template_info = "N/A (Not customer invoice)"
-                    continue
-                    
                 # Check if we have template mappings for Invoices
                 template_mapping = self.env['zns.template.mapping']._find_best_mapping('account.move', move)
                 if template_mapping:
                     template = template_mapping.template_id
                     move.zns_best_template_info = f"{template.name} (via mapping: {template_mapping.name})"
                 else:
-                    # Find any active template
-                    any_template = self.env['zns.template'].search([
+                    # Find templates with invoice parameters
+                    invoice_param_names = [
+                        'invoice_number', 'invoice_no', 'due_date', 'remaining_amount', 
+                        'amount', 'customer_name', 'total_amount'
+                    ]
+                    
+                    templates_with_invoice_params = self.env['zns.template'].search([
                         ('active', '=', True),
-                        ('connection_id.active', '=', True)
+                        ('connection_id.active', '=', True),
+                        ('parameter_ids.name', 'in', invoice_param_names)
                     ], limit=1)
-                    if any_template:
-                        move.zns_best_template_info = f"{any_template.name} (fallback)"
+                    
+                    if templates_with_invoice_params:
+                        template = templates_with_invoice_params[0]
+                        move.zns_best_template_info = f"{template.name} (has invoice params)"
                     else:
-                        move.zns_best_template_info = "❌ No active templates found"
+                        # Last fallback: any active template
+                        any_template = self.env['zns.template'].search([
+                            ('active', '=', True),
+                            ('connection_id.active', '=', True)
+                        ], limit=1)
+                        if any_template:
+                            move.zns_best_template_info = f"{any_template.name} (fallback - no invoice params)"
+                        else:
+                            move.zns_best_template_info = "❌ No active templates found"
             except Exception as e:
                 move.zns_best_template_info = f"Error: {str(e)}"
     
-    @api.depends('partner_id', 'amount_total', 'move_type')  
-    def _compute_template_info(self):
-        """Compute template info - this is what the view is looking for"""
-        for move in self:
-            try:
-                if move.move_type not in ['out_invoice', 'out_refund']:
-                    move.zns_template_info = "N/A (Not customer invoice)"
-                    continue
-                    
-                # Same logic as _compute_best_template_info
-                template_mapping = self.env['zns.template.mapping']._find_best_mapping('account.move', move)
-                if template_mapping:
-                    template = template_mapping.template_id
-                    move.zns_template_info = f"{template.name} (via mapping: {template_mapping.name})"
-                else:
-                    any_template = self.env['zns.template'].search([
-                        ('active', '=', True),
-                        ('connection_id.active', '=', True)
-                    ], limit=1)
-                    if any_template:
-                        move.zns_template_info = f"{any_template.name} (fallback)"
-                    else:
-                        move.zns_template_info = "❌ No active templates found"
-            except Exception as e:
-                move.zns_template_info = f"Error: {str(e)}"
-    
     def _find_best_template_for_invoice(self):
-    """Find the best template specifically for Invoices"""
-    _logger.info(f"=== Finding template for Invoice {self.name} ===")
-    
-    # 1. FIRST PRIORITY: Template mappings specifically for Invoices
-    try:
-        template_mapping = self.env['zns.template.mapping']._find_best_mapping('account.move', self)
-        if template_mapping and template_mapping.template_id:
-            template = template_mapping.template_id
-            _logger.info(f"✅ Found INVOICE template via mapping: {template.name} (BOM ID: {template.template_id})")
-            return template
-    except Exception as e:
-        _logger.warning(f"Template mapping search failed: {e}")
-    
-    # 2. SECOND PRIORITY: Templates that have invoice-related parameter names
-    invoice_param_names = [
-        'invoice_number', 'invoice_no', 'invoice_id', 'bill_number', 'due_date', 
-        'remaining_amount', 'amount', 'customer_name', 'total_amount'
-    ]
-    
-    templates_with_invoice_params = self.env['zns.template'].search([
-        ('active', '=', True),
-        ('connection_id.active', '=', True),
-        ('parameter_ids.name', 'in', invoice_param_names)
-    ], limit=1)
-    
-    if templates_with_invoice_params:
-        template = templates_with_invoice_params
-        _logger.info(f"✅ Found template with INVOICE parameters: {template.name} (BOM ID: {template.template_id})")
-        return template
-    
-    # 3. THIRD PRIORITY: Templates with field mappings
-    templates_with_field_mappings = self.env['zns.template'].search([
-        ('active', '=', True),
-        ('connection_id.active', '=', True),
-        ('parameter_ids.field_mapping', '!=', False)
-    ], limit=1)
-    
-    if templates_with_field_mappings:
-        template = templates_with_field_mappings
-        _logger.info(f"✅ Found template with field mappings: {template.name} (BOM ID: {template.template_id})")
-        return template
-    
-    # 4. LAST FALLBACK: Use any active template
-    fallback_template = self.env['zns.template'].search([
-        ('active', '=', True),
-        ('connection_id.active', '=', True)
-    ], limit=1)
-    
-    if fallback_template:
-        template = fallback_template
-        _logger.warning(f"⚠️ Using fallback template for invoice: {template.name} (BOM ID: {template.template_id})")
-        return template
-    
-    _logger.error("❌ No templates found for Invoice")
-    return False
-    
-    def action_send_zns(self):
-        """Open ZNS send wizard for invoice"""
-        return {
-            'type': 'ir.actions.act_window',
-            'name': 'Send ZNS Message',
-            'res_model': 'zns.send.wizard',
-            'view_mode': 'form',
-            'target': 'new',
-            'context': {
-                'default_partner_id': self.partner_id.id,
-                'default_phone': self.partner_id.mobile or self.partner_id.phone,
-                'default_invoice_id': self.id,
-            }
-        }
-    
-    def action_view_zns_messages(self):
-        """View ZNS messages for this invoice"""
-        return {
-            'type': 'ir.actions.act_window',
-            'name': f'ZNS Messages - {self.name}',
-            'res_model': 'zns.message',
-            'view_mode': 'tree,form',
-            'domain': [('invoice_id', '=', self.id)],
-            'context': {'default_invoice_id': self.id}
-        }
+        """Find the best template specifically for Invoices - WITHOUT relying on SO mappings"""
+        _logger.info(f"=== FINDING BEST TEMPLATE FOR INVOICE {self.name} ===")
         
-
-    # Add these methods to your AccountMove class in res_partner.py
-
+        # 1. PRIORITY: Template mapping first (configured conditions for invoices)
+        try:
+            template_mapping = self.env['zns.template.mapping']._find_best_mapping('account.move', self)
+            if template_mapping and template_mapping.template_id:
+                template = template_mapping.template_id
+                _logger.info(f"✅ Found template via INVOICE mapping: {template_mapping.name}")
+                _logger.info(f"   → Template: {template.name} (BOM ID: {template.template_id})")
+                _logger.info(f"   → Type: {template.template_type}")
+                _logger.info(f"   → Parameters: {len(template.parameter_ids)}")
+                return template
+        except Exception as e:
+            _logger.warning(f"Template mapping search failed for invoice {self.name}: {e}")
+        
+        _logger.info("⚠️ No invoice template mapping found, trying templates with invoice parameters...")
+        
+        # 2. SECOND PRIORITY: Templates that have invoice-related parameter names
+        invoice_param_names = [
+            'invoice_number', 'invoice_no', 'invoice_id', 'bill_number', 'bill_no',
+            'due_date', 'payment_due', 'remaining_amount', 'amount_due',
+            'amount', 'total_amount', 'customer_name', 'payment_terms',
+            'invoice_date', 'amount_total', 'amount_untaxed', 'amount_tax'
+        ]
+        
+        try:
+            templates_with_invoice_params = self.env['zns.template'].search([
+                ('active', '=', True),
+                ('connection_id.active', '=', True),
+                ('parameter_ids.name', 'in', invoice_param_names)
+            ], order='id')
+            
+            _logger.info(f"Templates with invoice parameters: {len(templates_with_invoice_params)}")
+            for t in templates_with_invoice_params:
+                invoice_params = t.parameter_ids.filtered(lambda p: p.name in invoice_param_names)
+                _logger.info(f"   • {t.name} (BOM ID: {t.template_id}, Type: {t.template_type}, Invoice params: {len(invoice_params)})")
+            
+            if templates_with_invoice_params:
+                template = templates_with_invoice_params[0]  # Take first one with invoice params
+                _logger.info(f"✅ Using template with INVOICE parameters: {template.name}")
+                return template
+        except Exception as e:
+            _logger.warning(f"Error searching templates with invoice parameters: {e}")
+        
+        _logger.info("⚠️ No templates with invoice parameters found, trying templates with transaction type...")
+        
+        # 3. THIRD PRIORITY: Transaction type templates (suitable for invoices)
+        try:
+            transaction_templates = self.env['zns.template'].search([
+                ('active', '=', True),
+                ('connection_id.active', '=', True),
+                ('template_type', '=', 'transaction')  # Transaction templates work for invoices
+            ], order='id')
+            
+            _logger.info(f"Transaction templates: {len(transaction_templates)}")
+            for t in transaction_templates:
+                _logger.info(f"   • {t.name} (BOM ID: {t.template_id}, Type: {t.template_type})")
+            
+            if transaction_templates:
+                template = transaction_templates[0]
+                _logger.info(f"✅ Using TRANSACTION template for invoice: {template.name}")
+                return template
+        except Exception as e:
+            _logger.warning(f"Error searching transaction templates: {e}")
+        
+        _logger.info("⚠️ No transaction templates found, trying any active template...")
+        
+        # 4. LAST FALLBACK: Any active template
+        try:
+            any_active_templates = self.env['zns.template'].search([
+                ('active', '=', True),
+                ('connection_id.active', '=', True)
+            ], order='id')
+            
+            _logger.info(f"Any active templates: {len(any_active_templates)}")
+            for t in any_active_templates:
+                _logger.info(f"   • {t.name} (BOM ID: {t.template_id}, Type: {t.template_type})")
+            
+            if any_active_templates:
+                template = any_active_templates[0]
+                _logger.warning(f"⚠️ Using fallback template (no invoice config): {template.name}")
+                return template
+        except Exception as e:
+            _logger.error(f"Error searching for any active templates: {e}")
+        
+        _logger.error("❌ No active templates found at all!")
+        return False
+    
+    def _send_invoice_notification_zns(self):
+        """Send ZNS notification for invoice using enhanced template selection"""
+        _logger.info(f"=== SENDING INVOICE ZNS FOR INVOICE {self.name} ===")
+        
+        try:
+            # Find best template with detailed logging
+            template = self._find_best_template_for_invoice()
+            if not template:
+                raise Exception("No templates found for Invoice")
+            
+            # Check connection
+            if not template.connection_id or not template.connection_id.active:
+                raise Exception("No active connection found for template")
+            
+            # Build parameters using template parameter mappings
+            params = self.env['zns.helper'].build_invoice_params(self, template)
+            _logger.info(f"✅ Built {len(params)} parameters: {params}")
+            
+            # Format phone number - KEEP VIETNAMESE FORMAT
+            phone = self.env['zns.helper'].format_phone_vietnamese(
+                self.partner_id.mobile or self.partner_id.phone
+            )
+            
+            if not phone:
+                raise Exception("No valid phone number found")
+            
+            # Create and send ZNS message
+            message_vals = {
+                'template_id': template.id,
+                'connection_id': template.connection_id.id,
+                'phone': phone,
+                'parameters': json.dumps(params),
+                'partner_id': self.partner_id.id,
+                'invoice_id': self.id,
+            }
+            
+            message = self.env['zns.message'].create(message_vals)
+            _logger.info(f"✅ Created ZNS message record: {message.id}")
+            
+            # Send immediately
+            message.send_zns_message()
+            _logger.info(f"✅ ZNS sent successfully for Invoice {self.name}")
+                
+        except Exception as e:
+            _logger.error(f"❌ _send_invoice_notification_zns failed for Invoice {self.name}: {e}")
+            raise
+    
+    def action_manual_test_invoice_zns(self):
+        """Manual test ZNS for invoice - actually send a test message"""
+        _logger.info(f"=== MANUAL TEST ZNS FOR INVOICE {self.name} ===")
+        
+        try:
+            # Basic validations
+            if not self.partner_id:
+                raise UserError("❌ No customer found")
+            
+            phone = self.partner_id.mobile or self.partner_id.phone
+            if not phone:
+                raise UserError("❌ No phone number found for customer")
+            
+            # Format phone
+            formatted_phone = self.env['zns.helper'].format_phone_vietnamese(phone)
+            if not formatted_phone:
+                raise UserError(f"❌ Cannot format phone number: {phone}")
+            
+            # Find best template with detailed logging
+            template = self._find_best_template_for_invoice()
+            if not template:
+                raise UserError("❌ No templates found. Please create templates in Templates menu")
+            
+            # Check connection
+            if not template.connection_id or not template.connection_id.active:
+                raise UserError(f"❌ Template '{template.name}' has no active connection")
+            
+            # Build parameters with detailed logging
+            _logger.info(f"Building parameters for template: {template.name}")
+            params = self.env['zns.helper'].build_invoice_params(self, template)
+            _logger.info(f"Built parameters: {params}")
+            
+            if not params:
+                _logger.warning("No parameters built - checking template parameter configuration")
+                for param in template.parameter_ids:
+                    _logger.info(f"Template param: {param.name} -> Default: {param.default_value}")
+                
+                # Show helpful message about parameter configuration
+                param_config_msg = f"\n\nTemplate '{template.name}' parameter configuration:\n"
+                if template.parameter_ids:
+                    for param in template.parameter_ids:
+                        default = param.default_value or "❌ Not set"
+                        param_config_msg += f"• {param.name}: {default}\n"
+                    param_config_msg += f"\n💡 Go to Templates → {template.name} → Parameters tab to set default values"
+                else:
+                    param_config_msg += f"❌ No parameters found. Click 'Sync Parameters from BOM' in the template."
+            
+            # Create and send test message
+            message_vals = {
+                'template_id': template.id,
+                'connection_id': template.connection_id.id,
+                'phone': formatted_phone,
+                'parameters': json.dumps(params),
+                'partner_id': self.partner_id.id,
+                'invoice_id': self.id,
+            }
+            
+            message = self.env['zns.message'].create(message_vals)
+            _logger.info(f"✅ Created test message record: {message.id}")
+            
+            # Send the message
+            result = message.send_zns_message()
+            
+            success_message = f"Test ZNS message sent successfully!\n\n"
+            success_message += f"Customer: {self.partner_id.name}\n"
+            success_message += f"Phone: {phone} → {formatted_phone}\n"
+            success_message += f"Template: {template.name} (BOM ID: {template.template_id})\n"
+            success_message += f"Type: {template.template_type}\n"
+            success_message += f"Parameters: {len(params)} sent\n"
+            success_message += f"Message ID: {message.message_id or 'Pending'}"
+            
+            if not params:
+                success_message += param_config_msg
+            
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': '📱 Manual Test ZNS Sent!',
+                    'message': success_message,
+                    'type': 'success',
+                    'sticky': True,
+                }
+            }
+                
+        except Exception as e:
+            _logger.error(f"❌ Manual test ZNS failed: {e}")
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': '❌ Manual Test ZNS Failed',
+                    'message': f"Test failed: {str(e)}\n\nCheck the logs for more details.",
+                    'type': 'danger',
+                    'sticky': True,
+                }
+            }
+    
     def action_test_auto_send_zns(self):
-        """Test auto-send ZNS functionality for invoices"""
+        """Test the auto-send ZNS functionality for invoice (simulation only)"""
         _logger.info(f"=== TESTING AUTO SEND ZNS FOR INVOICE {self.name} ===")
         
         try:
             # Check basic requirements
-            if self.move_type not in ['out_invoice', 'out_refund']:
-                raise UserError("❌ This is not a customer invoice")
-            
             if not self.partner_id:
                 raise UserError("❌ No customer found")
             
@@ -724,7 +842,7 @@ class AccountMove(models.Model):
                     }
                 }
             
-            # Find best template
+            # Find best template with detailed info
             template = self._find_best_template_for_invoice()
             if not template:
                 raise UserError("❌ No templates found. Please create templates in Templates menu")
@@ -768,85 +886,119 @@ class AccountMove(models.Model):
                     'sticky': True,
                 }
             }
-
-    def action_manual_test_zns(self):
-        """Manual test ZNS - actually send a test message for invoice"""
-        _logger.info(f"=== MANUAL TEST ZNS FOR INVOICE {self.name} ===")
+    
+    def action_show_invoice_template_selection(self):
+        """Show template selection logic for invoice"""
+        _logger.info(f"=== SHOWING TEMPLATE SELECTION FOR INVOICE {self.name} ===")
         
         try:
-            # Basic validations
-            if self.move_type not in ['out_invoice', 'out_refund']:
-                raise UserError("❌ This is not a customer invoice")
+            # Get all template mappings for Invoice
+            mappings = self.env['zns.template.mapping'].search([
+                ('model', '=', 'account.move'),
+                ('active', '=', True)
+            ], order='priority')
             
-            if not self.partner_id:
-                raise UserError("❌ No customer found")
+            mapping_info = []
+            for mapping in mappings:
+                matches = mapping._matches_conditions(self)
+                mapping_info.append(f"• {mapping.name} (Priority: {mapping.priority}) - {'✅ MATCHES' if matches else '❌ No match'}")
             
-            phone = self.partner_id.mobile or self.partner_id.phone
-            if not phone:
-                raise UserError("❌ No phone number found for customer")
+            # Get templates with invoice-related parameters
+            invoice_param_names = [
+                'invoice_number', 'invoice_no', 'due_date', 'remaining_amount', 
+                'amount', 'customer_name', 'total_amount'
+            ]
             
-            # Format phone
-            formatted_phone = self.env['zns.helper'].format_phone_vietnamese(phone)
-            if not formatted_phone:
-                raise UserError(f"❌ Cannot format phone number: {phone}")
+            templates_with_invoice_params = self.env['zns.template'].search([
+                ('active', '=', True),
+                ('parameter_ids.name', 'in', invoice_param_names)
+            ])
             
-            # Find best template
-            template = self._find_best_template_for_invoice()
-            if not template:
-                raise UserError("❌ No templates found. Please create templates in Templates menu")
+            invoice_template_info = []
+            for template in templates_with_invoice_params:
+                invoice_params = template.parameter_ids.filtered(lambda p: p.name in invoice_param_names)
+                invoice_template_info.append(f"• {template.name} (BOM ID: {template.template_id}, Type: {template.template_type}, Invoice params: {len(invoice_params)})")
             
-            # Check connection
-            if not template.connection_id or not template.connection_id.active:
-                raise UserError(f"❌ Template '{template.name}' has no active connection")
+            # Get all active templates
+            all_templates = self.env['zns.template'].search([('active', '=', True)])
+            all_template_info = []
+            for template in all_templates:
+                all_template_info.append(f"• {template.name} (BOM ID: {template.template_id}, Type: {template.template_type})")
             
-            # Build parameters
-            params = self.env['zns.helper'].build_invoice_params(self, template)
-            _logger.info(f"Built parameters: {params}")
+            # Find what would be selected
+            selected_template = self._find_best_template_for_invoice()
             
-            # Create and send test message
-            message_vals = {
-                'template_id': template.id,
-                'connection_id': template.connection_id.id,
-                'phone': formatted_phone,
-                'parameters': json.dumps(params),
-                'partner_id': self.partner_id.id,
-                'invoice_id': self.id,
-            }
+            message = f"📋 Template Selection Logic for Invoice {self.name}:\n\n"
+            message += f"🎯 Invoice Details:\n"
+            message += f"• Customer: {self.partner_id.name}\n"
+            message += f"• Amount: {self.amount_total:,.0f} {self.currency_id.name}\n"
+            message += f"• Due Date: {self.invoice_date_due or 'Not set'}\n"
+            message += f"• Status: {self.state}\n\n"
             
-            message = self.env['zns.message'].create(message_vals)
-            _logger.info(f"✅ Created test message record: {message.id}")
+            message += f"🗺️ Invoice Template Mappings ({len(mappings)}):\n"
+            message += "\n".join(mapping_info) if mapping_info else "❌ No invoice mappings configured"
+            message += f"\n\n📋 Templates with Invoice Parameters ({len(templates_with_invoice_params)}):\n"
+            message += "\n".join(invoice_template_info) if invoice_template_info else "❌ No templates have invoice parameters"
+            message += f"\n\n📝 All Active Templates ({len(all_templates)}):\n"
+            message += "\n".join(all_template_info) if all_template_info else "❌ No active templates found"
             
-            # Send the message
-            result = message.send_zns_message()
+            message += f"\n\n✅ Selected Template:\n"
+            if selected_template:
+                message += f"• {selected_template.name} (BOM ID: {selected_template.template_id}, Type: {selected_template.template_type})"
+            else:
+                message += "❌ No template would be selected"
             
-            success_message = f"Test ZNS message sent successfully!\n\n"
-            success_message += f"Customer: {self.partner_id.name}\n"
-            success_message += f"Phone: {phone} → {formatted_phone}\n"
-            success_message += f"Template: {template.name} (BOM ID: {template.template_id})\n"
-            success_message += f"Type: {template.template_type}\n"
-            success_message += f"Parameters: {len(params)} sent\n"
-            success_message += f"Message ID: {message.message_id or 'Pending'}"
+            message += f"\n\n💡 To configure templates for Invoices:\n"
+            message += f"1. Go to Templates menu\n"
+            message += f"2. Create/edit template with invoice parameters\n"
+            message += f"3. Set parameter names like: invoice_number, due_date, amount\n"
+            message += f"4. Optionally create Template Mappings for conditions"
             
             return {
                 'type': 'ir.actions.client',
                 'tag': 'display_notification',
                 'params': {
-                    'title': '📱 Manual Test ZNS Sent!',
-                    'message': success_message,
-                    'type': 'success',
+                    'title': '🔍 Invoice Template Selection Logic',
+                    'message': message,
+                    'type': 'info',
                     'sticky': True,
                 }
             }
-                
+            
         except Exception as e:
-            _logger.error(f"❌ Manual test ZNS failed: {e}")
             return {
                 'type': 'ir.actions.client',
                 'tag': 'display_notification',
                 'params': {
-                    'title': '❌ Manual Test ZNS Failed',
-                    'message': f"Test failed: {str(e)}\n\nCheck the logs for more details.",
+                    'title': '❌ Template Selection Error',
+                    'message': f"Error analyzing template selection: {str(e)}",
                     'type': 'danger',
                     'sticky': True,
                 }
             }
+    
+    def action_send_zns(self):
+        """Open ZNS send wizard for invoice"""
+        return {
+            'type': 'ir.actions.act_window',
+            'name': 'Send ZNS Message',
+            'res_model': 'zns.send.wizard',
+            'view_mode': 'form',
+            'target': 'new',
+            'context': {
+                'default_partner_id': self.partner_id.id,
+                'default_phone': self.partner_id.mobile or self.partner_id.phone,
+                'default_invoice_id': self.id,
+            }
+        }
+    
+    def action_view_zns_messages(self):
+        """View ZNS messages for this invoice"""
+        return {
+            'type': 'ir.actions.act_window',
+            'name': f'ZNS Messages - {self.name}',
+            'res_model': 'zns.message',
+            'view_mode': 'tree,form',
+            'domain': [('invoice_id', '=', self.id)],
+            'context': {'default_invoice_id': self.id}
+        }
