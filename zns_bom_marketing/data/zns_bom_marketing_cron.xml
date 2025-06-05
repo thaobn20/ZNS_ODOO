@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        
+        <!-- Birthday Campaign Processor - Daily at 6:00 AM -->
+        <record id="cron_birthday_campaigns" model="ir.cron">
+            <field name="name">ZNS BOM Marketing: Process Birthday Campaigns</field>
+            <field name="model_id" ref="model_zns_bom_marketing_scheduler"/>
+            <field name="state">code</field>
+            <field name="code">model.process_birthday_campaigns()</field>
+            <field name="user_id" ref="base.user_root"/>
+            <field name="interval_number">1</field>
+            <field name="interval_type">days</field>
+            <field name="nextcall" eval="(DateTime.now() + timedelta(days=1)).replace(hour=6, minute=0, second=0)"/>
+            <field name="numbercall">-1</field>
+            <field name="active">True</field>
+            <field name="doall">False</field>
+        </record>
+
+        <!-- Process Opt-out Bounces - Daily at 3:00 AM -->
+        <record id="cron_opt_out_bounces" model="ir.cron">
+            <field name="name">ZNS BOM Marketing: Process Opt-out Bounces</field>
+            <field name="model_id" ref="model_zns_bom_marketing_scheduler"/>
+            <field name="state">code</field>
+            <field name="code">model.process_opt_out_bounces()</field>
+            <field name="user_id" ref="base.user_root"/>
+            <field name="interval_number">1</field>
+            <field name="interval_type">days</field>
+            <field name="nextcall" eval="(DateTime.now() + timedelta(days=1)).replace(hour=3, minute=0, second=0)"/>
+            <field name="numbercall">-1</field>
+            <field name="active">True</field>
+            <field name="doall">False</field>
+        </record>
+
+    </data>
+</odoo>-1</field>
+            <field name="active">True</field>
+            <field name="doall">False</field>
+        </record>
+
+        <!-- Campaign Executor - Every hour -->
+        <record id="cron_campaign_executor" model="ir.cron">
+            <field name="name">ZNS BOM Marketing: Execute Scheduled Campaigns</field>
+            <field name="model_id" ref="model_zns_bom_marketing_scheduler"/>
+            <field name="state">code</field>
+            <field name="code">model.process_scheduled_campaigns()</field>
+            <field name="user_id" ref="base.user_root"/>
+            <field name="interval_number">1</field>
+            <field name="interval_type">hours</field>
+            <field name="numbercall">-1</field>
+            <field name="active">True</field>
+            <field name="doall">False</field>
+        </record>
+
+        <!-- Message Queue Processor - Every 5 minutes -->
+        <record id="cron_message_processor" model="ir.cron">
+            <field name="name">ZNS BOM Marketing: Process Message Queue</field>
+            <field name="model_id" ref="model_zns_bom_marketing_scheduler"/>
+            <field name="state">code</field>
+            <field name="code">model.process_message_queue()</field>
+            <field name="user_id" ref="base.user_root"/>
+            <field name="interval_number">5</field>
+            <field name="interval_type">minutes</field>
+            <field name="numbercall">-1</field>
+            <field name="active">True</field>
+            <field name="doall">False</field>
+        </record>
+
+        <!-- Dynamic List Updater - Daily at 2:00 AM -->
+        <record id="cron_dynamic_lists" model="ir.cron">
+            <field name="name">ZNS BOM Marketing: Update Dynamic Lists</field>
+            <field name="model_id" ref="model_zns_bom_marketing_contact_list"/>
+            <field name="state">code</field>
+            <field name="code">model.update_all_dynamic_lists()</field>
+            <field name="user_id" ref="base.user_root"/>
+            <field name="interval_number">1</field>
+            <field name="interval_type">days</field>
+            <field name="nextcall" eval="(DateTime.now() + timedelta(days=1)).replace(hour=2, minute=0, second=0)"/>
+            <field name="numbercall">-1</field>
+            <field name="active">True</field>
+            <field name="doall">False</field>
+        </record>
+
+        <!-- Recurring Campaign Processor - Every 2 hours -->
+        <record id="cron_recurring_campaigns" model="ir.cron">
+            <field name="name">ZNS BOM Marketing: Process Recurring Campaigns</field>
+            <field name="model_id" ref="model_zns_bom_marketing_scheduler"/>
+            <field name="state">code</field>
+            <field name="code">model.process_recurring_campaigns()</field>
+            <field name="user_id" ref="base.user_root"/>
+            <field name="interval_number">2</field>
+            <field name="interval_type">hours</field>
+            <field name="numbercall">-1</field>
+            <field name="active">True</field>
+            <field name="doall">False</field>
+        </record>
+
+        <!-- Retry Failed Messages - Every 30 minutes -->
+        <record id="cron_retry_messages" model="ir.cron">
+            <field name="name">ZNS BOM Marketing: Retry Failed Messages</field>
+            <field name="model_id" ref="model_zns_bom_marketing_scheduler"/>
+            <field name="state">code</field>
+            <field name="code">model._process_retry_messages()</field>
+            <field name="user_id" ref="base.user_root"/>
+            <field name="interval_number">30</field>
+            <field name="interval_type">minutes</field>
+            <field name="numbercall">-1</field>
+            <field name="active">True</field>
+            <field name="doall">False</field>
+        </record>
+
+        <!-- Cleanup Old Messages - Weekly -->
+        <record id="cron_cleanup_messages" model="ir.cron">
+            <field name="name">ZNS BOM Marketing: Cleanup Old Messages</field>
+            <field name="model_id" ref="model_zns_bom_marketing_scheduler"/>
+            <field name="state">code</field>
+            <field name="code">model.cleanup_old_messages()</field>
+            <field name="user_id" ref="base.user_root"/>
+            <field name="interval_number">7</field>
+            <field name="interval_type">days</field>
+            <field name="numbercall">

@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Dashboard Template -->
+    <template id="zns_bom_marketing_dashboard_template">
+        <div class="o_zns_marketing_dashboard">
+            <div class="container-fluid">
+                <!-- Header -->
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <h1>ZNS Marketing Dashboard</h1>
+                        <p class="text-muted">Monitor your marketing campaigns and message performance</p>
+                    </div>
+                </div>
+                
+                <!-- Quick Stats Cards -->
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <div class="card bg-primary text-white">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between">
+                                    <div>
+                                        <h4 id="active_campaigns">0</h4>
+                                        <p>Active Campaigns</p>
+                                    </div>
+                                    <div class="align-self-center">
+                                        <i class="fa fa-bullhorn fa-2x"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3">
+                        <div class="card bg-success text-white">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between">
+                                    <div>
+                                        <h4 id="messages_today">0</h4>
+                                        <p>Messages Today</p>
+                                    </div>
+                                    <div class="align-self-center">
+                                        <i class="fa fa-envelope fa-2x"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3">
+                        <div class="card bg-info text-white">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between">
+                                    <div>
+                                        <h4 id="delivery_rate">0%</h4>
+                                        <p>Delivery Rate</p>
+                                    </div>
+                                    <div class="align-self-center">
+                                        <i class="fa fa-check fa-2x"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3">
+                        <div class="card bg-warning text-white">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between">
+                                    <div>
+                                        <h4 id="queued_messages">0</h4>
+                                        <p>Queued Messages</p>
+                                    </div>
+                                    <div class="align-self-center">
+                                        <i class="fa fa-clock-o fa-2x"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Charts Row -->
+                <div class="row mb-4">
+                    <div class="col-md-8">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5>Message Trends (Last 30 Days)</h5>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="messageChart" height="100"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5>Campaign Types</h5>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="campaignChart" height="200"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Tables Row -->
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5>Recent Campaigns</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="table table-sm" id="recent_campaigns_table">
+                                        <thead>
+                                            <tr>
+                                                <th>Campaign</th>
+                                                <th>Type</th>
+                                                <th>Status</th>
+                                                <th>Progress</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5>Upcoming Birthdays</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="table table-sm" id="upcoming_birthdays_table">
+                                        <thead>
+                                            <tr>
+                                                <th>Date</th>
+                                                <th>Contacts</th>
+                                                <th>Names</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Statistics Row -->
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5>Contact Lists</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="contact_stats">
+                                    <!-- Contact statistics will be loaded here -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5>Opt-out Statistics</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="opt_out_stats">
+                                    <!-- Opt-out statistics will be loaded here -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5>System Status</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="system_status">
+                                    <!-- System status will be loaded here -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <!-- Dashboard Action -->
+    <record id="action_zns_bom_marketing_dashboard" model="ir.actions.client">
+        <field name="name">Marketing Dashboard</field>
+        <field name="tag">zns_bom_marketing_dashboard</field>
+    </record>
+
+    <!-- Dashboard Menu Item -->
+    <record id="menu_zns_bom_marketing_dashboard" model="ir.ui.menu">
+        <field name="name">Dashboard</field>
+        <field name="parent_id" ref="menu_zns_bom_marketing_root"/>
+        <field name="action" ref="action_zns_bom_marketing_dashboard"/>
+        <field name="sequence">1</field>
+    </record>
+
+</odoo>

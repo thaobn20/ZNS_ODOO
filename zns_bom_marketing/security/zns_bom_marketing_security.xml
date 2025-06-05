@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="0">
+        
+        <!-- Security Groups -->
+        <record id="group_zns_bom_marketing_user" model="res.groups">
+            <field name="name">ZNS Marketing User</field>
+            <field name="category_id" ref="base.module_category_marketing"/>
+            <field name="implied_ids" eval="[(4, ref('base.group_user'))]"/>
+            <field name="comment">Can view and create marketing campaigns and contact lists</field>
+        </record>
+
+        <record id="group_zns_bom_marketing_manager" model="res.groups">
+            <field name="name">ZNS Marketing Manager</field>
+            <field name="category_id" ref="base.module_category_marketing"/>
+            <field name="implied_ids" eval="[(4, ref('group_zns_bom_marketing_user'))]"/>
+            <field name="comment">Can manage all marketing campaigns, contact lists, and system settings</field>
+        </record>
+
+        <!-- Record Rules -->
+        <record id="rule_zns_bom_marketing_contact_list_user" model="ir.rule">
+            <field name="name">Contact List: User Access</field>
+            <field name="model_id" ref="model_zns_bom_marketing_contact_list"/>
+            <field name="groups" eval="[(4, ref('group_zns_bom_marketing_user'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_create" eval="True"/>
+            <field name="perm_unlink" eval="False"/>
+            <field name="domain_force">['|', ('create_uid', '=', user.id), ('active', '=', True)]</field>
+        </record>
+
+        <record id="rule_zns_bom_marketing_contact_list_manager" model="ir.rule">
+            <field name="name">Contact List: Manager Access</field>
+            <field name="model_id" ref="model_zns_bom_marketing_contact_list"/>
+            <field name="groups" eval="[(4, ref('group_zns_bom_marketing_manager'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_create" eval="True"/>
+            <field name="perm_unlink" eval="True"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+        </record>
+
+        <record id="rule_zns_bom_marketing_campaign_user" model="ir.rule">
+            <field name="name">Campaign: User Access</field>
+            <field name="model_id" ref="model_zns_bom_marketing_campaign"/>
+            <field name="groups" eval="[(4, ref('group_zns_bom_marketing_user'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_create" eval="True"/>
+            <field name="perm_unlink" eval="False"/>
+            <field name="domain_force">['|', ('create_uid', '=', user.id), ('status', 'in', ['running', 'completed'])]</field>
+        </record>
+
+        <record id="rule_zns_bom_marketing_campaign_manager" model="ir.rule">
+            <field name="name">Campaign: Manager Access</field>
+            <field name="model_id" ref="model_zns_bom_marketing_campaign"/>
+            <field name="groups" eval="[(4, ref('group_zns_bom_marketing_manager'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_create" eval="True"/>
+            <field name="perm_unlink" eval="True"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+        </record>
+
+        <record id="rule_zns_bom_marketing_message_user" model="ir.rule">
+            <field name="name">Message: User Access</field>
+            <field name="model_id" ref="model_zns_bom_marketing_message"/>
+            <field name="groups" eval="[(4, ref('group_zns_bom_marketing_user'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="False"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_unlink" eval="False"/>
+            <field name="domain_force">[('campaign_id.create_uid', '=', user.id)]</field>
+        </record>
+
+        <record id="rule_zns_bom_marketing_message_manager" model="ir.rule">
+            <field name="name">Message: Manager Access</field>
+            <field name="model_id" ref="model_zns_bom_marketing_message"/>
+            <field name="groups" eval="[(4, ref('group_zns_bom_marketing_manager'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_create" eval="True"/>
+            <field name="perm_unlink" eval="True"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+        </record>
+
+        <record id="rule_zns_bom_marketing_opt_out_user" model="ir.rule">
+            <field name="name">Opt-out: User Access</field>
+            <field name="model_id" ref="model_zns_bom_marketing_opt_out"/>
+            <field name="groups" eval="[(4, ref('group_zns_bom_marketing_user'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_create" eval="True"/>
+            <field name="perm_unlink" eval="False"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+        </record>
+
+        <record id="rule_zns_bom_marketing_opt_out_manager" model="ir.rule">
+            <field name="name">Opt-out: Manager Access</field>
+            <field name="model_id" ref="model_zns_bom_marketing_opt_out"/>
+            <field name="groups" eval="[(4, ref('group_zns_bom_marketing_manager'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_create" eval="True"/>
+            <field name="perm_unlink" eval="True"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+        </record>
+
+    </data>
+</odoo>

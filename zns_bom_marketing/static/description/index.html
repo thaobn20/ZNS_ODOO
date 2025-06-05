@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZNS BOM Marketing - Advanced Marketing Automation</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+        
+        .header {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 20px 0;
+            text-align: center;
+            color: white;
+        }
+        
+        .header h1 {
+            font-size: 3em;
+            margin: 0;
+            font-weight: 700;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .header p {
+            font-size: 1.3em;
+            margin: 10px 0 0 0;
+            opacity: 0.9;
+        }
+        
+        .content {
+            background: white;
+            margin: 20px 0;
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+        }
+        
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin: 40px 0;
+        }
+        
+        .feature {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            padding: 30px;
+            border-radius: 12px;
+            border-left: 5px solid #667eea;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .feature:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 30px rgba(0,0,0,0.15);
+        }
+        
+        .feature h3 {
+            color: #667eea;
+            font-size: 1.5em;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+        }
+        
+        .feature h3::before {
+            content: "🎯";
+            margin-right: 10px;
+            font-size: 1.2em;
+        }
+        
+        .feature.birthday h3::before { content: "🎂"; }
+        .feature.automation h3::before { content: "🤖"; }
+        .feature.analytics h3::before { content: "📊"; }
+        .feature.contact h3::before { content: "👥"; }
+        .feature.campaign h3::before { content: "📢"; }
+        .feature.integration h3::before { content: "🔗"; }
+        
+        .feature ul {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .feature li {
+            background: rgba(102, 126, 234, 0.1);
+            margin: 8px 0;
+            padding: 8px 12px;
+            border-radius: 6px;
+            position: relative;
+            padding-left: 25px;
+        }
+        
+        .feature li::before {
+            content: "✓";
+            color: #28a745;
+            font-weight: bold;
+            position: absolute;
+            left: 8px;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin: 40px 0;
+        }
+        
+        .stat {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+        
+        .stat h3 {
+            font-size: 2.5em;
+            margin: 0;
+            font-weight: 700;
+        }
+        
+        .stat p {
+            margin: 10px 0 0 0;
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+        
+        .installation {
+            background: #f8f9fa;
+            padding: 30px;
+            border-radius: 12px;
+            margin: 40px 0;
+            border-left: 5px solid #28a745;
+        }
+        
+        .installation h2 {
+            color: #28a745;
+            margin-top: 0;
+        }
+        
+        .code {
+            background: #1e1e1e;
+            color: #f8f8f2;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            overflow-x: auto;
+            margin: 15px 0;
+        }
+        
+        .workflow {
+            background: linear-gradient(135deg, #e8f5e8 0%, #f0f8f0 100%);
+            padding: 30px;
+            border-radius: 12px;
+            margin: 40px 0;
+            border-left: 5px solid #28a745;
+        }
+        
+        .workflow h2 {
+            color: #28a745;
+            margin-top: 0;
+        }
+        
+        .workflow-steps {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+        
+        .step {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            position: relative;
+        }
+        
+        .step::before {
+            content: attr(data-step);
+            position: absolute;
+            top: -10px;
+            left: 20px;
+            background: #28a745;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+        
+        .step h4 {
+            margin: 15px 0 10px 0;
+            color: #28a745;
+        }
+        
+        .footer {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            color: white;
+            text-align: center;
+            padding: 40px 0;
+            margin-top: 40px;
+        }
+        
+        .btn {
+            display: inline-block;
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+            padding: 15px 30px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: bold;
+            margin: 10px;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+        }
+        
+        .highlight {
+            background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            border-left: 5px solid #ffc107;
+        }
+        
+        .requirements {
+            background: #e8f4f8;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            border-left: 5px solid #17a2b8;
+        }
+        
+        .requirements h3 {
+            color: #17a2b8;
+            margin-top: 0;
+        }
+        
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .content {
+                padding: 20px;
+                margin: 10px;
+            }
+            
+            .features {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="container">
+            <h1>🎯 ZNS BOM Marketing</h1>
+            <p>Advanced Marketing Automation with Birthday Campaigns for Odoo</p>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="content">
+            <div class="highlight">
+                <h2>🎂 Automatic Birthday ZNS Messages - Never Miss a Birthday Again!</h2>
+                <p>This module automatically detects customer birthdays and sends personalized ZNS messages using your existing BOM ZNS Simple infrastructure. Complete marketing automation with zero manual work!</p>
+            </div>
+
+            <div class="stats">
+                <div class="stat">
+                    <h3>100%</h3>
+                    <p>Automated Birthday Detection</p>
+                </div>
+                <div class="stat">
+                    <h3>24/7</h3>
+                    <p>Background Processing</p>
+                </div>
+                <div class="stat">
+                    <h3>0</h3>
+                    <p>Manual Work Required</p>
+                </div>
+                <div class="stat">
+                    <h3>∞</h3>
+                    <p>Scalable Campaigns</p>
+                </div>
+            </div>
+
+            <div class="features">
+                <div class="feature birthday">
+                    <h3>Birthday Automation</h3>
+                    <ul>
+                        <li>Daily birthday detection at 6:00 AM</li>
+                        <li>Automatic age calculation</li>
+                        <li>Configurable send times</li>
+                        <li>No duplicate messages per year</li>
+                        <li>Smart parameter building</li>
+                    </ul>
+                </div>
+
+                <div class="feature integration">
+                    <h3>BOM ZNS Integration</h3>
+                    <ul>
+                        <li>Uses existing templates</li>
+                        <li>Leverages current connections</li>
+                        <li>No duplicate infrastructure</li>
+                        <li>Compatible parameter system</li>
+                        <li>Seamless message sending</li>
+                    </ul>
+                </div>
+
+                <div class="feature contact">
+                    <h3>Smart Contact Lists</h3>
+                    <ul>
+                        <li>Static lists (manual selection)</li>
+                        <li>Dynamic lists (auto-updated)</li>
+                        <li>Birthday auto lists</li>
+                        <li>Health score monitoring</li>
+                        <li>Phone validation</li>
+                    </ul>
+                </div>
+
+                <div class="feature campaign">
+                    <h3>Campaign Management</h3>
+                    <ul>
+                        <li>Multiple campaign types</li>
+                        <li>Flexible scheduling</li>
+                        <li>Progress tracking</li>
+                        <li>Recurring campaigns</li>
+                        <li>A/B testing ready</li>
+                    </ul>
+                </div>
+
+                <div class="feature analytics">
+                    <h3>Advanced Analytics</h3>
+                    <ul>
+                        <li>Real-time dashboard</li>
+                        <li>Delivery rate tracking</li>
+                        <li>Cost analysis</li>
+                        <li>Performance charts</li>
+                        <li>Monthly trends</li>
+                    </ul>
+                </div>
+
+                <div class="feature automation">
+                    <h3>Full Automation</h3>
+                    <ul>
+                        <li>7 scheduled background jobs</li>
+                        <li>Message queue processing</li>
+                        <li>Failed message retry</li>
+                        <li>Opt-out management</li>
+                        <li>System cleanup</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="requirements">
+                <h3>📋 Requirements</h3>
+                <ul>
+                    <li><strong>Odoo 15.0+</strong> (Community or Enterprise)</li>
+                    <li><strong>bom_zns_simple</strong> module (must be installed and configured)</li>
+                    <li><strong>contacts</strong> module (included with Odoo)</li>
+                    <li>Valid ZNS provider configuration</li>
+                </ul>
+            </div>
+
+            <div class="installation">
+                <h2>🚀 Installation</h2>
+                <p><strong>Method 1: Git Clone (Recommended)</strong></p>
+                <div class="code">
+# Clone the repository
+git clone https://github.com/yourusername/zns_bom_marketing.git
+
+# Copy to Odoo addons directory  
+cp -r zns_bom_marketing /path/to/odoo/addons/
+
+# Restart Odoo server
+sudo systemctl restart odoo
+
+# Install via Apps menu
+# Apps > Update Apps List > Search "ZNS BOM Marketing" > Install
+                </div>
+
+                <p><strong>Method 2: Manual Download</strong></p>
+                <div class="code">
+# Download and extract module files
+# Copy to addons directory
+# Restart Odoo and install via Apps menu
+                </div>
+            </div>
+
+            <div class="workflow">
+                <h2>🎯 Birthday Campaign Workflow</h2>
+                <div class="workflow-steps">
+                    <div class="step" data-step="1">
+                        <h4>Create Template</h4>
+                        <p>Design birthday message template in BOM ZNS: "🎂 Happy Birthday {customer_name}! You're now {age} years old!"</p>
+                    </div>
+                    <div class="step" data-step="2">
+                        <h4>Setup Campaign</h4>
+                        <p>Create birthday campaign, select template, configure send time (9:00 AM), set status to "Running"</p>
+                    </div>
+                    <div class="step" data-step="3">
+                        <h4>Automatic Detection</h4>
+                        <p>System automatically finds contacts with birthdays every day at 6:00 AM</p>
+                    </div>
+                    <div class="step" data-step="4">
+                        <h4>Smart Filtering</h4>
+                        <p>Validates phone numbers, checks opt-out status, prevents duplicate messages</p>
+                    </div>
+                    <div class="step" data-step="5">
+                        <h4>Message Sending</h4>
+                        <p>Sends personalized ZNS messages via BOM ZNS Simple at configured time</p>
+                    </div>
+                    <div class="step" data-step="6">
+                        <h4>Analytics Tracking</h4>
+                        <p>Tracks delivery status, updates analytics, provides performance insights</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="highlight">
+                <h2>✨ Key Benefits</h2>
+                <ul>
+                    <li><strong>Zero Manual Work:</strong> Complete automation from birthday detection to message delivery</li>
+                    <li><strong>Perfect Integration:</strong> Uses your existing BOM ZNS infrastructure</li>
+                    <li><strong>Customer Delight:</strong> Never miss a customer birthday again</li>
+                    <li><strong>Revenue Growth:</strong> Automated birthday promotions increase sales</li>
+                    <li><strong>Professional Analytics:</strong> Track ROI and campaign performance</li>
+                    <li><strong>Scalable Solution:</strong> Handles thousands of customers effortlessly</li>
+                </ul>
+            </div>
+
+            <div style="text-align: center; margin: 40px 0;">
+                <a href="#" class="btn">📖 Documentation</a>
+                <a href="#" class="btn">🐙 GitHub Repository</a>
+                <a href="#" class="btn">💬 Get Support</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <div class="container">
+            <h3>🎉 Ready to Automate Your Birthday Marketing?</h3>
+            <p>Install ZNS BOM Marketing today and never miss a customer birthday again!</p>
+            <p style="opacity: 0.8; font-size: 0.9em;">
+                Built with ❤️ for the Odoo community | Licensed under LGPL-3.0
+            </p>
+        </div>
+    </div>
+</body>
+</html>

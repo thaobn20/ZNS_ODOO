@@ -1,0 +1,13 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_zns_bom_marketing_contact_list_user,zns.bom.marketing.contact.list.user,model_zns_bom_marketing_contact_list,base.group_user,1,1,1,1
+access_zns_bom_marketing_campaign_user,zns.bom.marketing.campaign.user,model_zns_bom_marketing_campaign,base.group_user,1,1,1,1
+access_zns_bom_marketing_message_user,zns.bom.marketing.message.user,model_zns_bom_marketing_message,base.group_user,1,1,1,0
+access_zns_bom_marketing_opt_out_user,zns.bom.marketing.opt.out.user,model_zns_bom_marketing_opt_out,base.group_user,1,1,1,1
+access_zns_bom_marketing_dashboard_user,zns.bom.marketing.dashboard.user,model_zns_bom_marketing_dashboard,base.group_user,1,0,0,0
+access_zns_bom_marketing_scheduler_user,zns.bom.marketing.scheduler.user,model_zns_bom_marketing_scheduler,base.group_user,1,0,0,0
+access_zns_bom_marketing_contact_list_manager,zns.bom.marketing.contact.list.manager,model_zns_bom_marketing_contact_list,base.group_system,1,1,1,1
+access_zns_bom_marketing_campaign_manager,zns.bom.marketing.campaign.manager,model_zns_bom_marketing_campaign,base.group_system,1,1,1,1
+access_zns_bom_marketing_message_manager,zns.bom.marketing.message.manager,model_zns_bom_marketing_message,base.group_system,1,1,1,1
+access_zns_bom_marketing_opt_out_manager,zns.bom.marketing.opt.out.manager,model_zns_bom_marketing_opt_out,base.group_system,1,1,1,1
+access_zns_bom_marketing_dashboard_manager,zns.bom.marketing.dashboard.manager,model_zns_bom_marketing_dashboard,base.group_system,1,1,1,1
+access_zns_bom_marketing_scheduler_manager,zns.bom.marketing.scheduler.manager,model_zns_bom_marketing_scheduler,base.group_system,1,1,1,1

@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        
+        <!-- Default Contact Lists -->
+        <record id="contact_list_all_customers" model="zns.bom.marketing.contact.list">
+            <field name="name">All Customers</field>
+            <field name="description">Dynamic list containing all customer contacts</field>
+            <field name="list_type">dynamic</field>
+            <field name="filter_domain">[('is_company', '=', False), ('customer_rank', '>', 0)]</field>
+            <field name="auto_update">True</field>
+            <field name="active">True</field>
+        </record>
+
+        <record id="contact_list_birthday_auto" model="zns.bom.marketing.contact.list">
+            <field name="name">Birthday List (Auto)</field>
+            <field name="description">Automatically updated list of contacts with upcoming birthdays</field>
+            <field name="list_type">birthday_auto</field>
+            <field name="birthday_days_before">1</field>
+            <field name="birthday_months">all</field>
+            <field name="active">True</field>
+        </record>
+
+        <record id="contact_list_vip_customers" model="zns.bom.marketing.contact.list">
+            <field name="name">VIP Customers</field>
+            <field name="description">High-value customers for special promotions</field>
+            <field name="list_type">static</field>
+            <field name="active">True</field>
+        </record>
+
+        <!-- Default Campaigns (Examples) -->
+        <record id="campaign_birthday_default" model="zns.bom.marketing.campaign">
+            <field name="name">Birthday Wishes Campaign</field>
+            <field name="description">Automatic birthday wishes sent to customers</field>
+            <field name="campaign_type">birthday</field>
+            <field name="send_mode">birthday_auto</field>
+            <field name="birthday_days_before">0</field>
+            <field name="birthday_send_time">9.0</field>
+            <field name="status">draft</field>
+            <field name="respect_opt_out">True</field>
+            <field name="enable_retry">True</field>
+            <field name="max_retry_attempts">3</field>
+        </record>
+
+        <!-- Sample Opt-out Reasons Data -->
+        <!-- This will help users understand the system with example data -->
+        
+    </data>
+    
+    <!-- Demo Data (only loaded in demo mode) -->
+    <data noupdate="1">
+        
+        <!-- Demo Contact List -->
+        <record id="demo_contact_list_newsletter" model="zns.bom.marketing.contact.list">
+            <field name="name">Newsletter Subscribers</field>
+            <field name="description">Customers who subscribed to our newsletter</field>
+            <field name="list_type">dynamic</field>
+            <field name="filter_domain">[('opt_out', '=', False), ('email', '!=', False)]</field>
+            <field name="auto_update">True</field>
+            <field name="active">True</field>
+        </record>
+
+        <record id="demo_contact_list_new_customers" model="zns.bom.marketing.contact.list">
+            <field name="name">New Customers (Last 30 Days)</field>
+            <field name="description">Customers who joined in the last 30 days</field>
+            <field name="list_type">dynamic</field>
+            <field name="filter_domain">[('create_date', '>=', (datetime.datetime.now() - datetime.timedelta(days=30)).strftime('%Y-%m-%d'))]</field>
+            <field name="auto_update">True</field>
+            <field name="active">True</field>
+        </record>
+
+        <!-- Demo Campaigns -->
+        <record id="demo_campaign_welcome" model="zns.bom.marketing.campaign">
+            <field name="name">Welcome New Customers</field>
+            <field name="description">Welcome message for new customers</field>
+            <field name="campaign_type">notification</field>
+            <field name="send_mode">scheduled</field>
+            <field name="status">draft</field>
+            <field name="respect_opt_out">True</field>
+            <field name="enable_retry">True</field>
+            <field name="max_retry_attempts">3</field>
+            <field name="contact_list_ids" eval="[(6, 0, [ref('demo_contact_list_new_customers')])]"/>
+        </record>
+
+        <record id="demo_campaign_monthly_promotion" model="zns.bom.marketing.campaign">
+            <field name="name">Monthly Promotion Campaign</field>
+            <field name="description">Monthly promotional offers for all customers</field>
+            <field name="campaign_type">promotion</field>
+            <field name="send_mode">recurring</field>
+            <field name="recurring_type">monthly</field>
+            <field name="recurring_interval">1</field>
+            <field name="recurring_day_of_month">1</field>
+            <field name="status">draft</field>
+            <field name="respect_opt_out">True</field>
+            <field name="enable_retry">True</field>
+            <field name="max_retry_attempts">3</field>
+            <field name="contact_list_ids" eval="[(6, 0, [ref('contact_list_all_customers')])]"/>
+        </record>
+        
+    </data>
+</odoo>

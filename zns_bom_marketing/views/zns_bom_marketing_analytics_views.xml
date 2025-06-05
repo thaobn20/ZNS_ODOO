@@ -1,0 +1,257 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Analytics Tree View -->
+    <record id="view_zns_bom_marketing_analytics_tree" model="ir.ui.view">
+        <field name="name">zns.bom.marketing.analytics.tree</field>
+        <field name="model">zns.bom.marketing.analytics</field>
+        <field name="arch" type="xml">
+            <tree create="false" edit="false" delete="false">
+                <field name="campaign_name"/>
+                <field name="campaign_type"/>
+                <field name="date"/>
+                <field name="total_messages" sum="Total Messages"/>
+                <field name="messages_delivered" sum="Total Delivered"/>
+                <field name="messages_failed" sum="Total Failed"/>
+                <field name="delivery_rate" widget="percentage" avg="Avg Delivery Rate"/>
+                <field name="failure_rate" widget="percentage" avg="Avg Failure Rate"/>
+                <field name="total_cost" sum="Total Cost"/>
+                <field name="cost_per_message"/>
+                <field name="unique_contacts" sum="Total Unique Contacts"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Analytics Form View -->
+    <record id="view_zns_bom_marketing_analytics_form" model="ir.ui.view">
+        <field name="name">zns.bom.marketing.analytics.form</field>
+        <field name="model">zns.bom.marketing.analytics</field>
+        <field name="arch" type="xml">
+            <form create="false" edit="false" delete="false">
+                <sheet>
+                    <group>
+                        <group string="Campaign Information">
+                            <field name="campaign_id" readonly="1"/>
+                            <field name="campaign_name" readonly="1"/>
+                            <field name="campaign_type" readonly="1"/>
+                            <field name="date" readonly="1"/>
+                        </group>
+                        <group string="Template Information">
+                            <field name="template_id" readonly="1"/>
+                            <field name="template_name" readonly="1"/>
+                            <field name="connection_id" readonly="1"/>
+                        </group>
+                    </group>
+                    
+                    <group string="Message Statistics">
+                        <group>
+                            <field name="total_messages" readonly="1"/>
+                            <field name="messages_sent" readonly="1"/>
+                            <field name="messages_delivered" readonly="1"/>
+                            <field name="messages_failed" readonly="1"/>
+                        </group>
+                        <group>
+                            <field name="messages_queued" readonly="1"/>
+                            <field name="messages_skipped" readonly="1"/>
+                            <field name="retry_count_total" readonly="1"/>
+                        </group>
+                    </group>
+                    
+                    <group string="Performance Metrics">
+                        <group>
+                            <field name="delivery_rate" widget="percentage" readonly="1"/>
+                            <field name="failure_rate" widget="percentage" readonly="1"/>
+                            <field name="success_rate" widget="percentage" readonly="1"/>
+                        </group>
+                        <group>
+                            <field name="avg_send_duration" readonly="1"/>
+                            <field name="unique_contacts" readonly="1"/>
+                            <field name="repeat_contacts" readonly="1"/>
+                        </group>
+                    </group>
+                    
+                    <group string="Cost Analysis">
+                        <group>
+                            <field name="total_cost" readonly="1"/>
+                            <field name="cost_per_message" readonly="1"/>
+                        </group>
+                        <group>
+                            <field name="cost_per_delivery" readonly="1"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Analytics Search View -->
+    <record id="view_zns_bom_marketing_analytics_search" model="ir.ui.view">
+        <field name="name">zns.bom.marketing.analytics.search</field>
+        <field name="model">zns.bom.marketing.analytics</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="campaign_name"/>
+                <field name="campaign_type"/>
+                <field name="template_name"/>
+                <separator/>
+                <filter name="filter_birthday" string="Birthday Campaigns" domain="[('campaign_type', '=', 'birthday')]"/>
+                <filter name="filter_promotion" string="Promotion Campaigns" domain="[('campaign_type', '=', 'promotion')]"/>
+                <filter name="filter_notification" string="Notification Campaigns" domain="[('campaign_type', '=', 'notification')]"/>
+                <separator/>
+                <filter name="filter_this_month" string="This Month" 
+                        domain="[('date', '>=', (context_today().replace(day=1)).strftime('%Y-%m-%d'))]"/>
+                <filter name="filter_last_month" string="Last Month" 
+                        domain="[('date', '>=', ((context_today().replace(day=1)) - datetime.timedelta(days=32)).strftime('%Y-%m-%d')),
+                                 ('date', '&lt;', (context_today().replace(day=1)).strftime('%Y-%m-%d'))]"/>
+                <filter name="filter_this_year" string="This Year" 
+                        domain="[('year', '=', context_today().strftime('%Y'))]"/>
+                <separator/>
+                <filter name="filter_high_delivery" string="High Delivery Rate (&gt;90%)" domain="[('delivery_rate', '&gt;=', 90)]"/>
+                <filter name="filter_low_delivery" string="Low Delivery Rate (&lt;70%)" domain="[('delivery_rate', '&lt;', 70)]"/>
+                <filter name="filter_high_cost" string="High Cost (&gt;$100)" domain="[('total_cost', '&gt;', 100)]"/>
+                <separator/>
+                <group expand="0" string="Group By">
+                    <filter name="group_by_campaign" string="Campaign" context="{'group_by': 'campaign_name'}"/>
+                    <filter name="group_by_type" string="Campaign Type" context="{'group_by': 'campaign_type'}"/>
+                    <filter name="group_by_template" string="Template" context="{'group_by': 'template_name'}"/>
+                    <filter name="group_by_date" string="Date" context="{'group_by': 'date:day'}"/>
+                    <filter name="group_by_month" string="Month" context="{'group_by': 'month'}"/>
+                    <filter name="group_by_year" string="Year" context="{'group_by': 'year'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Analytics Pivot View -->
+    <record id="view_zns_bom_marketing_analytics_pivot" model="ir.ui.view">
+        <field name="name">zns.bom.marketing.analytics.pivot</field>
+        <field name="model">zns.bom.marketing.analytics</field>
+        <field name="arch" type="xml">
+            <pivot string="Marketing Analytics">
+                <field name="campaign_type" type="row"/>
+                <field name="month" type="col"/>
+                <field name="total_messages" type="measure"/>
+                <field name="messages_delivered" type="measure"/>
+                <field name="delivery_rate" type="measure"/>
+                <field name="total_cost" type="measure"/>
+                <field name="cost_per_message" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <!-- Analytics Graph View -->
+    <record id="view_zns_bom_marketing_analytics_graph" model="ir.ui.view">
+        <field name="name">zns.bom.marketing.analytics.graph</field>
+        <field name="model">zns.bom.marketing.analytics</field>
+        <field name="arch" type="xml">
+            <graph string="Marketing Performance" type="line">
+                <field name="date" interval="day"/>
+                <field name="delivery_rate" type="measure"/>
+                <field name="total_messages" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+    <!-- Report Wizard Form View -->
+    <record id="view_zns_bom_marketing_report_wizard_form" model="ir.ui.view">
+        <field name="name">zns.bom.marketing.report.wizard.form</field>
+        <field name="model">zns.bom.marketing.report.wizard</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="report_type" widget="radio"/>
+                            <field name="group_by" attrs="{'invisible': [('report_type', 'in', ['comparison', 'monthly_trends'])]}"/>
+                        </group>
+                        <group>
+                            <field name="date_from"/>
+                            <field name="date_to"/>
+                            <field name="campaign_ids" widget="many2many_tags" 
+                                   attrs="{'required': [('report_type', '=', 'comparison')]}"/>
+                        </group>
+                    </group>
+                </sheet>
+                <footer>
+                    <button name="action_generate_report" string="Generate Report" type="object" class="btn-primary"/>
+                    <button string="Cancel" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <!-- Actions -->
+    <record id="action_zns_bom_marketing_analytics" model="ir.actions.act_window">
+        <field name="name">Marketing Analytics</field>
+        <field name="res_model">zns.bom.marketing.analytics</field>
+        <field name="view_mode">graph,pivot,tree,form</field>
+        <field name="search_view_id" ref="view_zns_bom_marketing_analytics_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No analytics data found!
+            </p>
+            <p>
+                Marketing analytics will appear here once you have campaigns with sent messages.
+                The analytics provide detailed insights into campaign performance, delivery rates, costs, and trends.
+            </p>
+        </field>
+    </record>
+
+    <record id="action_zns_bom_marketing_report_wizard" model="ir.actions.act_window">
+        <field name="name">Generate Marketing Report</field>
+        <field name="res_model">zns.bom.marketing.report.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+        <field name="view_id" ref="view_zns_bom_marketing_report_wizard_form"/>
+    </record>
+
+    <!-- Menu Items -->
+    <menuitem id="menu_zns_bom_marketing_analytics"
+              name="Analytics"
+              parent="menu_zns_bom_marketing_reports"
+              action="action_zns_bom_marketing_analytics"
+              sequence="1"/>
+
+    <menuitem id="menu_zns_bom_marketing_reports_wizard"
+              name="Generate Report"
+              parent="menu_zns_bom_marketing_reports"
+              action="action_zns_bom_marketing_report_wizard"
+              sequence="2"/>
+
+    <!-- Dashboard Graph Views for Analytics -->
+    <record id="view_analytics_delivery_rate_graph" model="ir.ui.view">
+        <field name="name">analytics.delivery.rate.graph</field>
+        <field name="model">zns.bom.marketing.analytics</field>
+        <field name="arch" type="xml">
+            <graph string="Delivery Rate Trends" type="line">
+                <field name="date" interval="day"/>
+                <field name="delivery_rate" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+    <record id="view_analytics_cost_analysis_graph" model="ir.ui.view">
+        <field name="name">analytics.cost.analysis.graph</field>
+        <field name="model">zns.bom.marketing.analytics</field>
+        <field name="arch" type="xml">
+            <graph string="Cost Analysis" type="bar">
+                <field name="campaign_type"/>
+                <field name="total_cost" type="measure"/>
+                <field name="cost_per_message" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+    <record id="view_analytics_campaign_performance_graph" model="ir.ui.view">
+        <field name="name">analytics.campaign.performance.graph</field>
+        <field name="model">zns.bom.marketing.analytics</field>
+        <field name="arch" type="xml">
+            <graph string="Campaign Performance" type="bar">
+                <field name="campaign_name"/>
+                <field name="delivery_rate" type="measure"/>
+                <field name="total_messages" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+</odoo>

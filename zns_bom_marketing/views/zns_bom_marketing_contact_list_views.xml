@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Contact List Tree View -->
+    <record id="view_zns_bom_marketing_contact_list_tree" model="ir.ui.view">
+        <field name="name">zns.bom.marketing.contact.list.tree</field>
+        <field name="model">zns.bom.marketing.contact.list</field>
+        <field name="arch" type="xml">
+            <tree decoration-muted="not active" decoration-info="list_type=='birthday_auto'" decoration-warning="health_score &lt; 50">
+                <field name="name"/>
+                <field name="list_type"/>
+                <field name="contact_count"/>
+                <field name="health_score" widget="progressbar"/>
+                <field name="valid_phone_count"/>
+                <field name="opt_out_count"/>
+                <field name="last_updated"/>
+                <field name="active" invisible="1"/>
+                <field name="health_score" invisible="1"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Contact List Form View -->
+    <record id="view_zns_bom_marketing_contact_list_form" model="ir.ui.view">
+        <field name="name">zns.bom.marketing.contact.list.form</field>
+        <field name="model">zns.bom.marketing.contact.list</field>
+        <field name="arch" type="xml">
+            <form>
+                <header>
+                    <button name="action_update_contacts" string="Update Contacts" type="object" 
+                            attrs="{'invisible': [('list_type', '=', 'static')]}" class="btn-primary"/>
+                    <button name="action_view_contacts" string="View Contacts" type="object" class="btn-secondary"/>
+                    <button name="action_export_contacts" string="Export CSV" type="object" class="btn-secondary"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_view_contacts" type="object" class="oe_stat_button" icon="fa-users">
+                            <field name="contact_count" widget="statinfo" string="Contacts"/>
+                        </button>
+                    </div>
+                    
+                    <widget name="web_ribbon" title="Archived" bg_color="bg-danger" 
+                            attrs="{'invisible': [('active', '=', True)]}"/>
+                    
+                    <field name="color" widget="color_picker"/>
+                    
+                    <div class="oe_title">
+                        <label for="name" class="oe_edit_only"/>
+                        <h1><field name="name" required="1"/></h1>
+                    </div>
+                    
+                    <group>
+                        <group>
+                            <field name="list_type" widget="radio"/>
+                            <field name="description"/>
+                            <field name="active"/>
+                        </group>
+                        <group>
+                            <field name="contact_count" readonly="1"/>
+                            <field name="health_score" widget="progressbar" readonly="1"/>
+                            <field name="last_updated" readonly="1"/>
+                        </group>
+                    </group>
+                    
+                    <!-- Dynamic List Settings -->
+                    <group string="Dynamic List Settings" attrs="{'invisible': [('list_type', '!=', 'dynamic')]}">
+                        <field name="filter_domain" widget="domain" options="{'model': 'res.partner'}" 
+                               attrs="{'required': [('list_type', '=', 'dynamic')]}"/>
+                        <field name="auto_update"/>
+                    </group>
+                    
+                    <!-- Birthday List Settings -->
+                    <group string="Birthday List Settings" attrs="{'invisible': [('list_type', '!=', 'birthday_auto')]}">
+                        <field name="birthday_days_before"/>
+                        <field name="birthday_months"/>
+                    </group>
+                    
+                    <!-- Health Statistics -->
+                    <group string="List Health Statistics">
+                        <group>
+                            <field name="valid_phone_count" readonly="1"/>
+                            <field name="invalid_phone_count" readonly="1"/>
+                        </group>
+                        <group>
+                            <field name="opt_out_count" readonly="1"/>
+                            <field name="health_score" widget="progressbar" readonly="1"/>
+                        </group>
+                    </group>
+                    
+                    <!-- Contacts -->
+                    <notebook>
+                        <page string="Contacts" attrs="{'invisible': [('list_type', '!=', 'static')]}">
+                            <field name="contact_ids" widget="many2many" options="{'no_create': True}">
+                                <tree>
+                                    <field name="name"/>
+                                    <field name="mobile"/>
+                                    <field name="email"/>
+                                    <field name="birthday"/>
+                                </tree>
+                            </field>
+                        </page>
+                        
+                        <page string="Preview Contacts" attrs="{'invisible': [('list_type', '=', 'static')]}">
+                            <field name="contact_ids" readonly="1">
+                                <tree>
+                                    <field name="name"/>
+                                    <field name="mobile"/>
+                                    <field name="email"/>
+                                    <field name="birthday"/>
+                                </tree>
+                            </field>
+                        </page>
+                        
+                        <page string="Campaigns">
+                            <field name="campaign_ids" readonly="1">
+                                <tree>
+                                    <field name="name"/>
+                                    <field name="campaign_type"/>
+                                    <field name="status"/>
+                                    <field name="progress_percentage" widget="progressbar"/>
+                                </tree>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+                <div class="oe_chatter">
+                    <field name="message_follower_ids"/>
+                    <field name="activity_ids"/>
+                    <field name="message_ids"/>
+                </div>
+            </form>
+        </field>
+    </record>
+
+    <!-- Contact List Kanban View -->
+    <record id="view_zns_bom_marketing_contact_list_kanban" model="ir.ui.view">
+        <field name="name">zns.bom.marketing.contact.list.kanban</field>
+        <field name="model">zns.bom.marketing.contact.list</field>
+        <field name="arch" type="xml">
+            <kanban default_group_by="list_type" class="o_kanban_small_column">
+                <field name="color"/>
+                <field name="name"/>
+                <field name="contact_count"/>
+                <field name="health_score"/>
+                <field name="list_type"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div t-attf-class="#{!selection_mode ? kanban_color(record.color.raw_value) : ''} oe_kanban_global_click">
+                            <div class="o_kanban_image">
+                                <i class="fa fa-users fa-2x"/>
+                            </div>
+                            <div class="oe_kanban_details">
+                                <strong><field name="name"/></strong>
+                                <div class="o_kanban_tags_section">
+                                    <span class="badge badge-pill badge-info">
+                                        <field name="contact_count"/> contacts
+                                    </span>
+                                </div>
+                                <div class="progress" style="height: 10px; margin: 5px 0;">
+                                    <div class="progress-bar" role="progressbar" 
+                                         t-attf-style="width: #{record.health_score.value}%"
+                                         t-attf-aria-valuenow="#{record.health_score.value}"
+                                         aria-valuemin="0" aria-valuemax="100">
+                                    </div>
+                                </div>
+                                <div>Health: <field name="health_score"/>%</div>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <!-- Actions -->
+    <record id="action_zns_bom_marketing_contact_list" model="ir.actions.act_window">
+        <field name="name">Contact Lists</field>
+        <field name="res_model">zns.bom.marketing.contact.list</field>
+        <field name="view_mode">kanban,tree,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create your first contact list!
+            </p>
+            <p>
+                Contact lists help you organize your marketing campaigns by grouping contacts together.
+                You can create static lists (manual selection), dynamic lists (auto-updated), or birthday lists (automatic birthday detection).
+            </p>
+        </field>
+    </record>
+
+    <record id="action_zns_bom_marketing_contact_list_static" model="ir.actions.act_window">
+        <field name="name">Static Contact Lists</field>
+        <field name="res_model">zns.bom.marketing.contact.list</field>
+        <field name="view_mode">kanban,tree,form</field>
+        <field name="domain">[('list_type', '=', 'static')]</field>
+        <field name="context">{'default_list_type': 'static'}</field>
+    </record>
+
+    <record id="action_zns_bom_marketing_contact_list_dynamic" model="ir.actions.act_window">
+        <field name="name">Dynamic Contact Lists</field>
+        <field name="res_model">zns.bom.marketing.contact.list</field>
+        <field name="view_mode">kanban,tree,form</field>
+        <field name="domain">[('list_type', '=', 'dynamic')]</field>
+        <field name="context">{'default_list_type': 'dynamic'}</field>
+    </record>
+
+    <record id="action_zns_bom_marketing_contact_list_birthday" model="ir.actions.act_window">
+        <field name="name">Birthday Contact Lists</field>
+        <field name="res_model">zns.bom.marketing.contact.list</field>
+        <field name="view_mode">kanban,tree,form</field>
+        <field name="domain">[('list_type', '=', 'birthday_auto')]</field>
+        <field name="context">{'default_list_type': 'birthday_auto'}</field>
+    </record>
+
+</odoo>

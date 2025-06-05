@@ -1,0 +1,255 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Campaign Tree View -->
+    <record id="view_zns_bom_marketing_campaign_tree" model="ir.ui.view">
+        <field name="name">zns.bom.marketing.campaign.tree</field>
+        <field name="model">zns.bom.marketing.campaign</field>
+        <field name="arch" type="xml">
+            <tree decoration-success="status=='completed'" decoration-info="status=='running'" 
+                  decoration-warning="status=='scheduled'" decoration-muted="status=='draft'">
+                <field name="name"/>
+                <field name="campaign_type"/>
+                <field name="status" widget="badge" decoration-success="status=='completed'" 
+                       decoration-info="status=='running'" decoration-warning="status=='scheduled'"/>
+                <field name="total_recipients"/>
+                <field name="progress_percentage" widget="progressbar"/>
+                <field name="delivery_rate" widget="percentage"/>
+                <field name="scheduled_date"/>
+                <field name="started_date"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Campaign Form View -->
+    <record id="view_zns_bom_marketing_campaign_form" model="ir.ui.view">
+        <field name="name">zns.bom.marketing.campaign.form</field>
+        <field name="model">zns.bom.marketing.campaign</field>
+        <field name="arch" type="xml">
+            <form>
+                <header>
+                    <button name="action_start_campaign" string="Start Campaign" type="object" 
+                            class="btn-primary" attrs="{'invisible': [('status', '!=', 'draft')]}"/>
+                    <button name="action_pause_campaign" string="Pause" type="object" 
+                            class="btn-warning" attrs="{'invisible': [('status', 'not in', ['running', 'scheduled'])]}"/>
+                    <button name="action_resume_campaign" string="Resume" type="object" 
+                            class="btn-primary" attrs="{'invisible': [('status', '!=', 'paused')]}"/>
+                    <button name="action_cancel_campaign" string="Cancel" type="object" 
+                            class="btn-danger" attrs="{'invisible': [('status', 'in', ['completed', 'cancelled'])]}"/>
+                    <button name="action_test_send" string="Test Send" type="object" 
+                            class="btn-secondary" attrs="{'invisible': [('status', '!=', 'draft')]}"/>
+                    <field name="status" widget="statusbar" statusbar_visible="draft,scheduled,running,completed"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_view_messages" type="object" class="oe_stat_button" icon="fa-envelope">
+                            <field name="messages_sent" widget="statinfo" string="Sent"/>
+                        </button>
+                        <button name="action_view_messages" type="object" class="oe_stat_button" icon="fa-check">
+                            <field name="messages_delivered" widget="statinfo" string="Delivered"/>
+                        </button>
+                        <button name="action_view_messages" type="object" class="oe_stat_button" icon="fa-times">
+                            <field name="messages_failed" widget="statinfo" string="Failed"/>
+                        </button>
+                    </div>
+                    
+                    <field name="color" widget="color_picker"/>
+                    
+                    <div class="oe_title">
+                        <label for="name" class="oe_edit_only"/>
+                        <h1><field name="name" required="1"/></h1>
+                    </div>
+                    
+                    <group>
+                        <group>
+                            <field name="campaign_type" widget="radio"/>
+                            <field name="description"/>
+                        </group>
+                        <group>
+                            <field name="total_recipients" readonly="1"/>
+                            <field name="progress_percentage" widget="progressbar" readonly="1"/>
+                            <field name="delivery_rate" widget="percentage" readonly="1"/>
+                        </group>
+                    </group>
+                    
+                    <!-- BOM ZNS Template -->
+                    <group string="ZNS Template">
+                        <field name="bom_zns_template_id" required="1" options="{'no_create': True}"/>
+                        <field name="bom_zns_connection_id" readonly="1"/>
+                    </group>
+                    
+                    <!-- Target Audience -->
+                    <group string="Target Audience" attrs="{'invisible': [('campaign_type', '=', 'birthday')]}">
+                        <field name="contact_list_ids" widget="many2many_tags" options="{'no_create': True}"/>
+                        <field name="excluded_contact_ids" widget="many2many_tags" options="{'no_create': True}"/>
+                    </group>
+                    
+                    <!-- Scheduling -->
+                    <group string="Scheduling">
+                        <group>
+                            <field name="send_mode" widget="radio"/>
+                            <field name="scheduled_date" attrs="{'required': [('send_mode', '=', 'scheduled')], 'invisible': [('send_mode', '!=', 'scheduled')]}"/>
+                            <field name="timezone" attrs="{'invisible': [('send_mode', 'not in', ['scheduled', 'recurring'])]}"/>
+                        </group>
+                        <group>
+                            <field name="started_date" readonly="1"/>
+                            <field name="completed_date" readonly="1"/>
+                            <field name="last_run_date" readonly="1" attrs="{'invisible': [('send_mode', '!=', 'recurring')]}"/>
+                            <field name="next_run_date" readonly="1" attrs="{'invisible': [('send_mode', '!=', 'recurring')]}"/>
+                        </group>
+                    </group>
+                    
+                    <!-- Recurring Settings -->
+                    <group string="Recurring Settings" attrs="{'invisible': [('send_mode', '!=', 'recurring')]}">
+                        <group>
+                            <field name="recurring_type" attrs="{'required': [('send_mode', '=', 'recurring')]}"/>
+                            <field name="recurring_interval"/>
+                            <field name="recurring_weekday" attrs="{'invisible': [('recurring_type', '!=', 'weekly')], 'required': [('recurring_type', '=', 'weekly')]}"/>
+                            <field name="recurring_day_of_month" attrs="{'invisible': [('recurring_type', '!=', 'monthly')], 'required': [('recurring_type', '=', 'monthly')]}"/>
+                        </group>
+                        <group>
+                            <field name="recurring_end_date"/>
+                        </group>
+                    </group>
+                    
+                    <!-- Birthday Settings -->
+                    <group string="Birthday Settings" attrs="{'invisible': [('campaign_type', '!=', 'birthday')]}">
+                        <field name="birthday_days_before"/>
+                        <field name="birthday_send_time" widget="float_time"/>
+                    </group>
+                    
+                    <!-- Business Settings -->
+                    <group string="Business Settings">
+                        <group>
+                            <field name="respect_opt_out"/>
+                            <field name="enable_retry"/>
+                            <field name="max_retry_attempts" attrs="{'invisible': [('enable_retry', '=', False)]}"/>
+                        </group>
+                        <group>
+                            <field name="max_send_per_hour"/>
+                            <field name="total_cost" readonly="1"/>
+                        </group>
+                    </group>
+                    
+                    <!-- Analytics -->
+                    <notebook>
+                        <page string="Progress" attrs="{'invisible': [('status', '=', 'draft')]}">
+                            <group>
+                                <group>
+                                    <field name="messages_total" readonly="1"/>
+                                    <field name="messages_sent" readonly="1"/>
+                                    <field name="messages_delivered" readonly="1"/>
+                                </group>
+                                <group>
+                                    <field name="messages_failed" readonly="1"/>
+                                    <field name="delivery_rate" widget="percentage" readonly="1"/>
+                                    <field name="failure_rate" widget="percentage" readonly="1"/>
+                                </group>
+                            </group>
+                            <div class="progress" style="height: 20px;">
+                                <div class="progress-bar progress-bar-success" role="progressbar" 
+                                     t-attf-style="width: #{record.progress_percentage.value}%">
+                                    <t t-esc="record.progress_percentage.value"/>%
+                                </div>
+                            </div>
+                        </page>
+                        
+                        <page string="Messages" attrs="{'invisible': [('status', '=', 'draft')]}">
+                            <field name="message_ids" readonly="1">
+                                <tree>
+                                    <field name="contact_name"/>
+                                    <field name="phone_number"/>
+                                    <field name="status" widget="badge"/>
+                                    <field name="sent_date"/>
+                                    <field name="error_message"/>
+                                </tree>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+                <div class="oe_chatter">
+                    <field name="message_follower_ids"/>
+                    <field name="activity_ids"/>
+                    <field name="message_ids"/>
+                </div>
+            </form>
+        </field>
+    </record>
+
+    <!-- Campaign Kanban View -->
+    <record id="view_zns_bom_marketing_campaign_kanban" model="ir.ui.view">
+        <field name="name">zns.bom.marketing.campaign.kanban</field>
+        <field name="model">zns.bom.marketing.campaign</field>
+        <field name="arch" type="xml">
+            <kanban default_group_by="status" class="o_kanban_small_column">
+                <field name="color"/>
+                <field name="name"/>
+                <field name="campaign_type"/>
+                <field name="status"/>
+                <field name="progress_percentage"/>
+                <field name="total_recipients"/>
+                <field name="delivery_rate"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div t-attf-class="#{!selection_mode ? kanban_color(record.color.raw_value) : ''} oe_kanban_global_click">
+                            <div class="o_kanban_image">
+                                <i t-if="record.campaign_type.raw_value == 'birthday'" class="fa fa-birthday-cake fa-2x"/>
+                                <i t-elif="record.campaign_type.raw_value == 'promotion'" class="fa fa-bullhorn fa-2x"/>
+                                <i t-elif="record.campaign_type.raw_value == 'notification'" class="fa fa-bell fa-2x"/>
+                                <i t-else="" class="fa fa-envelope fa-2x"/>
+                            </div>
+                            <div class="oe_kanban_details">
+                                <strong><field name="name"/></strong>
+                                <div class="o_kanban_tags_section">
+                                    <span class="badge badge-pill badge-primary">
+                                        <field name="campaign_type"/>
+                                    </span>
+                                    <span class="badge badge-pill badge-info">
+                                        <field name="total_recipients"/> recipients
+                                    </span>
+                                </div>
+                                <div class="progress" style="height: 10px; margin: 5px 0;" 
+                                     t-if="record.status.raw_value != 'draft'">
+                                    <div class="progress-bar" role="progressbar" 
+                                         t-attf-style="width: #{record.progress_percentage.value}%">
+                                    </div>
+                                </div>
+                                <div t-if="record.status.raw_value != 'draft'">
+                                    Progress: <field name="progress_percentage"/>%
+                                </div>
+                                <div t-if="record.delivery_rate.value > 0">
+                                    Delivery: <field name="delivery_rate"/>%
+                                </div>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <!-- Actions -->
+    <record id="action_zns_bom_marketing_campaign" model="ir.actions.act_window">
+        <field name="name">Marketing Campaigns</field>
+        <field name="res_model">zns.bom.marketing.campaign</field>
+        <field name="view_mode">kanban,tree,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create your first marketing campaign!
+            </p>
+            <p>
+                Marketing campaigns help you send targeted ZNS messages to your customers.
+                You can create birthday campaigns, promotions, notifications, and more.
+            </p>
+        </field>
+    </record>
+
+    <record id="action_zns_bom_marketing_campaign_birthday" model="ir.actions.act_window">
+        <field name="name">Birthday Campaigns</field>
+        <field name="res_model">zns.bom.marketing.campaign</field>
+        <field name="view_mode">kanban,tree,form</field>
+        <field name="domain">[('campaign_type', '=', 'birthday')]</field>
+        <field name="context">{'default_campaign_type': 'birthday', 'default_send_mode': 'birthday_auto'}</field>
+    </record>
+
+</odoo>

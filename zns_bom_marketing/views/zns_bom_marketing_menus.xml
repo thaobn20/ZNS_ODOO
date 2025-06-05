@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    
+    <!-- Main Menu -->
+    <menuitem id="menu_zns_bom_marketing_root" 
+              name="ZNS Marketing" 
+              web_icon="zns_bom_marketing,static/description/icon.png"
+              sequence="10"/>
+    
+    <!-- Dashboard Menu -->
+    <menuitem id="menu_zns_bom_marketing_dashboard"
+              name="Dashboard"
+              parent="menu_zns_bom_marketing_root"
+              action="action_zns_bom_marketing_dashboard"
+              sequence="1"/>
+    
+    <!-- Campaigns Menu -->
+    <menuitem id="menu_zns_bom_marketing_campaigns"
+              name="Campaigns"
+              parent="menu_zns_bom_marketing_root"
+              sequence="10"/>
+    
+    <menuitem id="menu_zns_bom_marketing_campaign_list"
+              name="All Campaigns"
+              parent="menu_zns_bom_marketing_campaigns"
+              action="action_zns_bom_marketing_campaign"
+              sequence="1"/>
+    
+    <menuitem id="menu_zns_bom_marketing_campaign_birthday"
+              name="Birthday Campaigns"
+              parent="menu_zns_bom_marketing_campaigns"
+              action="action_zns_bom_marketing_campaign_birthday"
+              sequence="2"/>
+    
+    <menuitem id="menu_zns_bom_marketing_campaign_messages"
+              name="Campaign Messages"
+              parent="menu_zns_bom_marketing_campaigns"
+              action="action_zns_bom_marketing_message"
+              sequence="3"/>
+    
+    <!-- Contact Lists Menu -->
+    <menuitem id="menu_zns_bom_marketing_contacts"
+              name="Contact Lists"
+              parent="menu_zns_bom_marketing_root"
+              sequence="20"/>
+    
+    <menuitem id="menu_zns_bom_marketing_contact_list"
+              name="All Lists"
+              parent="menu_zns_bom_marketing_contacts"
+              action="action_zns_bom_marketing_contact_list"
+              sequence="1"/>
+    
+    <menuitem id="menu_zns_bom_marketing_contact_list_static"
+              name="Static Lists"
+              parent="menu_zns_bom_marketing_contacts"
+              action="action_zns_bom_marketing_contact_list_static"
+              sequence="2"/>
+    
+    <menuitem id="menu_zns_bom_marketing_contact_list_dynamic"
+              name="Dynamic Lists"
+              parent="menu_zns_bom_marketing_contacts"
+              action="action_zns_bom_marketing_contact_list_dynamic"
+              sequence="3"/>
+    
+    <menuitem id="menu_zns_bom_marketing_contact_list_birthday"
+              name="Birthday Lists"
+              parent="menu_zns_bom_marketing_contacts"
+              action="action_zns_bom_marketing_contact_list_birthday"
+              sequence="4"/>
+    
+    <!-- Settings Menu -->
+    <menuitem id="menu_zns_bom_marketing_settings"
+              name="Settings"
+              parent="menu_zns_bom_marketing_root"
+              sequence="90"/>
+    
+    <menuitem id="menu_zns_bom_marketing_opt_out"
+              name="Opt-out Management"
+              parent="menu_zns_bom_marketing_settings"
+              action="action_zns_bom_marketing_opt_out"
+              sequence="1"/>
+    
+    <!-- Reports Menu -->
+    <menuitem id="menu_zns_bom_marketing_reports"
+              name="Reports"
+              parent="menu_zns_bom_marketing_root"
+              sequence="80"/>
+
+</odoo>
