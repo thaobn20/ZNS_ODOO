@@ -66,6 +66,9 @@ class ZnsHelper(models.AbstractModel):
         """Enhanced parameter building for sale orders using template parameter mappings"""
         params = {}
         
+        _logger.info(f"Building SO parameters for template: {template.name} (BOM ID: {template.template_id})")
+        _logger.info(f"Template has {len(template.parameter_ids)} parameters")
+        
         # Use template parameter mappings if available
         for param in template.parameter_ids:
             value = None
@@ -73,28 +76,33 @@ class ZnsHelper(models.AbstractModel):
             # First try to get mapped value from field mapping
             if hasattr(param, 'field_mapping') and param.field_mapping:
                 value = param.get_mapped_value(sale_order)
+                _logger.info(f"Parameter {param.name}: field_mapping value = {value}")
             # Fallback to old so_field_mapping for backward compatibility
             elif hasattr(param, 'so_field_mapping') and param.so_field_mapping:
                 value = param.get_mapped_value(sale_order)
+                _logger.info(f"Parameter {param.name}: so_field_mapping value = {value}")
             
             # If no mapping or mapping failed, try standard parameter names
             if not value:
                 value = self._get_standard_so_param_value(sale_order, param.name)
+                _logger.info(f"Parameter {param.name}: standard value = {value}")
             
             # Use default if no value found
             if not value:
                 value = param.default_value or ''
+                _logger.info(f"Parameter {param.name}: using default = {value}")
             
             if value:
                 params[param.name] = str(value)
         
+        _logger.info(f"Final SO parameters: {params}")
         return params
 
     def _get_standard_so_param_value(self, sale_order, param_name):
-        """Get standard parameter values by common names"""
+        """Get standard parameter values by common names - PRESERVE ALL EXISTING PARAMETERS"""
         # Standard parameter mappings based on common ZNS parameter names
         param_mappings = {
-            # Customer details
+            # Customer details - KEEP ALL INCLUDING VAT
             'customer_name': sale_order.partner_id.name,
             'customer_phone': self.format_phone_vietnamese(sale_order.partner_id.mobile or sale_order.partner_id.phone),
             'customer_email': sale_order.partner_id.email,
@@ -102,7 +110,7 @@ class ZnsHelper(models.AbstractModel):
             'customer_address': sale_order.partner_id.contact_address,
             'customer_city': sale_order.partner_id.city,
             'customer_country': sale_order.partner_id.country_id.name if sale_order.partner_id.country_id else '',
-            'customer_vat': sale_order.partner_id.vat,
+            'customer_vat': sale_order.partner_id.vat,  # PRESERVED - DON'T REMOVE VAT
             
             # Order details
             'order_id': sale_order.name,
@@ -132,12 +140,12 @@ class ZnsHelper(models.AbstractModel):
             'total_qty': sum(sale_order.order_line.mapped('product_uom_qty')),
             'product_list': ', '.join(sale_order.order_line.mapped('product_id.name')[:3]),  # First 3 products
             
-            # Company details (includes vat)
+            # Company details - KEEP ALL INCLUDING VAT
             'company_name': sale_order.company_id.name,
-            'company_vat': sale_order.company_id.vat,
-            'company_tax_id': sale_order.company_id.vat,
-            'company_phone': sale_order.company_id.phone,
-            'company_email': sale_order.company_id.email,
+            'company_vat': sale_order.company_id.vat,  # PRESERVED - DON'T REMOVE VAT
+            'company_tax_id': sale_order.company_id.vat,  # PRESERVED
+            'company_phone': sale_order.company_id.phone,  # PRESERVED
+            'company_email': sale_order.company_id.email,  # PRESERVED
             'salesperson': sale_order.user_id.name if sale_order.user_id else '',
             'sales_person': sale_order.user_id.name if sale_order.user_id else '',
             
@@ -167,6 +175,9 @@ class ZnsHelper(models.AbstractModel):
         """Enhanced parameter building for invoices using template parameter mappings"""
         params = {}
         
+        _logger.info(f"Building INVOICE parameters for template: {template.name} (BOM ID: {template.template_id})")
+        _logger.info(f"Template has {len(template.parameter_ids)} parameters")
+        
         # Use template parameter mappings if available
         for param in template.parameter_ids:
             value = None
@@ -174,6 +185,7 @@ class ZnsHelper(models.AbstractModel):
             # Get mapped value from invoice fields
             if hasattr(param, 'field_mapping') and param.field_mapping:
                 value = param.get_mapped_value(invoice)
+                _logger.info(f"Parameter {param.name}: field_mapping value = {value}")
             # Fallback to old so_field_mapping for backward compatibility
             elif hasattr(param, 'so_field_mapping') and param.so_field_mapping:
                 # Adapt SO field mapping to invoice fields
@@ -192,20 +204,25 @@ class ZnsHelper(models.AbstractModel):
                             value = str(obj) if obj else '0'
                         else:
                             value = str(obj) if obj else ''
+                        
+                        _logger.info(f"Parameter {param.name}: so_field_mapping adapted to invoice = {value}")
                     except Exception as e:
                         _logger.warning(f"Error mapping invoice parameter {param.name}: {e}")
             
             # If no mapping or mapping failed, try standard parameter names
             if not value:
                 value = self._get_standard_invoice_param_value(invoice, param.name)
+                _logger.info(f"Parameter {param.name}: standard invoice value = {value}")
             
             # Use default if no value found
             if not value:
                 value = param.default_value or ''
+                _logger.info(f"Parameter {param.name}: using default = {value}")
             
             if value:
                 params[param.name] = str(value)
         
+        _logger.info(f"Final INVOICE parameters: {params}")
         return params
 
     def _adapt_so_mapping_to_invoice(self, so_mapping):
@@ -224,20 +241,28 @@ class ZnsHelper(models.AbstractModel):
             'state': 'state',
             'currency_id.name': 'currency_id.name',
             'payment_term_id.name': 'invoice_payment_term_id.name',
+            # Partner fields remain the same
+            'partner_id.name': 'partner_id.name',
+            'partner_id.mobile': 'partner_id.mobile',
+            'partner_id.phone': 'partner_id.phone',
+            'partner_id.email': 'partner_id.email',
+            'partner_id.vat': 'partner_id.vat',  # PRESERVE VAT
+            'company_id.name': 'company_id.name',
+            'company_id.vat': 'company_id.vat',  # PRESERVE COMPANY VAT
         }
         
         return mapping_conversions.get(so_mapping, so_mapping)
 
     def _get_standard_invoice_param_value(self, invoice, param_name):
-        """Get standard parameter values for invoice by common names"""
+        """Get standard parameter values for invoice by common names - PRESERVE ALL EXISTING PARAMETERS"""
         param_mappings = {
-            # Customer details
+            # Customer details - KEEP ALL INCLUDING VAT
             'customer_name': invoice.partner_id.name,
             'customer_phone': self.format_phone_vietnamese(invoice.partner_id.mobile or invoice.partner_id.phone),
             'customer_email': invoice.partner_id.email,
             'customer_code': invoice.partner_id.ref,
             'customer_address': invoice.partner_id.contact_address,
-            'customer_vat': invoice.partner_id.vat,
+            'customer_vat': invoice.partner_id.vat,  # PRESERVED - DON'T REMOVE VAT
             
             # Invoice details
             'invoice_number': invoice.name,
@@ -269,12 +294,12 @@ class ZnsHelper(models.AbstractModel):
             'is_paid': 'Yes' if invoice.amount_residual == 0 else 'No',
             'payment_status': 'Paid' if invoice.amount_residual == 0 else 'Unpaid',
             
-            # Company details (includes vat)
+            # Company details - KEEP ALL INCLUDING VAT
             'company_name': invoice.company_id.name,
-            'company_vat': invoice.company_id.vat,
-            'company_tax_id': invoice.company_id.vat,
-            'company_phone': invoice.company_id.phone,
-            'company_email': invoice.company_id.email,
+            'company_vat': invoice.company_id.vat,  # PRESERVED - DON'T REMOVE VAT
+            'company_tax_id': invoice.company_id.vat,  # PRESERVED
+            'company_phone': invoice.company_id.phone,  # PRESERVED
+            'company_email': invoice.company_id.email,  # PRESERVED
             
             # Dates in different formats
             'invoice_date_short': invoice.invoice_date.strftime('%d/%m') if invoice.invoice_date else '',
@@ -284,6 +309,11 @@ class ZnsHelper(models.AbstractModel):
             'product_count': len(invoice.invoice_line_ids),
             'main_product': invoice.invoice_line_ids[0].product_id.name if invoice.invoice_line_ids else '',
             'product_list': ', '.join(invoice.invoice_line_ids.mapped('product_id.name')[:3]) if invoice.invoice_line_ids else '',
+            
+            # For compatibility with SO templates that might be used for invoices
+            'order_id': invoice.name,  # Map order_id to invoice number
+            'order_date': invoice.invoice_date.strftime('%d/%m/%Y') if invoice.invoice_date else '',
+            'so_no': invoice.name,  # For templates that expect SO number
         }
         
         return param_mappings.get(param_name, '')

@@ -1,33 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Extend Invoice Form View - FIXED XPath for Odoo 15 -->
+    <!-- Extend Invoice Form View - SIMPLE VERSION WITHOUT zns_template_info -->
     <record id="account_move_form_zns_inherit" model="ir.ui.view">
         <field name="name">account.move.form.zns.inherit</field>
         <field name="model">account.move</field>
         <field name="inherit_id" ref="account.view_move_form"/>
         <field name="arch" type="xml">
-            <!-- Add ZNS button to header - FIXED: Use header instead of non-existent button_box -->
-            <xpath expr="//header" position="inside">
+            <div name="button_box" position="inside">
                 <button type="object" name="action_send_zns" 
-                        class="btn-secondary" 
-                        string="Send ZNS"
-                        icon="fa-paper-plane"
-                        attrs="{'invisible': [('move_type', 'not in', ['out_invoice', 'out_refund'])]}"/>
-            </xpath>
-        </field>
-    </record>
-
-    <!-- Add ZNS Message Count Field to Form (Alternative to stat button) -->
-    <record id="account_move_form_zns_count_inherit" model="ir.ui.view">
-        <field name="name">account.move.form.zns.count.inherit</field>
-        <field name="model">account.move</field>
-        <field name="inherit_id" ref="account.view_move_form"/>
-        <field name="arch" type="xml">
-            <!-- Add message count field in a visible location -->
-            <xpath expr="//field[@name='partner_id']" position="after">
-                <field name="zns_message_count" string="ZNS Messages" readonly="1"
-                       attrs="{'invisible': [('move_type', 'not in', ['out_invoice', 'out_refund'])]}"/>
-            </xpath>
+                        class="oe_stat_button" icon="fa-paper-plane"
+                        attrs="{'invisible': [('move_type', 'not in', ['out_invoice', 'out_refund'])]}">
+                    <div class="o_stat_info">
+                        <field name="zns_message_count" string="ZNS Messages"/>
+                    </div>
+                </button>
+            </div>
         </field>
     </record>
 
@@ -37,120 +24,18 @@
         <field name="model">account.move</field>
         <field name="inherit_id" ref="account.view_move_form"/>
         <field name="arch" type="xml">
-            <!-- Add ZNS tab to the notebook -->
             <xpath expr="//notebook[last()]" position="inside">
                 <page string="Zalo ZNS" name="zns_messages"
                       attrs="{'invisible': [('move_type', 'not in', ['out_invoice', 'out_refund'])]}">
-                    
-                    <div class="alert alert-info">
-                        <h4>📱 Zalo ZNS Integration</h4>
-                        <p>Send ZNS notifications to customers for this invoice using BOM ZNS API.</p>
-                        <p><strong>Total ZNS Messages:</strong> <field name="zns_message_count" readonly="1" nolabel="1"/> sent</p>
-                    </div>
-                    
-                    <group>
-                        <group string="Quick Actions">
-                            <button name="action_send_zns" 
-                                    string="📤 Send ZNS Message" 
-                                    type="object" 
-                                    class="btn-primary"
-                                    help="Open wizard to send ZNS message"
-                                    attrs="{'invisible': [('move_type', 'not in', ['out_invoice', 'out_refund'])]}"/>
-                            <button name="action_test_zns_template" 
-                                    string="🧪 Test Template" 
-                                    type="object" 
-                                    class="btn-warning"
-                                    help="Test which template would be used"
-                                    attrs="{'invisible': [('move_type', 'not in', ['out_invoice', 'out_refund'])]}"/>
-                            <button name="action_retry_auto_zns" 
-                                    string="🔄 Retry Auto Send" 
-                                    type="object" 
-                                    class="btn-info"
-                                    help="Manually retry automatic ZNS sending"
-                                    attrs="{'invisible': [('move_type', 'not in', ['out_invoice', 'out_refund'])]}"/>
-                        </group>
-                        <group string="Invoice Information">
-                            <field name="partner_id" readonly="1" string="Customer"/>
-                            <field name="amount_total" readonly="1" string="Total Amount"/>
-                            <field name="state" readonly="1" string="Status"/>
-                            <field name="zns_template_info" readonly="1" string="Template Info" 
-                                   attrs="{'invisible': [('zns_template_info', '=', False)]}"/>
-                        </group>
-                        <group string="ZNS Configuration">
-                            <field name="zns_auto_send" string="Auto Send ZNS" 
-                                   help="Automatically send ZNS when invoice is posted"/>
-                            <field name="zns_last_error" readonly="1" string="Last Error"
-                                   attrs="{'invisible': [('zns_last_error', '=', False)]}"
-                                   widget="text"/>
-                        </group>
-                    </group>
-                    
-                    <separator string="📋 ZNS Message History"/>
-                    <field name="zns_message_ids" nolabel="1" readonly="1">
-                        <tree decoration-success="status=='sent'" 
-                              decoration-danger="status=='failed'" 
-                              decoration-muted="status=='draft'"
-                              create="false" delete="false" edit="false">
-                            <field name="create_date" string="Created"/>
-                            <field name="template_id" string="Template Used"/>
-                            <field name="phone" string="Phone Number"/>
-                            <field name="status" string="Status"/>
-                            <field name="sent_date" string="Sent Date"/>
-                            <field name="message_id" string="Message ID" optional="hide"/>
-                            <field name="error_message" string="Error Details" optional="hide"/>
-                            <button name="send_zns_message" 
-                                    string="Retry" 
-                                    type="object" 
-                                    icon="fa-refresh" 
-                                    class="btn-link"
-                                    attrs="{'invisible': [('status', '=', 'sent')]}"
-                                    confirm="Are you sure you want to retry sending this ZNS message?"/>
+                    <field name="zns_message_ids" nolabel="1">
+                        <tree>
+                            <field name="template_id"/>
+                            <field name="phone"/>
+                            <field name="status"/>
+                            <field name="sent_date"/>
+                            <field name="create_date"/>
                         </tree>
-                        <form string="ZNS Message Details">
-                            <sheet>
-                                <div class="oe_title">
-                                    <h1>
-                                        <field name="template_id" readonly="1"/>
-                                    </h1>
-                                </div>
-                                <group>
-                                    <group string="Message Details">
-                                        <field name="phone" readonly="1"/>
-                                        <field name="status" readonly="1"/>
-                                        <field name="create_date" readonly="1"/>
-                                        <field name="sent_date" readonly="1"/>
-                                    </group>
-                                    <group string="API Details">
-                                        <field name="message_id" readonly="1"/>
-                                        <field name="connection_id" readonly="1"/>
-                                        <field name="partner_id" readonly="1"/>
-                                    </group>
-                                </group>
-                                <group string="Parameters" attrs="{'invisible': [('parameters', '=', False)]}">
-                                    <field name="parameters" widget="ace" options="{'mode': 'json'}" readonly="1" nolabel="1"/>
-                                </group>
-                                <group string="Error Details" attrs="{'invisible': [('error_message', '=', False)]}">
-                                    <field name="error_message" readonly="1" nolabel="1"/>
-                                </group>
-                            </sheet>
-                        </form>
                     </field>
-                    
-                    <div class="alert alert-warning" attrs="{'invisible': [('zns_message_count', '>', 0)]}">
-                        <h5>💡 Getting Started with ZNS</h5>
-                        <p>No ZNS messages sent yet for this invoice.</p>
-                        <ul>
-                            <li>Click "Send ZNS Message" to manually send a notification</li>
-                            <li>Configure templates in Zalo ZNS → Templates</li>
-                            <li>Set up automatic sending in Settings</li>
-                        </ul>
-                    </div>
-                    
-                    <div class="alert alert-success" attrs="{'invisible': [('zns_message_count', '=', 0)]}">
-                        <h5>✅ ZNS Integration Active</h5>
-                        <p>This invoice has <field name="zns_message_count" readonly="1" nolabel="1"/> ZNS message(s) sent.</p>
-                        <p>Customers receive notifications via Zalo app for better communication.</p>
-                    </div>
                 </page>
             </xpath>
         </field>

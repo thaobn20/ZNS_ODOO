@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- FIXED Sale Order Form View - NO field reference errors -->
+    <!-- COMPLETE CLEAN Sale Order Form View - FIXED METHOD NAMES -->
     <record id="sale_order_form_zns_complete_clean" model="ir.ui.view">
         <field name="name">sale.order.form.zns.complete.clean</field>
         <field name="model">sale.order</field>
@@ -17,7 +17,7 @@
             
             <!-- Add Send ZNS button to header -->
             <button name="action_confirm" position="after">
-                <button name="action_send_zns" 
+                <button name="action_send_zns_manual" 
                         string="Send ZNS" 
                         type="object" 
                         class="btn-secondary"
@@ -37,15 +37,20 @@
                     <div class="alert alert-info">
                         <h4>📱 Zalo ZNS Messages</h4>
                         <p>ZNS messages will be automatically sent when the order is confirmed (if auto-send is enabled).</p>
-                        <p>Template will be automatically selected based on available templates.</p>
+                        <p>Template will be automatically selected based on template mappings configured in Templates menu.</p>
                     </div>
                     
                     <group>
-                        <button name="action_send_zns" 
+                        <button name="action_send_zns_manual" 
                                 string="📤 Send ZNS Now" 
                                 type="object" 
                                 class="btn-primary"
                                 attrs="{'invisible': [('state', 'in', ['draft', 'cancel'])]}"/>
+                        <button name="action_manual_test_zns" 
+                                string="🧪 Test Manual ZNS" 
+                                type="object" 
+                                class="btn-warning"
+                                groups="base.group_no_one"/>
                     </group>
                     
                     <separator string="📋 Message History"/>
