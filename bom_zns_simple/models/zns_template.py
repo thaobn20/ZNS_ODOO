@@ -107,8 +107,7 @@ class ZnsTemplate(models.Model):
         except Exception as e:
             error_msg = f"Sync failed: {str(e)}"
             self.write({'sync_status': error_msg})
-            raise UserError(error_msg)
-    
+            raise UserError(error_msg)    
     @api.model
     def sync_all_templates_from_bom(self):
         """Sync ALL templates from BOM API - called from menu/action"""
@@ -321,23 +320,6 @@ class ZnsTemplateParameter(models.Model):
         ('date_order', 'Order Date'),
         ('custom', 'Custom Value'),
     ], string='SO Field Mapping (Legacy)', help='Legacy field mapping for Sale Orders')
-    
-    # In zns_template.py, add to ZnsTemplateParameter class:
-    invoice_field_mapping = fields.Selection([
-        ('partner_id.name', 'Customer Name'),
-        ('partner_id.mobile', 'Customer Mobile'),
-        ('partner_id.email', 'Customer Email'),
-        ('name', 'Invoice Number'),
-        ('invoice_date', 'Invoice Date'),
-        ('invoice_date_due', 'Due Date'),
-        ('amount_total', 'Total Amount'),
-        ('amount_untaxed', 'Subtotal'),
-        ('amount_tax', 'Tax Amount'),
-        ('amount_residual', 'Remaining Amount'),
-        ('currency_id.name', 'Currency'),
-        ('invoice_payment_term_id.name', 'Payment Terms'),
-        ('custom', 'Custom Value'),
-    ], string='Map to Invoice Field', help='Map this parameter to Invoice field')
     
     # Enhanced Field Mapping for all document types
     field_mapping = fields.Selection([
