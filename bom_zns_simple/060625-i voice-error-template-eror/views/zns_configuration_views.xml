@@ -1,0 +1,276 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- ZNS Configuration Form View -->
+    <record id="zns_configuration_form_view" model="ir.ui.view">
+        <field name="name">zns.configuration.form</field>
+        <field name="model">zns.configuration</field>
+        <field name="arch" type="xml">
+            <form string="ZNS Configuration">
+                <header>
+                    <button name="test_configuration" string="Test Configuration" type="object" class="btn-primary"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name" placeholder="Configuration Name"/>
+                        </h1>
+                    </div>
+                    
+                    <group>
+                        <field name="active"/>
+                        <field name="default_connection_id" options="{'no_create': True}"/>
+                    </group>
+                    
+                    <notebook>
+                        <page string="Default Templates" name="default_templates">
+                            <div class="alert alert-info">
+                                <h4>📋 Default Template Setup</h4>
+                                <p>Configure default ZNS templates for different document types. These will be used when no specific template mapping matches.</p>
+                            </div>
+                            
+                            <group>
+                                <group string="Document Templates">
+                                    <field name="default_so_template_id" 
+                                           options="{'no_create': True}"
+                                           domain="[('active', '=', True), ('template_type', '=', 'transaction')]"/>
+                                    <field name="default_invoice_template_id" 
+                                           options="{'no_create': True}"
+                                           domain="[('active', '=', True), ('template_type', '=', 'transaction')]"/>
+                                    <field name="default_contract_template_id" 
+                                           options="{'no_create': True}"
+                                           domain="[('active', '=', True)]"/>
+                                </group>
+                                <group string="Template Selection Rules">
+                                    <field name="use_template_mappings"/>
+                                    <field name="fallback_to_default"/>
+                                </group>
+                            </group>
+                            
+                            <div class="alert alert-success">
+                                <h5>✅ How Template Selection Works:</h5>
+                                <ol>
+                                    <li><strong>Template Mappings First</strong>: Check conditions (amount, customer type, etc.)</li>
+                                    <li><strong>Default Templates</strong>: Use document-specific defaults if no mapping matches</li>
+                                    <li><strong>Type-based Fallback</strong>: Find any template matching the document type</li>
+                                    <li><strong>Any Template</strong>: Use any active template as last resort</li>
+                                </ol>
+                            </div>
+                        </page>
+                        
+                        <page string="Auto-Send Settings" name="auto_send">
+                            <div class="alert alert-info">
+                                <h4>🚀 Auto-Send Configuration</h4>
+                                <p>Configure when ZNS messages should be sent automatically for different events.</p>
+                            </div>
+                            
+                            <group>
+                                <group string="Sales Order Events">
+                                    <field name="auto_send_so_confirmation"/>
+                                </group>
+                                <group string="Invoice Events">
+                                    <field name="auto_send_invoice_created"/>
+                                    <field name="auto_send_invoice_posted"/>
+                                    <field name="auto_send_payment_received"/>
+                                </group>
+                            </group>
+                            
+                            <div class="alert alert-warning">
+                                <h5>⚠️ Auto-Send Guidelines:</h5>
+                                <ul>
+                                    <li><strong>SO Confirmation</strong>: Most common - sends when order is confirmed</li>
+                                    <li><strong>Invoice Posted</strong>: Sends when invoice is validated and posted</li>
+                                    <li><strong>Invoice Created</strong>: Sends immediately when invoice is created (less common)</li>
+                                    <li><strong>Payment Received</strong>: Sends payment confirmation (requires payment integration)</li>
+                                </ul>
+                            </div>
+                        </page>
+                        
+                        <page string="Customer Filters" name="customer_filters">
+                            <div class="alert alert-info">
+                                <h4>👥 Customer Filtering</h4>
+                                <p>Configure which customers should receive ZNS messages.</p>
+                            </div>
+                            
+                            <group>
+                                <group string="Phone Requirements">
+                                    <field name="customer_phone_required"/>
+                                </group>
+                                <group string="Customer Types">
+                                    <field name="exclude_test_customers"/>
+                                </group>
+                            </group>
+                            
+                            <div class="alert alert-success">
+                                <h5>💡 Best Practices:</h5>
+                                <ul>
+                                    <li><strong>Require Phone</strong>: Always enabled - prevents errors for customers without phones</li>
+                                    <li><strong>Exclude Test</strong>: Prevents sending ZNS to test/demo customers during development</li>
+                                    <li><strong>Customer Tags</strong>: You can create template mappings based on customer categories</li>
+                                </ul>
+                            </div>
+                        </page>
+                        
+                        <page string="Notifications" name="notifications">
+                            <div class="alert alert-info">
+                                <h4>🔔 User Notifications</h4>
+                                <p>Configure when to show notifications to users about ZNS sending status.</p>
+                            </div>
+                            
+                            <group>
+                                <group string="Success Notifications">
+                                    <field name="notify_on_send_success"/>
+                                </group>
+                                <group string="Failure Notifications">
+                                    <field name="notify_on_send_failure"/>
+                                </group>
+                            </group>
+                            
+                            <div class="alert alert-warning">
+                                <h5>📱 Notification Tips:</h5>
+                                <ul>
+                                    <li><strong>Success Notifications</strong>: Usually disabled to avoid spam (success is logged)</li>
+                                    <li><strong>Failure Notifications</strong>: Usually enabled so users know when ZNS fails</li>
+                                    <li>All ZNS activity is logged in Messages menu regardless of notification settings</li>
+                                </ul>
+                            </div>
+                        </page>
+                        
+                        <page string="Usage Examples" name="examples">
+                            <div class="alert alert-info">
+                                <h4>📖 Configuration Examples</h4>
+                            </div>
+                            
+                            <h5>🏪 Basic E-commerce Setup:</h5>
+                            <ul>
+                                <li>Default SO Template: "Order Confirmation"</li>
+                                <li>Default Invoice Template: "Payment Due Reminder"</li>
+                                <li>Auto-send SO Confirmation: ✅ Enabled</li>
+                                <li>Auto-send Invoice Posted: ✅ Enabled</li>
+                                <li>Use Template Mappings: ✅ Enabled (for VIP customers)</li>
+                            </ul>
+                            
+                            <h5>🏭 B2B Business Setup:</h5>
+                            <ul>
+                                <li>Default SO Template: "Purchase Order Confirmation"</li>
+                                <li>Default Invoice Template: "Invoice Ready"</li>
+                                <li>Auto-send SO Confirmation: ✅ Enabled</li>
+                                <li>Auto-send Invoice Created: ❌ Disabled (manual review first)</li>
+                                <li>Auto-send Invoice Posted: ✅ Enabled</li>
+                                <li>Template Mappings: Based on order value and customer type</li>
+                            </ul>
+                            
+                            <h5>🏥 Service Business Setup:</h5>
+                            <ul>
+                                <li>Default SO Template: "Service Booking Confirmed"</li>
+                                <li>Default Invoice Template: "Service Completed - Payment Due"</li>
+                                <li>Auto-send SO Confirmation: ✅ Enabled</li>
+                                <li>Auto-send Payment Received: ✅ Enabled (thank you message)</li>
+                                <li>Notify on Success: ✅ Enabled (important for service businesses)</li>
+                            </ul>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- ZNS Configuration Tree View -->
+    <record id="zns_configuration_tree_view" model="ir.ui.view">
+        <field name="name">zns.configuration.tree</field>
+        <field name="model">zns.configuration</field>
+        <field name="arch" type="xml">
+            <tree string="ZNS Configurations" decoration-success="active==True" decoration-muted="active==False">
+                <field name="name"/>
+                <field name="default_connection_id"/>
+                <field name="default_so_template_id"/>
+                <field name="default_invoice_template_id"/>
+                <field name="auto_send_so_confirmation"/>
+                <field name="auto_send_invoice_posted"/>
+                <field name="active"/>
+                <button name="test_configuration" string="Test" type="object" icon="fa-play" class="btn-link"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- ZNS Configuration Action -->
+    <record id="zns_configuration_action" model="ir.actions.act_window">
+        <field name="name">ZNS Configuration</field>
+        <field name="res_model">zns.configuration</field>
+        <field name="view_mode">tree,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                ⚙️ Configure your ZNS default settings!
+            </p>
+            <p>
+                Set up default templates and auto-send rules for different document types.
+            </p>
+            <p>
+                <strong>Quick Setup:</strong><br/>
+                1. Create configuration<br/>
+                2. Set default templates for SO and Invoice<br/>
+                3. Enable auto-send for order confirmation<br/>
+                4. Test the configuration<br/>
+                5. Enjoy automatic ZNS sending!
+            </p>
+        </field>
+    </record>
+
+    <!-- Simple Template Selection Helper Action (without f-strings) -->
+    <record id="zns_template_selection_helper_action" model="ir.actions.server">
+        <field name="name">Template Selection Helper</field>
+        <field name="model_id" ref="model_zns_configuration"/>
+        <field name="state">code</field>
+        <field name="code">
+# Simple template selection helper without f-strings
+config = env['zns.configuration'].get_default_config()
+
+# Get template counts
+so_templates = env['zns.template'].search_count([
+    ('active', '=', True), 
+    ('template_type', '=', 'transaction')
+])
+mappings = env['zns.template.mapping'].search_count([('active', '=', True)])
+
+# Build message using string concatenation
+so_template_name = config.default_so_template_id.name if config.default_so_template_id else 'Not Set'
+invoice_template_name = config.default_invoice_template_id.name if config.default_invoice_template_id else 'Not Set'
+use_mappings = 'Yes' if config.use_template_mappings else 'No'
+fallback_default = 'Yes' if config.fallback_to_default else 'No'
+
+message = """Template Selection Overview:
+
+Current Configuration:
+• Default SO Template: """ + so_template_name + """
+• Default Invoice Template: """ + invoice_template_name + """
+• Use Template Mappings: """ + use_mappings + """
+• Fallback to Default: """ + fallback_default + """
+
+Available Resources:
+• Transaction Templates: """ + str(so_templates) + """
+• Active Template Mappings: """ + str(mappings) + """
+
+How It Works:
+1. Check template mappings first (if enabled)
+2. Use default template for document type
+3. Find any suitable template by type
+4. Use any active template as last resort
+
+Recommendations:
+• Set at least one default template for each document type
+• Create template mappings for special conditions (VIP customers, large orders)
+• Test your configuration before going live
+"""
+
+action = {
+    'type': 'ir.actions.client',
+    'tag': 'display_notification',
+    'params': {
+        'title': 'Template Selection Guide',
+        'message': message,
+        'type': 'info',
+        'sticky': True,
+    }
+}
+        </field>
+    </record>
+</odoo>

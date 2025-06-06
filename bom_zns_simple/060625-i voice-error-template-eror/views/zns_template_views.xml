@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- UPDATED ZNS Template Views with "Pending" as default Apply To -->
+    <!-- Enhanced ZNS Template Views with Document Type Selection -->
     <record id="zns_template_form_view" model="ir.ui.view">
         <field name="name">zns.template.form</field>
         <field name="model">zns.template</field>
@@ -8,7 +8,6 @@
             <form string="ZNS Template">
                 <header>
                     <button name="sync_template_params" string="Sync Parameters from BOM" type="object" class="btn-primary"/>
-                    <button name="force_refresh_params" string="Force Refresh Parameters" type="object" class="btn-warning"/>
                     <button name="test_template" string="Test Template" type="object" class="btn-info"/>
                 </header>
                 <sheet>
@@ -17,50 +16,18 @@
                             <field name="name" placeholder="Template Name"/>
                         </h1>
                     </div>
-                    
-                    <!-- Status Alerts -->
-                    <div class="alert alert-warning" role="alert" attrs="{'invisible': [('apply_to', '!=', 'pending')]}">
-                        <h5>⚠️ Template Status: Pending</h5>
-                        <p>This template is set to 'Pending' and won't be used by any documents. Please configure the 'Apply To' field below to activate it.</p>
-                    </div>
-                    
-                    <div class="alert alert-success" role="alert" attrs="{'invisible': [('apply_to', '=', 'pending')]}">
-                        <h5>✅ Template Configured</h5>
-                        <p>This template is configured for <field name="apply_to" readonly="1"/> and will be available for auto-selection.</p>
-                    </div>
-                    
-                    <div class="alert alert-info" role="alert" attrs="{'invisible': [('parameters_synced', '=', True)]}">
-                        <h5>📋 Parameters Not Synced</h5>
-                        <p>Click "Sync Parameters from BOM" to load template parameters from your BOM dashboard.</p>
-                    </div>
-                    
                     <group>
                         <group>
                             <field name="template_id" placeholder="e.g., 248079"/>
                             <field name="template_type"/>
-                            <field name="apply_to" widget="radio" options="{'horizontal': false}"/>
+                            <field name="apply_to" widget="radio" options="{'horizontal': true}"/>
                             <field name="connection_id"/>
                             <field name="active"/>
                         </group>
                         <group>
-                            <field name="parameters_synced" readonly="1"/>
                             <field name="last_sync" readonly="1"/>
                             <field name="sync_status" readonly="1" widget="text" attrs="{'invisible': [('sync_status', '=', False)]}"/>
                         </group>
-                    </group>
-                    
-                    <!-- Apply To Configuration Guide -->
-                    <group string="📋 Apply To Configuration Guide">
-                        <div class="alert alert-info">
-                            <h4>How to Configure 'Apply To':</h4>
-                            <ul>
-                                <li><strong>Pending:</strong> Template not used by any documents (default for new templates)</li>
-                                <li><strong>Sales Orders:</strong> Template available for SO confirmation, updates</li>
-                                <li><strong>Invoices:</strong> Template available for invoice posting, payment reminders</li>
-                                <li><strong>Contacts:</strong> Template available for manual contact messaging</li>
-                            </ul>
-                            <p><strong>Note:</strong> Templates must be manually configured from 'Pending' to a specific document type to be used.</p>
-                        </div>
                     </group>
                     
                     <notebook>
@@ -72,7 +39,6 @@
                                     <li><strong>Field Mapping:</strong> Map each parameter to document fields for auto-fill</li>
                                     <li><strong>Document Types:</strong> Set "Apply To" above to specify SO/Invoice/Contact usage</li>
                                 </ol>
-                                <p><strong>Smart Sync:</strong> Parameters are preserved during sync to maintain your mappings. Use "Force Refresh" only if BOM template changed.</p>
                             </div>
                             
                             <field name="parameter_ids" nolabel="1">
@@ -129,30 +95,23 @@
                             <div class="alert alert-info">
                                 <h4>📖 Template Configuration Guide</h4>
                                 
-                                <h5>1. Apply To Selection (REQUIRED)</h5>
+                                <h5>1. Document Type Selection</h5>
                                 <ul>
-                                    <li><strong>Pending:</strong> Default state - template not used anywhere</li>
-                                    <li><strong>Sales Orders:</strong> Available for SO auto-send when confirmed</li>
-                                    <li><strong>Invoices:</strong> Available for invoice auto-send when posted</li>
-                                    <li><strong>Contacts:</strong> Available for manual contact messaging</li>
-                                </ul>
-                                <p><strong>Important:</strong> You must change from 'Pending' to activate the template!</p>
-                                
-                                <h5>2. Smart Parameter Sync</h5>
-                                <ul>
-                                    <li><strong>First Sync:</strong> Creates all parameters from BOM</li>
-                                    <li><strong>Subsequent Syncs:</strong> Preserves your mappings (no clearing)</li>
-                                    <li><strong>Force Refresh:</strong> Clears and re-syncs (use only if BOM template changed)</li>
+                                    <li><strong>Sales Orders:</strong> Template for SO confirmation, updates</li>
+                                    <li><strong>Invoices:</strong> Template for invoice posting, payment reminders</li>
+                                    <li><strong>Contacts:</strong> Template for manual contact messaging</li>
+                                    <li><strong>All Types:</strong> Universal template for any document</li>
                                 </ul>
                                 
-                                <h5>3. Auto Sync Protection</h5>
+                                <h5>2. Template Types</h5>
                                 <ul>
-                                    <li><strong>No Duplicates:</strong> Auto sync uses template_id as primary key</li>
-                                    <li><strong>Preserve Mappings:</strong> Existing templates are never touched</li>
-                                    <li><strong>New Only:</strong> Auto sync only creates new templates</li>
+                                    <li><strong>Transaction:</strong> Order confirmations, invoices</li>
+                                    <li><strong>OTP:</strong> Verification codes</li>
+                                    <li><strong>Promotion:</strong> Marketing messages</li>
+                                    <li><strong>Customer Care:</strong> Support &amp; service messages</li>
                                 </ul>
                                 
-                                <h5>4. Field Mapping Benefits</h5>
+                                <h5>3. Field Mapping Benefits</h5>
                                 <ul>
                                     <li><strong>Auto-fill parameters</strong> from document data</li>
                                     <li><strong>Consistent messaging</strong> across all documents</li>
@@ -160,7 +119,7 @@
                                     <li><strong>Support for company tax ID</strong> and all document fields</li>
                                 </ul>
                                 
-                                <h5>5. Common Parameter Names</h5>
+                                <h5>4. Common Parameter Names</h5>
                                 <code>customer_name, order_id, amount, order_date, customer_phone, company_name, company_tax_id</code>
                             </div>
                         </page>
@@ -170,15 +129,13 @@
         </field>
     </record>
 
-    <!-- UPDATED Template Tree View - Shows apply_to and parameters_synced status -->
+    <!-- Enhanced Template Tree View - FIXED: Removed invalid action button -->
     <record id="zns_template_tree_view" model="ir.ui.view">
         <field name="name">zns.template.tree</field>
         <field name="model">zns.template</field>
         <field name="arch" type="xml">
-            <tree string="ZNS Templates" 
-                  decoration-success="active==True and apply_to!='pending' and parameters_synced==True" 
-                  decoration-warning="active==True and apply_to=='pending'"
-                  decoration-info="active==True and apply_to!='pending' and parameters_synced==False"
+            <tree string="ZNS Templates" decoration-success="active==True and last_sync!=False" 
+                  decoration-warning="active==True and last_sync==False"
                   decoration-muted="active==False">
                 <field name="name"/>
                 <field name="template_id"/>
@@ -186,10 +143,8 @@
                 <field name="apply_to"/>
                 <field name="connection_id"/>
                 <field name="active"/>
-                <field name="parameters_synced"/>
                 <field name="last_sync"/>
-                <button name="sync_template_params" string="Sync" type="object" icon="fa-refresh" class="btn-link" attrs="{'invisible': [('parameters_synced', '=', True)]}"/>
-                <button name="force_refresh_params" string="Force Refresh" type="object" icon="fa-refresh" class="btn-link" attrs="{'invisible': [('parameters_synced', '=', False)]}"/>
+                <button name="sync_template_params" string="Sync" type="object" icon="fa-refresh" class="btn-link"/>
                 <button name="test_template" string="Test" type="object" icon="fa-play" class="btn-link"/>
             </tree>
         </field>
@@ -233,21 +188,15 @@
                 📋 Create your first ZNS template!
             </p>
             <p>
-                Configure ZNS templates with smart sync and document type selection.
+                Configure ZNS templates with document type selection and field mapping.
             </p>
             <p>
                 <strong>Quick Start:</strong><br/>
-                1. Auto sync creates templates as 'Pending'<br/>
-                2. Edit template and set 'Apply To' (SO/Invoice/Contact)<br/>
-                3. Sync parameters from BOM (preserves mappings)<br/>
+                1. Create template with BOM Template ID<br/>
+                2. Select document type (SO/Invoice/Contact)<br/>
+                3. Sync parameters from BOM<br/>
                 4. Map parameters to document fields<br/>
                 5. Templates auto-apply based on document type
-            </p>
-            <p>
-                <strong>Smart Features:</strong><br/>
-                • No duplicate templates (by Template ID)<br/>
-                • Parameters preserved during sync<br/>
-                • Manual configuration required to activate
             </p>
         </field>
     </record>

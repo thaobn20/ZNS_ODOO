@@ -22,14 +22,14 @@ class ZnsTemplate(models.Model):
         ('customer_care', 'Customer Care')
     ], string='Template Type', default='transaction')
     
-    # Document Type Selection - UPDATED: Changed "all" to "pending" and made it default
+    # Document Type Selection
     apply_to = fields.Selection([
-        ('pending', 'Pending'),
         ('sale_order', 'Sales Orders'),
         ('invoice', 'Invoices'),
         ('contact', 'Contacts'),
-    ], string='Apply To', default='pending', required=True, 
-       help="Choose which document types this template applies to. Set to 'Pending' until manually configured.")
+        ('all', 'All Document Types')
+    ], string='Apply To', default='all', required=True, 
+       help="Choose which document types this template applies to")
     
     connection_id = fields.Many2one('zns.connection', string='ZNS Connection', required=True)
     active = fields.Boolean('Active', default=True)
@@ -37,12 +37,8 @@ class ZnsTemplate(models.Model):
     last_sync = fields.Datetime('Last Sync', readonly=True)
     sync_status = fields.Text('Last Sync Status', readonly=True)
     
-    # ADDED: Fields to prevent duplicate sync and parameter clearing
-    parameters_synced = fields.Boolean('Parameters Synced', default=False, readonly=True, 
-                                     help="True if template parameters have been synced from BOM")
-    
     def sync_template_params(self):
-        """Sync template parameters from BOM API - UPDATED: Don't clear existing parameters"""
+        """Sync template parameters from BOM API"""
         connection = self.connection_id
         if not connection:
             raise UserError("No connection configured")
@@ -68,62 +64,41 @@ class ZnsTemplate(models.Model):
             if result.get('error') == '0' or result.get('error') == 0:
                 params_data = result.get('data', [])
                 
-                # UPDATED: Only clear parameters if none exist or forced
-                if not self.parameter_ids or self.env.context.get('force_sync'):
-                    # Clear existing parameters only if forced or none exist
-                    self.parameter_ids.unlink()
-                    
-                    # Create new parameters
-                    created_params = []
-                    for param in params_data:
-                        param_name = param.get('name') or param.get('key')
-                        if param_name:
-                            param_record = self.env['zns.template.parameter'].create({
-                                'template_id': self.id,
-                                'name': param_name,
-                                'title': param.get('title') or param_name,
-                                'param_type': self._map_param_type(param.get('type', 'string')),
-                                'required': param.get('require', False),
-                                'default_value': param.get('default_value', ''),
-                                'description': param.get('description', '')
-                            })
-                            created_params.append(param_name)
-                    
-                    success_msg = f"Successfully synced {len(created_params)} parameters: {', '.join(created_params)}"
-                    self.write({
-                        'last_sync': fields.Datetime.now(),
-                        'sync_status': success_msg,
-                        'parameters_synced': True
-                    })
-                    
-                    return {
-                        'type': 'ir.actions.client',
-                        'tag': 'display_notification',
-                        'params': {
-                            'title': 'Template Sync Successful',
-                            'message': f"✅ Template '{self.name}'\n\n{success_msg}",
-                            'type': 'success',
-                            'sticky': True,
-                        }
+                # Clear existing parameters
+                self.parameter_ids.unlink()
+                
+                # Create new parameters
+                created_params = []
+                for param in params_data:
+                    param_name = param.get('name') or param.get('key')
+                    if param_name:
+                        param_record = self.env['zns.template.parameter'].create({
+                            'template_id': self.id,
+                            'name': param_name,
+                            'title': param.get('title') or param_name,
+                            'param_type': self._map_param_type(param.get('type', 'string')),
+                            'required': param.get('require', False),
+                            'default_value': param.get('default_value', ''),
+                            'description': param.get('description', '')
+                        })
+                        created_params.append(param_name)
+                
+                success_msg = f"Successfully synced {len(created_params)} parameters: {', '.join(created_params)}"
+                self.write({
+                    'last_sync': fields.Datetime.now(),
+                    'sync_status': success_msg
+                })
+                
+                return {
+                    'type': 'ir.actions.client',
+                    'tag': 'display_notification',
+                    'params': {
+                        'title': 'Template Sync Successful',
+                        'message': f"✅ Template '{self.name}'\n\n{success_msg}",
+                        'type': 'success',
+                        'sticky': True,
                     }
-                else:
-                    # Parameters already exist and not forced - just update sync time
-                    self.write({
-                        'last_sync': fields.Datetime.now(),
-                        'sync_status': f"Template already has {len(self.parameter_ids)} parameters. Use 'Force Refresh' to re-sync.",
-                        'parameters_synced': True
-                    })
-                    
-                    return {
-                        'type': 'ir.actions.client',
-                        'tag': 'display_notification',
-                        'params': {
-                            'title': 'Template Already Synced',
-                            'message': f"✅ Template '{self.name}' already has {len(self.parameter_ids)} parameters.\n\nParameters preserved to maintain your mappings.",
-                            'type': 'info',
-                            'sticky': True,
-                        }
-                    }
+                }
             else:
                 error_msg = result.get('message', 'Unknown API error')
                 self.write({'sync_status': error_msg})
@@ -132,15 +107,10 @@ class ZnsTemplate(models.Model):
         except Exception as e:
             error_msg = f"Sync failed: {str(e)}"
             self.write({'sync_status': error_msg})
-            raise UserError(error_msg)
-    
-    def force_refresh_params(self):
-        """Force refresh parameters from BOM (will clear existing mappings)"""
-        return self.with_context(force_sync=True).sync_template_params()
-    
+            raise UserError(error_msg)    
     @api.model
     def sync_all_templates_from_bom(self):
-        """Sync ALL templates from BOM API - UPDATED: Use template_id as primary key, no duplicates"""
+        """Sync ALL templates from BOM API - called from menu/action"""
         # Get active connection
         connection = self.env['zns.connection'].search([('active', '=', True)], limit=1)
         if not connection:
@@ -188,9 +158,9 @@ class ZnsTemplate(models.Model):
                     }
                 }
             
-            # UPDATED: Use template_id as primary key to prevent duplicates
+            # Sync each template
             synced_count = 0
-            skipped_count = 0
+            updated_count = 0
             error_count = 0
             errors = []
             
@@ -204,33 +174,44 @@ class ZnsTemplate(models.Model):
                         _logger.warning(f"Skipping template without ID: {template_data}")
                         continue
                     
-                    # UPDATED: Check by template_id only (primary key logic)
+                    # Check if template already exists
                     existing_template = self.search([
                         ('template_id', '=', str(template_id)),
                         ('connection_id', '=', connection.id)
                     ], limit=1)
                     
                     if existing_template:
-                        # UPDATED: Skip existing templates completely (no updates to preserve mappings)
-                        skipped_count += 1
-                        _logger.info(f"⏭️ Skipped existing template: {template_name} (BOM ID: {template_id})")
-                        continue
+                        # Update existing template
+                        existing_template.write({
+                            'name': template_name,
+                            'template_type': self._map_template_type(template_type),
+                            'active': True
+                        })
+                        
+                        # Sync parameters for this template
+                        try:
+                            existing_template.sync_template_params()
+                            updated_count += 1
+                            _logger.info(f"✅ Updated template: {template_name}")
+                        except Exception as param_error:
+                            _logger.warning(f"Failed to sync parameters for {template_name}: {param_error}")
+                            errors.append(f"{template_name}: Parameter sync failed")
+                            error_count += 1
                     else:
-                        # UPDATED: Create new template with 'pending' apply_to and active=True
+                        # Create new template
                         new_template = self.create({
                             'name': template_name,
                             'template_id': str(template_id),
                             'template_type': self._map_template_type(template_type),
                             'connection_id': connection.id,
-                            'active': True,  # Active by default
-                            'apply_to': 'pending'  # Pending by default
+                            'active': True
                         })
                         
-                        # Sync parameters for new template only
+                        # Sync parameters for new template
                         try:
                             new_template.sync_template_params()
                             synced_count += 1
-                            _logger.info(f"✅ Created NEW template: {template_name} (BOM ID: {template_id})")
+                            _logger.info(f"✅ Created template: {template_name}")
                         except Exception as param_error:
                             _logger.warning(f"Failed to sync parameters for new {template_name}: {param_error}")
                             errors.append(f"{template_name}: Parameter sync failed")
@@ -244,14 +225,12 @@ class ZnsTemplate(models.Model):
                     _logger.error(f"Failed to process template {template_name}: {e}")
             
             # Build success message
+            total_processed = synced_count + updated_count
             result_msg = f"🎉 Auto Template Sync Completed!\n\n"
-            result_msg += f"✅ New templates created: {synced_count}\n"
-            result_msg += f"⏭️ Existing templates skipped: {skipped_count}\n"
+            result_msg += f"✅ New templates: {synced_count}\n"
+            result_msg += f"🔄 Updated templates: {updated_count}\n"
             result_msg += f"❌ Errors: {error_count}\n"
-            result_msg += f"📊 Total from BOM: {len(templates_data)}"
-            
-            if synced_count > 0:
-                result_msg += f"\n\n💡 New templates are set to 'Pending' by default.\nGo to Templates menu to configure 'Apply To' for each template."
+            result_msg += f"📊 Total processed: {total_processed}"
             
             if errors and len(errors) <= 3:
                 result_msg += f"\n\nErrors:\n" + "\n".join(errors)
@@ -332,6 +311,15 @@ class ZnsTemplateParameter(models.Model):
     required = fields.Boolean('Required', default=False)
     default_value = fields.Char('Default Value')
     description = fields.Text('Description', help='Parameter description from BOM API')
+    
+    # ADD THIS FIELD FOR BACKWARD COMPATIBILITY:
+    so_field_mapping = fields.Selection([
+        ('partner_id.name', 'Customer Name'),
+        ('name', 'SO Number'),
+        ('amount_total', 'Total Amount'),
+        ('date_order', 'Order Date'),
+        ('custom', 'Custom Value'),
+    ], string='SO Field Mapping (Legacy)', help='Legacy field mapping for Sale Orders')
     
     # Enhanced Field Mapping for all document types
     field_mapping = fields.Selection([
@@ -439,3 +427,58 @@ class ZnsTemplateParameter(models.Model):
             'note': 'comment',
         }
         return adaptations.get(field_path, field_path)
+        
+
+    def test_template_exists(self):
+        """Quick test if template exists in BOM"""
+        try:
+            access_token = self.connection_id._get_access_token()
+            
+            # Get template list
+            list_url = f"{self.connection_id.api_base_url}/get-list-all-template"
+            headers = {'Authorization': f'Bearer {access_token}'}
+            
+            response = requests.post(list_url, headers=headers, json={}, timeout=30)
+            
+            if response.status_code == 200:
+                result = response.json()
+                if result.get('error') == '0':
+                    templates = result.get('data', [])
+                    
+                    # Build template list message
+                    available_templates = []
+                    for template in templates:
+                        tid = template.get('id') or template.get('template_id')
+                        name = template.get('name', 'Unknown')
+                        status = template.get('status', 'Unknown')
+                        available_templates.append(f"• {tid} - {name} (Status: {status})")
+                    
+                    # Check if our template exists
+                    our_template_exists = any(
+                        str(t.get('id', '') or t.get('template_id', '')) == str(self.template_id) 
+                        for t in templates
+                    )
+                    
+                    message = f"Template Check Results:\n\n"
+                    message += f"Looking for Template ID: {self.template_id}\n"
+                    message += f"Found in BOM: {'✅ YES' if our_template_exists else '❌ NO'}\n\n"
+                    message += f"Available Templates in your BOM account:\n"
+                    message += "\n".join(available_templates[:10])
+                    if len(available_templates) > 10:
+                        message += f"\n... and {len(available_templates) - 10} more templates"
+                    
+                    return {
+                        'type': 'ir.actions.client',
+                        'tag': 'display_notification',
+                        'params': {
+                            'title': '🔍 Template Availability Check',
+                            'message': message,
+                            'type': 'success' if our_template_exists else 'warning',
+                            'sticky': True,
+                        }
+                    }
+            
+            raise UserError("Failed to get template list from BOM")
+            
+        except Exception as e:
+            raise UserError(f"Template check failed: {str(e)}")
