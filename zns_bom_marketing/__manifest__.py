@@ -8,7 +8,7 @@
 ZNS BOM Marketing Module
 ========================
 
-Advanced marketing automation system that integrates with bom_zns_simple module to provide:
+Advanced marketing automation system that optionally integrates with bom_zns_simple module to provide:
 
 * Contact List Management (Static, Dynamic, Auto-Birthday)
 * Campaign Management (Promotion, Birthday, Notification, Recurring)
@@ -20,7 +20,7 @@ Advanced marketing automation system that integrates with bom_zns_simple module 
 
 Features:
 ---------
-* Uses existing bom_zns_simple infrastructure
+* Designed to work with bom_zns_simple infrastructure
 * Automatic birthday ZNS sending
 * Campaign performance tracking
 * Contact list health monitoring
@@ -28,17 +28,23 @@ Features:
 * Message retry handling
 * Comprehensive dashboard
 
-Requirements:
--------------
-* bom_zns_simple module must be installed and configured
+Note:
+-----
+* This module can be installed independently
+* For full ZNS functionality, install bom_zns_simple module
+* Templates and connections will be available once BOM ZNS Simple is installed
     """,
     'author': 'Your Company',
     'website': 'https://www.yourcompany.com',
     'depends': [
         'base',
         'contacts',
-        'bom_zns_simple'  # KEY DEPENDENCY
+        'mail',
+        # 'bom_zns_simple'  # Optional dependency - commented out for standalone installation
     ],
+    'external_dependencies': {
+        'python': [],
+    },
     'data': [
         # Security
         'security/ir.model.access.csv',

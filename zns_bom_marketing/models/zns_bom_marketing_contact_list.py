@@ -72,7 +72,6 @@ class ZnsBomMarketingContactList(models.Model):
         for record in self:
             record.contact_count = len(record.contact_ids)
     
-    @api.depends('contact_ids', 'contact_ids.mobile', 'contact_ids.phone')
     def _compute_health_stats(self):
         for record in self:
             total_contacts = len(record.contact_ids)
@@ -89,10 +88,13 @@ class ZnsBomMarketingContactList(models.Model):
             
             for contact in record.contact_ids:
                 # Check phone validity
-                phone = contact.mobile or contact.phone
-                if phone and len(phone.strip()) >= 10:
-                    valid_phones += 1
-                else:
+                try:
+                    phone = contact.mobile or contact.phone
+                    if phone and len(phone.strip()) >= 10:
+                        valid_phones += 1
+                    else:
+                        invalid_phones += 1
+                except:
                     invalid_phones += 1
                 
                 # Check opt-out status

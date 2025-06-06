@@ -64,93 +64,64 @@ class ZnsBomMarketingAnalytics(models.Model):
     connection_id = fields.Many2one('bom.zns.connection', string='Connection')
     
     def init(self):
-        """Initialize the view - skip if tables don't exist yet"""
+        """Initialize the view - skip completely during installation"""
         try:
-            tools.drop_view_if_exists(self.env.cr, self._table)
-            self._create_analytics_view()
+            # Only try to create view if both required tables exist
+            self.env.cr.execute("""
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.tables 
+                    WHERE table_name = 'zns_bom_marketing_campaign'
+                ) AND EXISTS (
+                    SELECT 1 FROM information_schema.tables 
+                    WHERE table_name = 'zns_bom_marketing_message'
+                )
+            """)
+            
+            if self.env.cr.fetchone()[0]:
+                tools.drop_view_if_exists(self.env.cr, self._table)
+                self._create_minimal_analytics_view()
+                _logger.info("Analytics view created successfully")
+            else:
+                _logger.info("Analytics view creation skipped - required tables not ready yet")
         except Exception as e:
-            _logger.info(f"Analytics view creation skipped during installation: {e}")
-            # This is expected during module installation
-            pass
+            _logger.info(f"Analytics view creation deferred: {e}")
     
-    def _create_analytics_view(self):
-        """Create the analytics view"""
+    def _create_minimal_analytics_view(self):
+        """Create a minimal analytics view"""
+        # Create the simplest possible view to avoid SQL issues
         self.env.cr.execute("""
             CREATE OR REPLACE VIEW %s AS (
                 SELECT 
-                    ROW_NUMBER() OVER() AS id,
+                    m.id,
                     c.id AS campaign_id,
                     c.name AS campaign_name,
                     c.campaign_type,
                     DATE(m.create_date) AS date,
-                    TO_CHAR(m.create_date, 'YYYY-MM') AS month,
-                    TO_CHAR(m.create_date, 'YYYY') AS year,
-                    TO_CHAR(m.create_date, 'YYYY-"W"WW') AS week,
-                    
-                    -- Message counts
-                    COUNT(m.id) AS total_messages,
-                    COUNT(CASE WHEN m.status IN ('sent', 'delivered') THEN 1 END) AS messages_sent,
-                    COUNT(CASE WHEN m.status = 'delivered' THEN 1 END) AS messages_delivered,
-                    COUNT(CASE WHEN m.status = 'failed' THEN 1 END) AS messages_failed,
-                    COUNT(CASE WHEN m.status = 'queued' THEN 1 END) AS messages_queued,
-                    COUNT(CASE WHEN m.status = 'skipped' THEN 1 END) AS messages_skipped,
-                    
-                    -- Calculated rates
-                    CASE 
-                        WHEN COUNT(m.id) > 0 THEN 
-                            ROUND((COUNT(CASE WHEN m.status = 'delivered' THEN 1 END)::FLOAT / COUNT(m.id) * 100), 2)
-                        ELSE 0 
-                    END AS delivery_rate,
-                    
-                    CASE 
-                        WHEN COUNT(m.id) > 0 THEN 
-                            ROUND((COUNT(CASE WHEN m.status = 'failed' THEN 1 END)::FLOAT / COUNT(m.id) * 100), 2)
-                        ELSE 0 
-                    END AS failure_rate,
-                    
-                    CASE 
-                        WHEN COUNT(m.id) > 0 THEN 
-                            ROUND((COUNT(CASE WHEN m.status IN ('sent', 'delivered') THEN 1 END)::FLOAT / COUNT(m.id) * 100), 2)
-                        ELSE 0 
-                    END AS success_rate,
-                    
-                    -- Cost analysis
-                    COALESCE(SUM(m.message_cost), 0) AS total_cost,
-                    CASE 
-                        WHEN COUNT(m.id) > 0 THEN 
-                            ROUND(COALESCE(SUM(m.message_cost), 0) / COUNT(m.id), 4)
-                        ELSE 0 
-                    END AS cost_per_message,
-                    
-                    CASE 
-                        WHEN COUNT(CASE WHEN m.status = 'delivered' THEN 1 END) > 0 THEN 
-                            ROUND(COALESCE(SUM(m.message_cost), 0) / COUNT(CASE WHEN m.status = 'delivered' THEN 1 END), 4)
-                        ELSE 0 
-                    END AS cost_per_delivery,
-                    
-                    -- Performance metrics
-                    COALESCE(AVG(m.send_duration), 0) AS avg_send_duration,
-                    COALESCE(SUM(m.retry_count), 0) AS retry_count_total,
-                    
-                    -- Contact analysis
-                    COUNT(DISTINCT m.contact_id) AS unique_contacts,
-                    COUNT(m.id) - COUNT(DISTINCT m.contact_id) AS repeat_contacts,
-                    
-                    -- Template info
+                    EXTRACT(YEAR FROM m.create_date)::text AS year,
+                    EXTRACT(MONTH FROM m.create_date)::text AS month,
+                    EXTRACT(WEEK FROM m.create_date)::text AS week,
+                    1 AS total_messages,
+                    CASE WHEN m.status IN ('sent', 'delivered') THEN 1 ELSE 0 END AS messages_sent,
+                    CASE WHEN m.status = 'delivered' THEN 1 ELSE 0 END AS messages_delivered,
+                    CASE WHEN m.status = 'failed' THEN 1 ELSE 0 END AS messages_failed,
+                    CASE WHEN m.status = 'queued' THEN 1 ELSE 0 END AS messages_queued,
+                    CASE WHEN m.status = 'skipped' THEN 1 ELSE 0 END AS messages_skipped,
+                    CASE WHEN m.status = 'delivered' THEN 100.0 ELSE 0.0 END AS delivery_rate,
+                    CASE WHEN m.status = 'failed' THEN 100.0 ELSE 0.0 END AS failure_rate,
+                    CASE WHEN m.status IN ('sent', 'delivered') THEN 100.0 ELSE 0.0 END AS success_rate,
+                    COALESCE(m.message_cost, 0) AS total_cost,
+                    COALESCE(m.message_cost, 0) AS cost_per_message,
+                    COALESCE(m.message_cost, 0) AS cost_per_delivery,
+                    COALESCE(m.send_duration, 0) AS avg_send_duration,
+                    COALESCE(m.retry_count, 0) AS retry_count_total,
+                    1 AS unique_contacts,
+                    0 AS repeat_contacts,
                     c.bom_zns_template_id AS template_id,
-                    COALESCE(t.name, 'Unknown Template') AS template_name,
+                    'Template' AS template_name,
                     c.bom_zns_connection_id AS connection_id
-                    
-                FROM zns_bom_marketing_campaign c
-                LEFT JOIN zns_bom_marketing_message m ON c.id = m.campaign_id
-                LEFT JOIN bom_zns_template t ON c.bom_zns_template_id = t.id
+                FROM zns_bom_marketing_message m
+                LEFT JOIN zns_bom_marketing_campaign c ON c.id = m.campaign_id
                 WHERE m.id IS NOT NULL
-                GROUP BY 
-                    c.id, c.name, c.campaign_type, c.bom_zns_template_id, 
-                    c.bom_zns_connection_id, t.name, DATE(m.create_date),
-                    TO_CHAR(m.create_date, 'YYYY-MM'),
-                    TO_CHAR(m.create_date, 'YYYY'),
-                    TO_CHAR(m.create_date, 'YYYY-"W"WW')
             )
         """ % self._table)
         
@@ -158,42 +129,46 @@ class ZnsBomMarketingAnalytics(models.Model):
     def refresh_analytics_view(self):
         """Method to refresh the analytics view after installation"""
         try:
-            self._create_analytics_view()
-            _logger.info("Analytics view created successfully")
+            self._create_minimal_analytics_view()
+            _logger.info("Analytics view refreshed successfully")
         except Exception as e:
-            _logger.error(f"Failed to create analytics view: {e}")
+            _logger.error(f"Failed to refresh analytics view: {e}")
 
     @api.model
     def get_campaign_performance_data(self, campaign_ids=None, date_from=None, date_to=None):
         """Get campaign performance data for charts"""
-        domain = []
-        
-        if campaign_ids:
-            domain.append(('campaign_id', 'in', campaign_ids))
-        if date_from:
-            domain.append(('date', '>=', date_from))
-        if date_to:
-            domain.append(('date', '<=', date_to))
-        
-        analytics = self.search(domain, order='date asc')
-        
-        # Prepare data for charts
-        chart_data = {
-            'dates': [],
-            'total_messages': [],
-            'delivery_rates': [],
-            'failure_rates': [],
-            'costs': []
-        }
-        
-        for record in analytics:
-            chart_data['dates'].append(record.date.strftime('%Y-%m-%d'))
-            chart_data['total_messages'].append(record.total_messages)
-            chart_data['delivery_rates'].append(record.delivery_rate)
-            chart_data['failure_rates'].append(record.failure_rate)
-            chart_data['costs'].append(record.total_cost)
-        
-        return chart_data
+        try:
+            domain = []
+            
+            if campaign_ids:
+                domain.append(('campaign_id', 'in', campaign_ids))
+            if date_from:
+                domain.append(('date', '>=', date_from))
+            if date_to:
+                domain.append(('date', '<=', date_to))
+            
+            analytics = self.search(domain, order='date asc')
+            
+            # Prepare data for charts
+            chart_data = {
+                'dates': [],
+                'total_messages': [],
+                'delivery_rates': [],
+                'failure_rates': [],
+                'costs': []
+            }
+            
+            for record in analytics:
+                chart_data['dates'].append(record.date.strftime('%Y-%m-%d') if record.date else '')
+                chart_data['total_messages'].append(record.total_messages)
+                chart_data['delivery_rates'].append(record.delivery_rate)
+                chart_data['failure_rates'].append(record.failure_rate)
+                chart_data['costs'].append(record.total_cost)
+            
+            return chart_data
+        except Exception as e:
+            _logger.error(f"Error getting campaign performance data: {e}")
+            return {'dates': [], 'total_messages': [], 'delivery_rates': [], 'failure_rates': [], 'costs': []}
 
     @api.model
     def get_campaign_comparison(self, campaign_ids, metrics=['delivery_rate', 'total_cost']):
@@ -201,171 +176,145 @@ class ZnsBomMarketingAnalytics(models.Model):
         if not campaign_ids:
             return {}
         
-        campaigns_data = {}
-        
-        for campaign_id in campaign_ids:
-            analytics = self.search([('campaign_id', '=', campaign_id)])
+        try:
+            campaigns_data = {}
             
-            if analytics:
-                # Aggregate data for this campaign
-                total_messages = sum(analytics.mapped('total_messages'))
-                total_delivered = sum(analytics.mapped('messages_delivered'))
-                total_failed = sum(analytics.mapped('messages_failed'))
-                total_cost = sum(analytics.mapped('total_cost'))
-                
-                delivery_rate = (total_delivered / total_messages * 100) if total_messages > 0 else 0
-                failure_rate = (total_failed / total_messages * 100) if total_messages > 0 else 0
-                cost_per_message = total_cost / total_messages if total_messages > 0 else 0
-                
-                campaign_name = analytics[0].campaign_name
-                
-                campaigns_data[campaign_id] = {
-                    'name': campaign_name,
-                    'total_messages': total_messages,
-                    'delivery_rate': float_round(delivery_rate, 2),
-                    'failure_rate': float_round(failure_rate, 2),
-                    'total_cost': total_cost,
-                    'cost_per_message': float_round(cost_per_message, 4),
-                    'avg_send_duration': sum(analytics.mapped('avg_send_duration')) / len(analytics) if analytics else 0
-                }
-        
-        return campaigns_data
+            for campaign_id in campaign_ids:
+                # Get data directly from campaign and message models
+                campaign = self.env['zns.bom.marketing.campaign'].browse(campaign_id)
+                if campaign.exists():
+                    campaigns_data[campaign_id] = {
+                        'name': campaign.name,
+                        'total_messages': campaign.messages_total,
+                        'delivery_rate': campaign.delivery_rate,
+                        'failure_rate': campaign.failure_rate,
+                        'total_cost': campaign.total_cost,
+                        'cost_per_message': campaign.total_cost / campaign.messages_total if campaign.messages_total > 0 else 0,
+                    }
+            
+            return campaigns_data
+        except Exception as e:
+            _logger.error(f"Error getting campaign comparison: {e}")
+            return {}
 
     @api.model
     def get_monthly_trends(self, months=12):
         """Get monthly performance trends"""
-        date_from = fields.Date.today().replace(day=1) - timedelta(days=months*30)
-        
-        analytics = self.search([
-            ('date', '>=', date_from)
-        ], order='month asc')
-        
-        monthly_data = {}
-        for record in analytics:
-            month = record.month
-            if month not in monthly_data:
-                monthly_data[month] = {
-                    'month': month,
-                    'total_messages': 0,
-                    'messages_delivered': 0,
-                    'messages_failed': 0,
-                    'total_cost': 0,
-                    'campaigns_count': set()
-                }
+        try:
+            # Get data directly from models instead of analytics view
+            campaigns = self.env['zns.bom.marketing.campaign'].search([
+                ('status', 'in', ['running', 'completed'])
+            ])
             
-            monthly_data[month]['total_messages'] += record.total_messages
-            monthly_data[month]['messages_delivered'] += record.messages_delivered
-            monthly_data[month]['messages_failed'] += record.messages_failed
-            monthly_data[month]['total_cost'] += record.total_cost
-            monthly_data[month]['campaigns_count'].add(record.campaign_id)
-        
-        # Convert to list and calculate rates
-        result = []
-        for month_data in monthly_data.values():
-            total = month_data['total_messages']
-            delivered = month_data['messages_delivered']
-            failed = month_data['messages_failed']
+            result = []
+            for i in range(months):
+                target_date = fields.Date.today().replace(day=1) - timedelta(days=i*30)
+                month_start = target_date.replace(day=1)
+                
+                if month_start.month == 12:
+                    next_month = month_start.replace(year=month_start.year + 1, month=1)
+                else:
+                    next_month = month_start.replace(month=month_start.month + 1)
+                
+                messages = self.env['zns.bom.marketing.message'].search([
+                    ('create_date', '>=', month_start),
+                    ('create_date', '<', next_month)
+                ])
+                
+                total_messages = len(messages)
+                delivered = len(messages.filtered(lambda m: m.status == 'delivered'))
+                failed = len(messages.filtered(lambda m: m.status == 'failed'))
+                
+                result.append({
+                    'month': month_start.strftime('%Y-%m'),
+                    'month_name': month_start.strftime('%B %Y'),
+                    'total_messages': total_messages,
+                    'messages_delivered': delivered,
+                    'messages_failed': failed,
+                    'delivery_rate': (delivered / total_messages * 100) if total_messages > 0 else 0,
+                    'failure_rate': (failed / total_messages * 100) if total_messages > 0 else 0,
+                })
             
-            month_data['delivery_rate'] = (delivered / total * 100) if total > 0 else 0
-            month_data['failure_rate'] = (failed / total * 100) if total > 0 else 0
-            month_data['campaigns_count'] = len(month_data['campaigns_count'])
-            
-            result.append(month_data)
-        
-        return sorted(result, key=lambda x: x['month'])
+            return list(reversed(result))
+        except Exception as e:
+            _logger.error(f"Error getting monthly trends: {e}")
+            return []
 
     @api.model
     def get_campaign_type_analysis(self):
         """Analyze performance by campaign type"""
-        analytics = self.search([])
-        
-        type_data = {}
-        for record in analytics:
-            camp_type = record.campaign_type
-            if camp_type not in type_data:
-                type_data[camp_type] = {
-                    'type': camp_type,
-                    'campaigns_count': set(),
-                    'total_messages': 0,
-                    'messages_delivered': 0,
-                    'messages_failed': 0,
-                    'total_cost': 0
-                }
+        try:
+            campaigns = self.env['zns.bom.marketing.campaign'].search([])
             
-            type_data[camp_type]['campaigns_count'].add(record.campaign_id)
-            type_data[camp_type]['total_messages'] += record.total_messages
-            type_data[camp_type]['messages_delivered'] += record.messages_delivered
-            type_data[camp_type]['messages_failed'] += record.messages_failed
-            type_data[camp_type]['total_cost'] += record.total_cost
-        
-        # Calculate rates and convert to list
-        result = []
-        for data in type_data.values():
-            total = data['total_messages']
-            delivered = data['messages_delivered']
+            type_data = {}
+            for campaign in campaigns:
+                camp_type = campaign.campaign_type
+                if camp_type not in type_data:
+                    type_data[camp_type] = {
+                        'type': camp_type,
+                        'campaigns_count': 0,
+                        'total_messages': 0,
+                        'messages_delivered': 0,
+                        'messages_failed': 0,
+                        'total_cost': 0
+                    }
+                
+                type_data[camp_type]['campaigns_count'] += 1
+                type_data[camp_type]['total_messages'] += campaign.messages_total
+                type_data[camp_type]['messages_delivered'] += campaign.messages_delivered
+                type_data[camp_type]['messages_failed'] += campaign.messages_failed
+                type_data[camp_type]['total_cost'] += campaign.total_cost
             
-            data['delivery_rate'] = (delivered / total * 100) if total > 0 else 0
-            data['campaigns_count'] = len(data['campaigns_count'])
-            data['avg_cost_per_message'] = data['total_cost'] / total if total > 0 else 0
+            result = []
+            for data in type_data.values():
+                total = data['total_messages']
+                delivered = data['messages_delivered']
+                
+                data['delivery_rate'] = (delivered / total * 100) if total > 0 else 0
+                data['avg_cost_per_message'] = data['total_cost'] / total if total > 0 else 0
+                
+                result.append(data)
             
-            result.append(data)
-        
-        return result
+            return result
+        except Exception as e:
+            _logger.error(f"Error getting campaign type analysis: {e}")
+            return []
 
     @api.model
     def get_top_performing_campaigns(self, limit=10, metric='delivery_rate'):
         """Get top performing campaigns by specific metric"""
-        analytics = self.search([], order=f'{metric} desc', limit=limit)
-        
-        result = []
-        for record in analytics:
-            result.append({
-                'campaign_id': record.campaign_id,
-                'campaign_name': record.campaign_name,
-                'campaign_type': record.campaign_type,
-                'delivery_rate': record.delivery_rate,
-                'total_messages': record.total_messages,
-                'total_cost': record.total_cost,
-                'success_rate': record.success_rate
-            })
-        
-        return result
+        try:
+            campaigns = self.env['zns.bom.marketing.campaign'].search([
+                ('status', 'in', ['running', 'completed']),
+                ('messages_total', '>', 0)
+            ], order=f'{metric} desc', limit=limit)
+            
+            result = []
+            for campaign in campaigns:
+                result.append({
+                    'campaign_id': campaign.id,
+                    'campaign_name': campaign.name,
+                    'campaign_type': campaign.campaign_type,
+                    'delivery_rate': campaign.delivery_rate,
+                    'total_messages': campaign.messages_total,
+                    'total_cost': campaign.total_cost,
+                    'success_rate': campaign.delivery_rate  # Simplified
+                })
+            
+            return result
+        except Exception as e:
+            _logger.error(f"Error getting top performing campaigns: {e}")
+            return []
 
     @api.model
     def get_cost_analysis(self, group_by='campaign_type'):
         """Analyze costs by different dimensions"""
-        analytics = self.search([])
-        
         if group_by == 'campaign_type':
             return self.get_campaign_type_analysis()
         elif group_by == 'month':
             return self.get_monthly_trends()
-        elif group_by == 'template':
-            # Group by template
-            template_data = {}
-            for record in analytics:
-                template_name = record.template_name or 'Unknown'
-                if template_name not in template_data:
-                    template_data[template_name] = {
-                        'template_name': template_name,
-                        'total_messages': 0,
-                        'total_cost': 0,
-                        'campaigns_count': set()
-                    }
-                
-                template_data[template_name]['total_messages'] += record.total_messages
-                template_data[template_name]['total_cost'] += record.total_cost
-                template_data[template_name]['campaigns_count'].add(record.campaign_id)
-            
-            result = []
-            for data in template_data.values():
-                data['campaigns_count'] = len(data['campaigns_count'])
-                data['avg_cost_per_message'] = data['total_cost'] / data['total_messages'] if data['total_messages'] > 0 else 0
-                result.append(data)
-            
-            return result
-        
-        return []
+        else:
+            return []
 
 
 class ZnsBomMarketingReportWizard(models.TransientModel):
@@ -393,33 +342,34 @@ class ZnsBomMarketingReportWizard(models.TransientModel):
         """Generate the selected report"""
         analytics_model = self.env['zns.bom.marketing.analytics']
         
-        if self.report_type == 'performance':
-            data = analytics_model.get_campaign_performance_data(
-                campaign_ids=self.campaign_ids.ids if self.campaign_ids else None,
-                date_from=self.date_from,
-                date_to=self.date_to
-            )
-        elif self.report_type == 'comparison':
-            data = analytics_model.get_campaign_comparison(
-                campaign_ids=self.campaign_ids.ids if self.campaign_ids else []
-            )
-        elif self.report_type == 'cost_analysis':
-            data = analytics_model.get_cost_analysis(group_by=self.group_by)
-        elif self.report_type == 'monthly_trends':
-            data = analytics_model.get_monthly_trends()
-        else:
+        try:
+            if self.report_type == 'performance':
+                data = analytics_model.get_campaign_performance_data(
+                    campaign_ids=self.campaign_ids.ids if self.campaign_ids else None,
+                    date_from=self.date_from,
+                    date_to=self.date_to
+                )
+            elif self.report_type == 'comparison':
+                data = analytics_model.get_campaign_comparison(
+                    campaign_ids=self.campaign_ids.ids if self.campaign_ids else []
+                )
+            elif self.report_type == 'cost_analysis':
+                data = analytics_model.get_cost_analysis(group_by=self.group_by)
+            elif self.report_type == 'monthly_trends':
+                data = analytics_model.get_monthly_trends()
+            else:
+                data = {}
+        except Exception as e:
             data = {}
+            _logger.error(f"Error generating report: {e}")
         
-        # Return action to display results
+        # Return action to display results - show campaigns instead if analytics fails
         return {
             'name': _('Marketing Analytics Report'),
             'type': 'ir.actions.act_window',
-            'res_model': 'zns.bom.marketing.analytics',
-            'view_mode': 'graph,pivot,tree',
-            'domain': [
-                ('date', '>=', self.date_from),
-                ('date', '<=', self.date_to),
-            ] + ([('campaign_id', 'in', self.campaign_ids.ids)] if self.campaign_ids else []),
+            'res_model': 'zns.bom.marketing.campaign',
+            'view_mode': 'tree,form',
+            'domain': [('status', 'in', ['running', 'completed'])],
             'context': {
                 'search_default_group_by_' + self.group_by: 1,
                 'report_data': data

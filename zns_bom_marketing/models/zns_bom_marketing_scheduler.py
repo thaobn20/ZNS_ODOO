@@ -123,16 +123,24 @@ class ZnsBomMarketingScheduler(models.Model):
         # Build parameters for BOM ZNS template
         params = self._build_birthday_parameters(contact, campaign.bom_zns_template_id)
         
+        # Get connection ID
+        connection_id = self._get_connection_id(campaign)
+        
         # Create BOM ZNS message using existing system
         try:
-            bom_zns_message = self.env['bom.zns.message'].create({
+            bom_zns_message_data = {
                 'template_id': campaign.bom_zns_template_id.id,
-                'connection_id': campaign.bom_zns_template_id.connection_id.id,
                 'phone': phone,
                 'parameters': json.dumps(params) if params else '{}',
                 'partner_id': contact.id,
                 'status': 'draft'  # or whatever initial status bom_zns_simple uses
-            })
+            }
+            
+            # Add connection if available
+            if connection_id:
+                bom_zns_message_data['connection_id'] = connection_id
+            
+            bom_zns_message = self.env['bom.zns.message'].create(bom_zns_message_data)
             
             # Create campaign tracking record
             campaign_message = self.env['zns.bom.marketing.message'].create({
@@ -169,6 +177,27 @@ class ZnsBomMarketingScheduler(models.Model):
             
         except Exception as e:
             _logger.error(f"Failed to queue birthday message for {contact.name}: {e}")
+    
+    def _get_connection_id(self, campaign):
+        """Get connection ID for the campaign"""
+        connection_id = False
+        
+        # Try to get from campaign's connection field
+        if campaign.bom_zns_connection_id:
+            connection_id = campaign.bom_zns_connection_id.id
+        # Try to get from template if it has connection
+        elif campaign.bom_zns_template_id:
+            try:
+                if hasattr(campaign.bom_zns_template_id, 'connection_id') and campaign.bom_zns_template_id.connection_id:
+                    connection_id = campaign.bom_zns_template_id.connection_id.id
+                elif hasattr(campaign.bom_zns_template_id, 'zns_connection_id') and campaign.bom_zns_template_id.zns_connection_id:
+                    connection_id = campaign.bom_zns_template_id.zns_connection_id.id
+                elif hasattr(campaign.bom_zns_template_id, 'bom_connection_id') and campaign.bom_zns_template_id.bom_connection_id:
+                    connection_id = campaign.bom_zns_template_id.bom_connection_id.id
+            except:
+                pass
+        
+        return connection_id
     
     def _send_birthday_message(self, bom_zns_message, campaign_message):
         """Send birthday message using BOM ZNS Simple system"""
@@ -320,14 +349,21 @@ class ZnsBomMarketingScheduler(models.Model):
             # Create BOM ZNS message if not exists
             params = json.loads(campaign_message.message_parameters) if campaign_message.message_parameters else {}
             
-            bom_zns_message = self.env['bom.zns.message'].create({
+            # Get connection ID
+            connection_id = self._get_connection_id(campaign_message.campaign_id)
+            
+            bom_zns_message_data = {
                 'template_id': campaign_message.campaign_id.bom_zns_template_id.id,
-                'connection_id': campaign_message.campaign_id.bom_zns_template_id.connection_id.id,
                 'phone': campaign_message.phone_number,
                 'parameters': json.dumps(params),
                 'partner_id': campaign_message.contact_id.id,
                 'status': 'draft'
-            })
+            }
+            
+            if connection_id:
+                bom_zns_message_data['connection_id'] = connection_id
+            
+            bom_zns_message = self.env['bom.zns.message'].create(bom_zns_message_data)
             
             campaign_message.bom_zns_message_id = bom_zns_message.id
         

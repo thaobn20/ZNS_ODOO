@@ -74,8 +74,17 @@
                     
                     <!-- BOM ZNS Template -->
                     <group string="ZNS Template">
+                        <field name="bom_zns_template_id" options="{'no_create': True}"
+                               help="Select ZNS template from BOM ZNS Simple module. Install BOM ZNS Simple module if no templates are available."/>
+                        <field name="bom_zns_connection_id" readonly="0" options="{'no_create': True}" 
+                               help="ZNS Connection to use. Will be auto-filled from template if available."/>
+                    </group><!-- Updated section of zns_bom_marketing_campaign_views.xml -->
+                    
+                    <!-- BOM ZNS Template -->
+                    <group string="ZNS Template">
                         <field name="bom_zns_template_id" required="1" options="{'no_create': True}"/>
-                        <field name="bom_zns_connection_id" readonly="1"/>
+                        <field name="bom_zns_connection_id" readonly="0" options="{'no_create': True}" 
+                               help="ZNS Connection to use. Will be auto-filled from template if available."/>
                     </group>
                     
                     <!-- Target Audience -->

@@ -8,24 +8,24 @@
             <field name="description">Dynamic list containing all customer contacts</field>
             <field name="list_type">dynamic</field>
             <field name="filter_domain">[('is_company', '=', False), ('customer_rank', '>', 0)]</field>
-            <field name="auto_update">True</field>
-            <field name="active">True</field>
+            <field name="auto_update" eval="True"/>
+            <field name="active" eval="True"/>
         </record>
 
         <record id="contact_list_birthday_auto" model="zns.bom.marketing.contact.list">
             <field name="name">Birthday List (Auto)</field>
             <field name="description">Automatically updated list of contacts with upcoming birthdays</field>
             <field name="list_type">birthday_auto</field>
-            <field name="birthday_days_before">1</field>
+            <field name="birthday_days_before" eval="1"/>
             <field name="birthday_months">all</field>
-            <field name="active">True</field>
+            <field name="active" eval="True"/>
         </record>
 
         <record id="contact_list_vip_customers" model="zns.bom.marketing.contact.list">
             <field name="name">VIP Customers</field>
             <field name="description">High-value customers for special promotions</field>
             <field name="list_type">static</field>
-            <field name="active">True</field>
+            <field name="active" eval="True"/>
         </record>
 
         <!-- Default Campaigns (Examples) -->
@@ -34,17 +34,14 @@
             <field name="description">Automatic birthday wishes sent to customers</field>
             <field name="campaign_type">birthday</field>
             <field name="send_mode">birthday_auto</field>
-            <field name="birthday_days_before">0</field>
-            <field name="birthday_send_time">9.0</field>
+            <field name="birthday_days_before" eval="0"/>
+            <field name="birthday_send_time" eval="9.0"/>
             <field name="status">draft</field>
-            <field name="respect_opt_out">True</field>
-            <field name="enable_retry">True</field>
-            <field name="max_retry_attempts">3</field>
+            <field name="respect_opt_out" eval="True"/>
+            <field name="enable_retry" eval="True"/>
+            <field name="max_retry_attempts" eval="3"/>
         </record>
 
-        <!-- Sample Opt-out Reasons Data -->
-        <!-- This will help users understand the system with example data -->
-        
     </data>
     
     <!-- Demo Data (only loaded in demo mode) -->
@@ -56,17 +53,17 @@
             <field name="description">Customers who subscribed to our newsletter</field>
             <field name="list_type">dynamic</field>
             <field name="filter_domain">[('opt_out', '=', False), ('email', '!=', False)]</field>
-            <field name="auto_update">True</field>
-            <field name="active">True</field>
+            <field name="auto_update" eval="True"/>
+            <field name="active" eval="True"/>
         </record>
 
         <record id="demo_contact_list_new_customers" model="zns.bom.marketing.contact.list">
             <field name="name">New Customers (Last 30 Days)</field>
             <field name="description">Customers who joined in the last 30 days</field>
             <field name="list_type">dynamic</field>
-            <field name="filter_domain">[('create_date', '>=', (datetime.datetime.now() - datetime.timedelta(days=30)).strftime('%Y-%m-%d'))]</field>
-            <field name="auto_update">True</field>
-            <field name="active">True</field>
+            <field name="filter_domain">[('create_date', '>=', (context_today() - datetime.timedelta(days=30)).strftime('%Y-%m-%d'))]</field>
+            <field name="auto_update" eval="True"/>
+            <field name="active" eval="True"/>
         </record>
 
         <!-- Demo Campaigns -->
@@ -76,9 +73,9 @@
             <field name="campaign_type">notification</field>
             <field name="send_mode">scheduled</field>
             <field name="status">draft</field>
-            <field name="respect_opt_out">True</field>
-            <field name="enable_retry">True</field>
-            <field name="max_retry_attempts">3</field>
+            <field name="respect_opt_out" eval="True"/>
+            <field name="enable_retry" eval="True"/>
+            <field name="max_retry_attempts" eval="3"/>
             <field name="contact_list_ids" eval="[(6, 0, [ref('demo_contact_list_new_customers')])]"/>
         </record>
 
@@ -88,12 +85,12 @@
             <field name="campaign_type">promotion</field>
             <field name="send_mode">recurring</field>
             <field name="recurring_type">monthly</field>
-            <field name="recurring_interval">1</field>
-            <field name="recurring_day_of_month">1</field>
+            <field name="recurring_interval" eval="1"/>
+            <field name="recurring_day_of_month" eval="1"/>
             <field name="status">draft</field>
-            <field name="respect_opt_out">True</field>
-            <field name="enable_retry">True</field>
-            <field name="max_retry_attempts">3</field>
+            <field name="respect_opt_out" eval="True"/>
+            <field name="enable_retry" eval="True"/>
+            <field name="max_retry_attempts" eval="3"/>
             <field name="contact_list_ids" eval="[(6, 0, [ref('contact_list_all_customers')])]"/>
         </record>
         

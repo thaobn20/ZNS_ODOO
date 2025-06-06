@@ -17,27 +17,6 @@
             <field name="doall">False</field>
         </record>
 
-        <!-- Process Opt-out Bounces - Daily at 3:00 AM -->
-        <record id="cron_opt_out_bounces" model="ir.cron">
-            <field name="name">ZNS BOM Marketing: Process Opt-out Bounces</field>
-            <field name="model_id" ref="model_zns_bom_marketing_scheduler"/>
-            <field name="state">code</field>
-            <field name="code">model.process_opt_out_bounces()</field>
-            <field name="user_id" ref="base.user_root"/>
-            <field name="interval_number">1</field>
-            <field name="interval_type">days</field>
-            <field name="nextcall" eval="(DateTime.now() + timedelta(days=1)).replace(hour=3, minute=0, second=0)"/>
-            <field name="numbercall">-1</field>
-            <field name="active">True</field>
-            <field name="doall">False</field>
-        </record>
-
-    </data>
-</odoo>-1</field>
-            <field name="active">True</field>
-            <field name="doall">False</field>
-        </record>
-
         <!-- Campaign Executor - Every hour -->
         <record id="cron_campaign_executor" model="ir.cron">
             <field name="name">ZNS BOM Marketing: Execute Scheduled Campaigns</field>
@@ -118,4 +97,39 @@
             <field name="user_id" ref="base.user_root"/>
             <field name="interval_number">7</field>
             <field name="interval_type">days</field>
-            <field name="numbercall">
+            <field name="numbercall">-1</field>
+            <field name="active">True</field>
+            <field name="doall">False</field>
+        </record>
+
+        <!-- Process Opt-out Bounces - Daily at 3:00 AM -->
+        <record id="cron_opt_out_bounces" model="ir.cron">
+            <field name="name">ZNS BOM Marketing: Process Opt-out Bounces</field>
+            <field name="model_id" ref="model_zns_bom_marketing_scheduler"/>
+            <field name="state">code</field>
+            <field name="code">model.process_opt_out_bounces()</field>
+            <field name="user_id" ref="base.user_root"/>
+            <field name="interval_number">1</field>
+            <field name="interval_type">days</field>
+            <field name="nextcall" eval="(DateTime.now() + timedelta(days=1)).replace(hour=3, minute=0, second=0)"/>
+            <field name="numbercall">-1</field>
+            <field name="active">True</field>
+            <field name="doall">False</field>
+        </record>
+
+        <!-- Update Campaign Statistics - Every hour -->
+        <record id="cron_update_statistics" model="ir.cron">
+            <field name="name">ZNS BOM Marketing: Update Campaign Statistics</field>
+            <field name="model_id" ref="model_zns_bom_marketing_scheduler"/>
+            <field name="state">code</field>
+            <field name="code">model.update_campaign_statistics()</field>
+            <field name="user_id" ref="base.user_root"/>
+            <field name="interval_number">1</field>
+            <field name="interval_type">hours</field>
+            <field name="numbercall">-1</field>
+            <field name="active">True</field>
+            <field name="doall">False</field>
+        </record>
+
+    </data>
+</odoo>

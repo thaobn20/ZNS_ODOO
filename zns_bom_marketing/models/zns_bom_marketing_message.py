@@ -16,7 +16,8 @@ class ZnsBomMarketingMessage(models.Model):
 
     # Relations
     campaign_id = fields.Many2one('zns.bom.marketing.campaign', required=True, ondelete='cascade')
-    bom_zns_message_id = fields.Many2one('bom.zns.message', string='BOM ZNS Message')
+    bom_zns_message_id = fields.Many2one('bom.zns.message', string='BOM ZNS Message',
+                                        help='Reference to BOM ZNS Simple message record')
     contact_id = fields.Many2one('res.partner', required=True)
     
     # Message Info
@@ -61,7 +62,11 @@ class ZnsBomMarketingMessage(models.Model):
         for record in self:
             # Template name
             if record.campaign_id and record.campaign_id.bom_zns_template_id:
-                record.template_name = record.campaign_id.bom_zns_template_id.name or ''
+                try:
+                    # Try to get template name if model exists
+                    record.template_name = record.campaign_id.bom_zns_template_id.name or 'Unknown Template'
+                except:
+                    record.template_name = 'Template'
             else:
                 record.template_name = ''
             
@@ -125,7 +130,15 @@ class ZnsBomMarketingMessage(models.Model):
     def action_view_bom_message(self):
         """View related BOM ZNS message"""
         if not self.bom_zns_message_id:
-            return
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': _('No BOM ZNS Message'),
+                    'message': _('No BOM ZNS message is linked to this campaign message'),
+                    'type': 'warning',
+                }
+            }
         
         return {
             'name': _('BOM ZNS Message'),
