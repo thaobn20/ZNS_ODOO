@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- COMPLETE CLEAN Sale Order Form View - ALL fields properly defined -->
-    <record id="sale_order_form_zns_complete_fixed" model="ir.ui.view">
-        <field name="name">sale.order.form.zns.complete.fixed</field>
+    <!-- Simplified Sale Order Form View - Only using existing fields and methods -->
+    <record id="sale_order_form_zns_simplified" model="ir.ui.view">
+        <field name="name">sale.order.form.zns.simplified</field>
         <field name="model">sale.order</field>
         <field name="inherit_id" ref="sale.view_order_form"/>
-        <field name="priority">30</field>
+        <field name="priority">50</field>
         <field name="arch" type="xml">
             <!-- Add ZNS button to button box -->
             <div name="button_box" position="inside">
@@ -28,7 +28,9 @@
             <page name="other_information" position="inside">
                 <group string="ZNS Configuration">
                     <field name="zns_auto_send" help="Automatically send ZNS when order is confirmed"/>
-                    <field name="zns_best_template_info" readonly="1" attrs="{'invisible': [('zns_best_template_info', '=', False)]}"/>
+                    <field name="zns_best_template_info" readonly="1" 
+                           attrs="{'invisible': [('zns_best_template_info', '=', False)]}"
+                           help="Template that would be auto-selected for this order"/>
                 </group>
             </page>
             
@@ -38,13 +40,8 @@
                     <div class="alert alert-info">
                         <h4>📱 Zalo ZNS Messages</h4>
                         <p>ZNS messages will be automatically sent when the order is confirmed (if auto-send is enabled).</p>
-                        <p>Template will be automatically selected based on template mappings configured in Templates menu.</p>
+                        <p>Template will be automatically selected based on available templates.</p>
                     </div>
-                    
-                    <group>
-                        <field name="zns_best_template_info" readonly="1" string="Selected Template" 
-                               attrs="{'invisible': [('zns_best_template_info', '=', False)]}"/>
-                    </group>
                     
                     <group>
                         <button name="action_send_zns_manual" 
@@ -56,6 +53,11 @@
                                 string="🧪 Test Auto Send" 
                                 type="object" 
                                 class="btn-warning"
+                                groups="base.group_no_one"/>
+                        <button name="action_show_template_selection" 
+                                string="🔍 Show Template Logic" 
+                                type="object" 
+                                class="btn-info"
                                 groups="base.group_no_one"/>
                     </group>
                     

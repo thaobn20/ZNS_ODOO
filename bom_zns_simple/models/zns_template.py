@@ -309,34 +309,12 @@ class ZnsTemplate(models.Model):
         }
         return type_mapping.get(str(api_type).lower(), 'string')
         
-    def action_view_mappings(self):
-    """View template mappings that use this template"""
-    # Check if zns.template.mapping model exists
-    if 'zns.template.mapping' in self.env:
-        return {
-            'type': 'ir.actions.act_window',
-            'name': f'Mappings for {self.name}',
-            'res_model': 'zns.template.mapping',
-            'view_mode': 'tree,form',
-            'domain': [('template_id', '=', self.id)],
-            'context': {'default_template_id': self.id}
-        }
-    else:
-        # If mapping model doesn't exist, show notification
-        return {
-            'type': 'ir.actions.client',
-            'tag': 'display_notification',
-            'params': {
-                'title': 'Template Mappings',
-                'message': f"Template '{self.name}' is ready to use.\n\nUse this template in Sales Orders and it will automatically map parameters based on your configuration.",
-                'type': 'info',
-                'sticky': False,
-            }
-        }
     
     def test_template(self):
         """Test template"""
         return self.sync_template_params()
+        
+    
 
 
 class ZnsTemplateParameter(models.Model):
