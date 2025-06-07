@@ -308,6 +308,31 @@ class ZnsTemplate(models.Model):
             'phone': 'string'
         }
         return type_mapping.get(str(api_type).lower(), 'string')
+        
+    def action_view_mappings(self):
+    """View template mappings that use this template"""
+    # Check if zns.template.mapping model exists
+    if 'zns.template.mapping' in self.env:
+        return {
+            'type': 'ir.actions.act_window',
+            'name': f'Mappings for {self.name}',
+            'res_model': 'zns.template.mapping',
+            'view_mode': 'tree,form',
+            'domain': [('template_id', '=', self.id)],
+            'context': {'default_template_id': self.id}
+        }
+    else:
+        # If mapping model doesn't exist, show notification
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': 'Template Mappings',
+                'message': f"Template '{self.name}' is ready to use.\n\nUse this template in Sales Orders and it will automatically map parameters based on your configuration.",
+                'type': 'info',
+                'sticky': False,
+            }
+        }
     
     def test_template(self):
         """Test template"""
@@ -439,3 +464,84 @@ class ZnsTemplateParameter(models.Model):
             'note': 'comment',
         }
         return adaptations.get(field_path, field_path)
+        
+# This is the ADDITION to your existing zns_template.py file
+# Add this class to the END of your existing zns_template.py file
+
+class ZnsTemplateParameter(models.Model):
+    _name = 'zns.template.parameter'
+    _description = 'ZNS Template Parameter'
+    _rec_name = 'title'
+
+    template_id = fields.Many2one('zns.template', string='Template', required=True, ondelete='cascade')
+    name = fields.Char('Parameter Name', required=True, help='Parameter key name for API')
+    title = fields.Char('Parameter Title', required=True, help='Human readable parameter name')
+    param_type = fields.Selection([
+        ('string', 'String'),
+        ('number', 'Number'),
+        ('date', 'Date'),
+        ('email', 'Email'),
+        ('url', 'URL')
+    ], string='Type', default='string')
+    required = fields.Boolean('Required', default=False)
+    default_value = fields.Char('Default Value')
+    description = fields.Text('Description', help='Parameter description from BOM API')
+    
+    # ADD THESE MISSING FIELDS - This is what was causing the error!
+    so_field_mapping = fields.Selection([
+        ('partner_id.name', 'Customer Name'),
+        ('partner_id.mobile', 'Customer Mobile'),
+        ('partner_id.phone', 'Customer Phone'),
+        ('partner_id.email', 'Customer Email'),
+        ('partner_id.vat', 'Customer VAT'),
+        ('partner_id.ref', 'Customer Code'),
+        ('partner_id.city', 'Customer City'),
+        ('partner_id.country_id.name', 'Customer Country'),
+        ('name', 'SO Number'),
+        ('date_order', 'Order Date'),
+        ('amount_total', 'Total Amount'),
+        ('amount_untaxed', 'Subtotal'),
+        ('amount_tax', 'Tax Amount'),
+        ('user_id.name', 'Salesperson'),
+        ('company_id.name', 'Company Name'),
+        ('company_id.vat', 'Company VAT'),
+        ('company_id.phone', 'Company Phone'),
+        ('company_id.email', 'Company Email'),
+        ('client_order_ref', 'Customer Reference'),
+        ('commitment_date', 'Delivery Date'),
+        ('note', 'Order Notes'),
+        ('state', 'Order Status'),
+        ('currency_id.name', 'Currency'),
+        ('payment_term_id.name', 'Payment Terms'),
+        ('custom', 'Custom Value'),
+    ], string='Map to SO Field', help='Automatically map this parameter to Sale Order field')
+    
+    custom_value = fields.Char('Custom Value', help='Custom value when mapping type is "custom"')
+    
+    def get_mapped_value(self, sale_order):
+        """Get the mapped value from sale order"""
+        if not self.so_field_mapping:
+            return self.default_value or ''
+        
+        if self.so_field_mapping == 'custom':
+            return self.custom_value or ''
+        
+        try:
+            # Handle nested field access like 'partner_id.name'
+            obj = sale_order
+            for field_part in self.so_field_mapping.split('.'):
+                obj = getattr(obj, field_part, '')
+                if not obj:
+                    break
+            
+            # Format based on parameter type
+            if self.param_type == 'date' and hasattr(obj, 'strftime'):
+                return obj.strftime('%d/%m/%Y')
+            elif self.param_type == 'number':
+                return str(obj) if obj else '0'
+            else:
+                return str(obj) if obj else ''
+                
+        except Exception as e:
+            _logger.warning(f"Error mapping parameter {self.name}: {e}")
+            return self.default_value or ''
