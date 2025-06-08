@@ -56,9 +56,426 @@ class AdvancedQuizManager {
     
     private function init_admin() {
         if (is_admin()) {
-            require_once AQM_PLUGIN_PATH . 'admin/class-admin.php';
-            new AQM_Admin();
+            add_action('admin_menu', array($this, 'add_admin_menu'));
+            add_action('wp_ajax_aqm_save_campaign', array($this, 'save_campaign'));
+            add_action('wp_ajax_aqm_get_districts', array($this, 'get_districts'));
+            add_action('wp_ajax_aqm_get_wards', array($this, 'get_wards'));
         }
+    }
+    
+    public function add_admin_menu() {
+        add_menu_page(
+            'Quiz Manager',
+            'Quiz Manager',
+            'manage_options',
+            'quiz-manager',
+            array($this, 'admin_dashboard_page'),
+            'dashicons-feedback',
+            30
+        );
+        
+        add_submenu_page(
+            'quiz-manager',
+            'Dashboard',
+            'Dashboard',
+            'manage_options',
+            'quiz-manager',
+            array($this, 'admin_dashboard_page')
+        );
+        
+        add_submenu_page(
+            'quiz-manager',
+            'Campaigns',
+            'Campaigns',
+            'manage_options',
+            'quiz-manager-campaigns',
+            array($this, 'admin_campaigns_page')
+        );
+        
+        add_submenu_page(
+            'quiz-manager',
+            'Questions',
+            'Questions',
+            'manage_options',
+            'quiz-manager-questions',
+            array($this, 'admin_questions_page')
+        );
+        
+        add_submenu_page(
+            'quiz-manager',
+            'Responses',
+            'Responses',
+            'manage_options',
+            'quiz-manager-responses',
+            array($this, 'admin_responses_page')
+        );
+        
+        add_submenu_page(
+            'quiz-manager',
+            'Gifts & Rewards',
+            'Gifts & Rewards',
+            'manage_options',
+            'quiz-manager-gifts',
+            array($this, 'admin_gifts_page')
+        );
+        
+        add_submenu_page(
+            'quiz-manager',
+            'Analytics',
+            'Analytics',
+            'manage_options',
+            'quiz-manager-analytics',
+            array($this, 'admin_analytics_page')
+        );
+        
+        add_submenu_page(
+            'quiz-manager',
+            'Provinces Data',
+            'Provinces Data',
+            'manage_options',
+            'quiz-manager-provinces',
+            array($this, 'admin_provinces_page')
+        );
+        
+        add_submenu_page(
+            'quiz-manager',
+            'Settings',
+            'Settings',
+            'manage_options',
+            'quiz-manager-settings',
+            array($this, 'admin_settings_page')
+        );
+    }
+    
+    public function admin_dashboard_page() {
+        $db = new AQM_Database();
+        
+        // Get overview stats
+        global $wpdb;
+        $total_campaigns = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}aqm_campaigns");
+        $total_responses = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}aqm_responses");
+        $completed_responses = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}aqm_responses WHERE status = 'completed'");
+        $completion_rate = $total_responses > 0 ? round(($completed_responses / $total_responses) * 100, 1) : 0;
+        
+        ?>
+        <div class="wrap">
+            <h1>Quiz Manager Dashboard</h1>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin: 20px 0;">
+                <div style="background: #fff; padding: 20px; border: 1px solid #ccc; border-radius: 8px;">
+                    <h3 style="margin: 0 0 10px 0; color: #2271b1;">📊 Total Campaigns</h3>
+                    <p style="font-size: 24px; font-weight: bold; margin: 0;"><?php echo esc_html($total_campaigns); ?></p>
+                </div>
+                <div style="background: #fff; padding: 20px; border: 1px solid #ccc; border-radius: 8px;">
+                    <h3 style="margin: 0 0 10px 0; color: #2271b1;">👥 Total Responses</h3>
+                    <p style="font-size: 24px; font-weight: bold; margin: 0;"><?php echo esc_html($total_responses); ?></p>
+                </div>
+                <div style="background: #fff; padding: 20px; border: 1px solid #ccc; border-radius: 8px;">
+                    <h3 style="margin: 0 0 10px 0; color: #2271b1;">✅ Completion Rate</h3>
+                    <p style="font-size: 24px; font-weight: bold; margin: 0;"><?php echo esc_html($completion_rate); ?>%</p>
+                </div>
+            </div>
+            
+            <div style="background: #fff; padding: 20px; border: 1px solid #ccc; border-radius: 8px; margin: 20px 0;">
+                <h2>🚀 Quick Start</h2>
+                <p>Welcome to Advanced Quiz Manager! Here's how to get started:</p>
+                <ol>
+                    <li><strong>Create a Campaign:</strong> Go to <a href="<?php echo admin_url('admin.php?page=quiz-manager-campaigns'); ?>">Campaigns</a> and click "Add New"</li>
+                    <li><strong>Add Questions:</strong> Go to <a href="<?php echo admin_url('admin.php?page=quiz-manager-questions'); ?>">Questions</a> to add quiz questions</li>
+                    <li><strong>Import Provinces:</strong> Go to <a href="<?php echo admin_url('admin.php?page=quiz-manager-provinces'); ?>">Provinces Data</a> to import Vietnamese provinces</li>
+                    <li><strong>Display Quiz:</strong> Use shortcode <code>[quiz_form campaign_id="1"]</code> on any page</li>
+                </ol>
+                
+                <h3>🇻🇳 Vietnamese Provinces Integration</h3>
+                <p>This plugin includes full support for Vietnamese provinces, districts, and wards. You can:</p>
+                <ul>
+                    <li>Add province selection questions to your quizzes</li>
+                    <li>Import your own province data via JSON</li>
+                    <li>View geographic analytics of your participants</li>
+                </ul>
+                
+                <h3>📋 Sample Shortcodes</h3>
+                <p>Use these shortcodes to display your quizzes:</p>
+                <ul>
+                    <li><code>[quiz_form campaign_id="1"]</code> - Display a quiz form</li>
+                    <li><code>[quiz_results campaign_id="1"]</code> - Show quiz results and stats</li>
+                    <li><code>[quiz_stats campaign_id="1"]</code> - Display quick statistics</li>
+                </ul>
+            </div>
+        </div>
+        <?php
+    }
+    
+    public function admin_campaigns_page() {
+        $db = new AQM_Database();
+        $action = isset($_GET['action']) ? sanitize_text_field($_GET['action']) : 'list';
+        
+        if ($action === 'new' || $action === 'edit') {
+            $this->render_campaign_form($action);
+            return;
+        }
+        
+        // List campaigns
+        $campaigns = $db->get_campaigns();
+        ?>
+        <div class="wrap">
+            <h1>Quiz Campaigns <a href="<?php echo admin_url('admin.php?page=quiz-manager-campaigns&action=new'); ?>" class="page-title-action">Add New</a></h1>
+            
+            <?php if (empty($campaigns)): ?>
+                <div style="background: #fff; padding: 40px; text-align: center; border: 1px solid #ccc; border-radius: 8px;">
+                    <h2>🎯 Create Your First Campaign</h2>
+                    <p>Get started by creating your first quiz campaign!</p>
+                    <a href="<?php echo admin_url('admin.php?page=quiz-manager-campaigns&action=new'); ?>" class="button button-primary">Create Campaign</a>
+                </div>
+            <?php else: ?>
+                <table class="wp-list-table widefat fixed striped">
+                    <thead>
+                        <tr>
+                            <th>Title</th>
+                            <th>Status</th>
+                            <th>Responses</th>
+                            <th>Created</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($campaigns as $campaign): ?>
+                            <?php $stats = $db->get_campaign_stats($campaign->id); ?>
+                            <tr>
+                                <td><strong><?php echo esc_html($campaign->title); ?></strong></td>
+                                <td><?php echo esc_html(ucfirst($campaign->status)); ?></td>
+                                <td><?php echo esc_html($stats['total_participants']); ?></td>
+                                <td><?php echo esc_html(date('M j, Y', strtotime($campaign->created_at))); ?></td>
+                                <td>
+                                    <a href="<?php echo admin_url('admin.php?page=quiz-manager-campaigns&action=edit&id=' . $campaign->id); ?>">Edit</a> |
+                                    <a href="<?php echo admin_url('admin.php?page=quiz-manager-questions&campaign_id=' . $campaign->id); ?>">Questions</a> |
+                                    <a href="<?php echo admin_url('admin.php?page=quiz-manager-responses&campaign_id=' . $campaign->id); ?>">Responses</a>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php endif; ?>
+        </div>
+        <?php
+    }
+    
+    private function render_campaign_form($action) {
+        $campaign_id = $action === 'edit' ? intval($_GET['id']) : 0;
+        $campaign = null;
+        
+        if ($campaign_id) {
+            $db = new AQM_Database();
+            $campaign = $db->get_campaign($campaign_id);
+        }
+        
+        // Handle form submission
+        if (isset($_POST['submit_campaign'])) {
+            $this->handle_campaign_save();
+            return;
+        }
+        
+        ?>
+        <div class="wrap">
+            <h1><?php echo $action === 'edit' ? 'Edit Campaign' : 'Create New Campaign'; ?></h1>
+            
+            <form method="post" style="background: #fff; padding: 20px; border: 1px solid #ccc; border-radius: 8px;">
+                <?php wp_nonce_field('aqm_save_campaign', 'aqm_nonce'); ?>
+                <input type="hidden" name="campaign_id" value="<?php echo esc_attr($campaign_id); ?>">
+                
+                <table class="form-table">
+                    <tr>
+                        <th scope="row"><label for="title">Campaign Title *</label></th>
+                        <td>
+                            <input type="text" id="title" name="title" class="regular-text" 
+                                   value="<?php echo esc_attr($campaign ? $campaign->title : ''); ?>" required>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="description">Description</label></th>
+                        <td>
+                            <textarea id="description" name="description" class="large-text" rows="4"><?php echo esc_textarea($campaign ? $campaign->description : ''); ?></textarea>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="status">Status</label></th>
+                        <td>
+                            <select id="status" name="status">
+                                <option value="draft" <?php selected($campaign ? $campaign->status : 'draft', 'draft'); ?>>Draft</option>
+                                <option value="active" <?php selected($campaign ? $campaign->status : '', 'active'); ?>>Active</option>
+                                <option value="inactive" <?php selected($campaign ? $campaign->status : '', 'inactive'); ?>>Inactive</option>
+                            </select>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="max_participants">Max Participants</label></th>
+                        <td>
+                            <input type="number" id="max_participants" name="max_participants" 
+                                   value="<?php echo esc_attr($campaign ? $campaign->max_participants : 0); ?>" min="0">
+                            <p class="description">Set to 0 for unlimited participants.</p>
+                        </td>
+                    </tr>
+                </table>
+                
+                <p class="submit">
+                    <input type="submit" name="submit_campaign" class="button button-primary" value="<?php echo $action === 'edit' ? 'Update Campaign' : 'Create Campaign'; ?>">
+                    <a href="<?php echo admin_url('admin.php?page=quiz-manager-campaigns'); ?>" class="button">Cancel</a>
+                </p>
+            </form>
+        </div>
+        <?php
+    }
+    
+    private function handle_campaign_save() {
+        if (!wp_verify_nonce($_POST['aqm_nonce'], 'aqm_save_campaign')) {
+            wp_die('Security check failed');
+        }
+        
+        $campaign_id = intval($_POST['campaign_id']);
+        $title = sanitize_text_field($_POST['title']);
+        $description = sanitize_textarea_field($_POST['description']);
+        $status = sanitize_text_field($_POST['status']);
+        $max_participants = intval($_POST['max_participants']);
+        
+        $data = array(
+            'title' => $title,
+            'description' => $description,
+            'status' => $status,
+            'max_participants' => $max_participants,
+            'settings' => json_encode(array()),
+            'created_by' => get_current_user_id()
+        );
+        
+        global $wpdb;
+        
+        if ($campaign_id) {
+            $wpdb->update(
+                $wpdb->prefix . 'aqm_campaigns',
+                $data,
+                array('id' => $campaign_id)
+            );
+            $message = 'Campaign updated successfully!';
+        } else {
+            $wpdb->insert($wpdb->prefix . 'aqm_campaigns', $data);
+            $campaign_id = $wpdb->insert_id;
+            $message = 'Campaign created successfully!';
+        }
+        
+        wp_redirect(admin_url('admin.php?page=quiz-manager-campaigns&message=' . urlencode($message)));
+        exit;
+    }
+    
+    public function admin_questions_page() {
+        echo '<div class="wrap">';
+        echo '<h1>Question Management</h1>';
+        echo '<p>Add and manage questions for your quiz campaigns. Support for Vietnamese provinces, multiple choice, ratings, and more!</p>';
+        echo '<div style="background: #fff; padding: 20px; border: 1px solid #ccc; border-radius: 8px;">';
+        echo '<h3>🇻🇳 Vietnamese Provinces Questions</h3>';
+        echo '<p>You can add questions that let users select:</p>';
+        echo '<ul><li><strong>Provinces:</strong> All 63 Vietnamese provinces/cities</li>';
+        echo '<li><strong>Districts:</strong> Districts that load based on province selection</li>';
+        echo '<li><strong>Wards:</strong> Wards/communes that load based on district selection</li></ul>';
+        echo '<p><em>Question management interface coming soon. For now, you can create basic campaigns and questions will be added via the database.</em></p>';
+        echo '</div>';
+        echo '</div>';
+    }
+    
+    public function admin_responses_page() {
+        echo '<div class="wrap">';
+        echo '<h1>Quiz Responses</h1>';
+        echo '<p>View and analyze responses from your quiz participants.</p>';
+        echo '<div style="background: #fff; padding: 20px; border: 1px solid #ccc; border-radius: 8px;">';
+        echo '<h3>📊 Response Analytics</h3>';
+        echo '<p>Here you can:</p>';
+        echo '<ul><li>View all quiz responses</li>';
+        echo '<li>Export data to CSV</li>';
+        echo '<li>See geographic distribution (Vietnamese provinces)</li>';
+        echo '<li>Analyze completion rates and scores</li></ul>';
+        echo '<p><em>Full response management interface coming soon.</em></p>';
+        echo '</div>';
+        echo '</div>';
+    }
+    
+    public function admin_gifts_page() {
+        echo '<div class="wrap">';
+        echo '<h1>Gifts & Rewards Management</h1>';
+        echo '<p>Set up gifts and rewards for quiz participants based on their scores.</p>';
+        echo '<div style="background: #fff; padding: 20px; border: 1px solid #ccc; border-radius: 8px;">';
+        echo '<h3>🎁 Reward System</h3>';
+        echo '<p>Configure:</p>';
+        echo '<ul><li><strong>Gift Types:</strong> Discount codes, vouchers, prizes</li>';
+        echo '<li><strong>Scoring:</strong> Minimum score requirements</li>';
+        echo '<li><strong>Probability:</strong> Chance of winning each gift</li>';
+        echo '<li><strong>Inventory:</strong> Limited quantity management</li></ul>';
+        echo '<p><em>Gift management interface coming soon.</em></p>';
+        echo '</div>';
+        echo '</div>';
+    }
+    
+    public function admin_analytics_page() {
+        echo '<div class="wrap">';
+        echo '<h1>Quiz Analytics</h1>';
+        echo '<p>Comprehensive analytics and reporting for your quiz campaigns.</p>';
+        echo '<div style="background: #fff; padding: 20px; border: 1px solid #ccc; border-radius: 8px;">';
+        echo '<h3>📈 Available Reports</h3>';
+        echo '<ul><li><strong>Participation Trends:</strong> Daily/weekly/monthly participation</li>';
+        echo '<li><strong>Geographic Distribution:</strong> Vietnamese provinces breakdown</li>';
+        echo '<li><strong>Completion Analysis:</strong> Drop-off points and completion rates</li>';
+        echo '<li><strong>Score Distribution:</strong> Performance analytics</li>';
+        echo '<li><strong>Gift Analytics:</strong> Reward distribution and claims</li></ul>';
+        echo '<p><em>Full analytics dashboard coming soon.</em></p>';
+        echo '</div>';
+        echo '</div>';
+    }
+    
+    public function admin_provinces_page() {
+        echo '<div class="wrap">';
+        echo '<h1>Vietnamese Provinces Data</h1>';
+        echo '<p>Manage the Vietnamese provinces, districts, and wards database.</p>';
+        echo '<div style="background: #fff; padding: 20px; border: 1px solid #ccc; border-radius: 8px;">';
+        echo '<h3>🇻🇳 Province Database</h3>';
+        echo '<p>Current capabilities:</p>';
+        echo '<ul><li><strong>63 Provinces/Cities:</strong> Complete database of Vietnamese administrative divisions</li>';
+        echo '<li><strong>JSON Import:</strong> Import custom province data</li>';
+        echo '<li><strong>Bilingual Support:</strong> Vietnamese and English names</li>';
+        echo '<li><strong>Hierarchical Structure:</strong> Provinces → Districts → Wards</li></ul>';
+        
+        // Show current province count
+        global $wpdb;
+        $province_count = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}aqm_provinces");
+        $district_count = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}aqm_districts");
+        $ward_count = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}aqm_wards");
+        
+        echo '<h4>Current Database Status:</h4>';
+        echo '<ul>';
+        echo '<li>Provinces: ' . esc_html($province_count) . '</li>';
+        echo '<li>Districts: ' . esc_html($district_count) . '</li>';
+        echo '<li>Wards: ' . esc_html($ward_count) . '</li>';
+        echo '</ul>';
+        
+        if ($province_count == 0) {
+            echo '<p style="color: #d63384;"><strong>Note:</strong> No provinces data found. The sample data should be imported automatically. If you don\'t see provinces in your quiz questions, try deactivating and reactivating the plugin.</p>';
+        }
+        
+        echo '<p><em>JSON import interface coming soon.</em></p>';
+        echo '</div>';
+        echo '</div>';
+    }
+    
+    public function admin_settings_page() {
+        echo '<div class="wrap">';
+        echo '<h1>Quiz Settings</h1>';
+        echo '<p>Global settings for the Advanced Quiz Manager plugin.</p>';
+        echo '<div style="background: #fff; padding: 20px; border: 1px solid #ccc; border-radius: 8px;">';
+        echo '<h3>⚙️ Configuration Options</h3>';
+        echo '<p>Settings you can configure:</p>';
+        echo '<ul><li><strong>Default Styling:</strong> Quiz appearance and themes</li>';
+        echo '<li><strong>Email Notifications:</strong> Automatic emails for participants</li>';
+        echo '<li><strong>Data Retention:</strong> How long to keep analytics data</li>';
+        echo '<li><strong>Security:</strong> Spam protection and rate limiting</li>';
+        echo '<li><strong>Integrations:</strong> Third-party service connections</li></ul>';
+        echo '<p><em>Settings interface coming soon.</em></p>';
+        echo '</div>';
+        echo '</div>';
     }
     
     private function init_api() {
@@ -386,125 +803,42 @@ class AdvancedQuizManager {
     }
     
     private function get_vietnam_provinces_json() {
-        // Vietnamese provinces data
+        // This will be handled by the AQM_Database class
+        // Return basic structure for JavaScript initialization
         return array(
             array(
                 'code' => '01',
                 'name' => 'Hà Nội',
                 'name_en' => 'Hanoi',
                 'full_name' => 'Thành phố Hà Nội',
-                'districts' => array(
-                    array('code' => '001', 'name' => 'Ba Đình', 'name_en' => 'Ba Dinh'),
-                    array('code' => '002', 'name' => 'Hoàn Kiếm', 'name_en' => 'Hoan Kiem'),
-                    array('code' => '003', 'name' => 'Tây Hồ', 'name_en' => 'Tay Ho'),
-                    array('code' => '004', 'name' => 'Long Biên', 'name_en' => 'Long Bien'),
-                    array('code' => '005', 'name' => 'Cầu Giấy', 'name_en' => 'Cau Giay'),
-                    array('code' => '006', 'name' => 'Đống Đa', 'name_en' => 'Dong Da'),
-                    array('code' => '007', 'name' => 'Hai Bà Trưng', 'name_en' => 'Hai Ba Trung'),
-                    array('code' => '008', 'name' => 'Hoàng Mai', 'name_en' => 'Hoang Mai'),
-                    array('code' => '009', 'name' => 'Thanh Xuân', 'name_en' => 'Thanh Xuan')
-                )
+                'districts' => array()
             ),
             array(
                 'code' => '79',
                 'name' => 'Hồ Chí Minh',
                 'name_en' => 'Ho Chi Minh',
                 'full_name' => 'Thành phố Hồ Chí Minh',
-                'districts' => array(
-                    array('code' => '760', 'name' => 'Quận 1', 'name_en' => 'District 1'),
-                    array('code' => '761', 'name' => 'Quận 2', 'name_en' => 'District 2'),
-                    array('code' => '762', 'name' => 'Quận 3', 'name_en' => 'District 3'),
-                    array('code' => '763', 'name' => 'Quận 4', 'name_en' => 'District 4'),
-                    array('code' => '764', 'name' => 'Quận 5', 'name_en' => 'District 5'),
-                    array('code' => '765', 'name' => 'Quận 6', 'name_en' => 'District 6'),
-                    array('code' => '766', 'name' => 'Quận 7', 'name_en' => 'District 7'),
-                    array('code' => '767', 'name' => 'Quận 8', 'name_en' => 'District 8'),
-                    array('code' => '768', 'name' => 'Quận 9', 'name_en' => 'District 9'),
-                    array('code' => '769', 'name' => 'Quận 10', 'name_en' => 'District 10'),
-                    array('code' => '770', 'name' => 'Quận 11', 'name_en' => 'District 11'),
-                    array('code' => '771', 'name' => 'Quận 12', 'name_en' => 'District 12'),
-                    array('code' => '772', 'name' => 'Thủ Đức', 'name_en' => 'Thu Duc'),
-                    array('code' => '773', 'name' => 'Gò Vấp', 'name_en' => 'Go Vap'),
-                    array('code' => '774', 'name' => 'Bình Thạnh', 'name_en' => 'Binh Thanh'),
-                    array('code' => '775', 'name' => 'Tân Bình', 'name_en' => 'Tan Binh'),
-                    array('code' => '776', 'name' => 'Tân Phú', 'name_en' => 'Tan Phu'),
-                    array('code' => '777', 'name' => 'Phú Nhuận', 'name_en' => 'Phu Nhuan')
-                )
+                'districts' => array()
             ),
             array(
                 'code' => '48',
                 'name' => 'Đà Nẵng',
                 'name_en' => 'Da Nang',
                 'full_name' => 'Thành phố Đà Nẵng',
-                'districts' => array(
-                    array('code' => '490', 'name' => 'Liên Chiểu', 'name_en' => 'Lien Chieu'),
-                    array('code' => '491', 'name' => 'Thanh Khê', 'name_en' => 'Thanh Khe'),
-                    array('code' => '492', 'name' => 'Hải Châu', 'name_en' => 'Hai Chau'),
-                    array('code' => '493', 'name' => 'Sơn Trà', 'name_en' => 'Son Tra'),
-                    array('code' => '494', 'name' => 'Ngũ Hành Sơn', 'name_en' => 'Ngu Hanh Son'),
-                    array('code' => '495', 'name' => 'Cẩm Lệ', 'name_en' => 'Cam Le')
-                )
+                'districts' => array()
             ),
             array(
                 'code' => '92',
                 'name' => 'Cần Thơ',
                 'name_en' => 'Can Tho',
                 'full_name' => 'Thành phố Cần Thơ',
-                'districts' => array(
-                    array('code' => '916', 'name' => 'Ninh Kiều', 'name_en' => 'Ninh Kieu'),
-                    array('code' => '917', 'name' => 'Ô Môn', 'name_en' => 'O Mon'),
-                    array('code' => '918', 'name' => 'Bình Thuỷ', 'name_en' => 'Binh Thuy'),
-                    array('code' => '919', 'name' => 'Cái Răng', 'name_en' => 'Cai Rang'),
-                    array('code' => '923', 'name' => 'Thốt Nốt', 'name_en' => 'Thot Not')
-                )
+                'districts' => array()
             ),
             array(
                 'code' => '31',
                 'name' => 'Hải Phòng',
                 'name_en' => 'Hai Phong',
                 'full_name' => 'Thành phố Hải Phòng',
-                'districts' => array(
-                    array('code' => '303', 'name' => 'Lê Chân', 'name_en' => 'Le Chan'),
-                    array('code' => '304', 'name' => 'Ngô Quyền', 'name_en' => 'Ngo Quyen'),
-                    array('code' => '305', 'name' => 'Hồng Bàng', 'name_en' => 'Hong Bang'),
-                    array('code' => '306', 'name' => 'Kiến An', 'name_en' => 'Kien An'),
-                    array('code' => '307', 'name' => 'Hải An', 'name_en' => 'Hai An'),
-                    array('code' => '308', 'name' => 'Đồ Sơn', 'name_en' => 'Do Son')
-                )
-            ),
-            array(
-                'code' => '24',
-                'name' => 'Bắc Giang',
-                'name_en' => 'Bac Giang',
-                'full_name' => 'Tỉnh Bắc Giang',
-                'districts' => array()
-            ),
-            array(
-                'code' => '06',
-                'name' => 'Bắc Kạn',
-                'name_en' => 'Bac Kan',
-                'full_name' => 'Tỉnh Bắc Kạn',
-                'districts' => array()
-            ),
-            array(
-                'code' => '27',
-                'name' => 'Bắc Ninh',
-                'name_en' => 'Bac Ninh',
-                'full_name' => 'Tỉnh Bắc Ninh',
-                'districts' => array()
-            ),
-            array(
-                'code' => '83',
-                'name' => 'Bến Tre',
-                'name_en' => 'Ben Tre',
-                'full_name' => 'Tỉnh Bến Tre',
-                'districts' => array()
-            ),
-            array(
-                'code' => '74',
-                'name' => 'Bình Dương',
-                'name_en' => 'Binh Duong',
-                'full_name' => 'Tỉnh Bình Dương',
                 'districts' => array()
             )
         );
@@ -571,34 +905,16 @@ class AdvancedQuizManager {
             case 'provinces':
                 echo '<select name="question_' . esc_attr($question->id) . '" class="aqm-provinces-select" ' . ($question->is_required ? 'required' : '') . '>';
                 echo '<option value="">Select Province</option>';
-                $provinces = $this->get_vietnam_provinces_json();
-                foreach ($provinces as $province) {
-                    echo '<option value="' . esc_attr($province['code']) . '">' . esc_html($province['name']) . '</option>';
-                }
+                // Provinces will be loaded via AJAX
                 echo '</select>';
-                
-                if (isset($options['load_districts']) && $options['load_districts']) {
-                    echo '<select name="question_' . esc_attr($question->id) . '_district" class="aqm-districts-select" style="display:none;">';
-                    echo '<option value="">Select District</option>';
-                    echo '</select>';
-                }
-                
-                if (isset($options['load_wards']) && $options['load_wards']) {
-                    echo '<select name="question_' . esc_attr($question->id) . '_ward" class="aqm-wards-select" style="display:none;">';
-                    echo '<option value="">Select Ward</option>';
-                    echo '</select>';
-                }
                 break;
                 
-            case 'multiple_choice':
-                if ($options && isset($options['choices'])) {
-                    foreach ($options['choices'] as $choice) {
-                        echo '<label class="aqm-radio-label">';
-                        echo '<input type="radio" name="question_' . esc_attr($question->id) . '" value="' . esc_attr($choice['value']) . '" ' . ($question->is_required ? 'required' : '') . '>';
-                        echo '<span>' . esc_html($choice['label']) . '</span>';
-                        echo '</label>';
-                    }
-                }
+            case 'text':
+                echo '<input type="text" name="question_' . esc_attr($question->id) . '" class="aqm-text-input" ' . ($question->is_required ? 'required' : '') . '>';
+                break;
+                
+            case 'email':
+                echo '<input type="email" name="question_' . esc_attr($question->id) . '" class="aqm-email-input" ' . ($question->is_required ? 'required' : '') . '>';
                 break;
                 
             case 'rating':
@@ -613,320 +929,10 @@ class AdvancedQuizManager {
                 echo '</div>';
                 break;
                 
-            case 'text':
-                echo '<input type="text" name="question_' . esc_attr($question->id) . '" class="aqm-text-input" ' . ($question->is_required ? 'required' : '') . '>';
-                break;
-                
-            case 'email':
-                echo '<input type="email" name="question_' . esc_attr($question->id) . '" class="aqm-email-input" ' . ($question->is_required ? 'required' : '') . '>';
-                break;
-                
-            case 'phone':
-                echo '<input type="tel" name="question_' . esc_attr($question->id) . '" class="aqm-phone-input" ' . ($question->is_required ? 'required' : '') . '>';
-                break;
-                
-            case 'number':
-                echo '<input type="number" name="question_' . esc_attr($question->id) . '" class="aqm-number-input" ' . ($question->is_required ? 'required' : '') . '>';
-                break;
-                
-            case 'date':
-                echo '<input type="date" name="question_' . esc_attr($question->id) . '" class="aqm-date-input" ' . ($question->is_required ? 'required' : '') . '>';
-                break;
-                
             default:
                 echo '<input type="text" name="question_' . esc_attr($question->id) . '" class="aqm-text-input" ' . ($question->is_required ? 'required' : '') . '>';
                 break;
         }
-    }
-    
-    private function render_quiz_results($campaign_id, $show_charts) {
-        // Implementation for displaying quiz results and analytics
-        $db = new AQM_Database();
-        $stats = $db->get_campaign_stats($campaign_id);
-        
-        ob_start();
-        ?>
-        <div class="aqm-results-container">
-            <h3>Quiz Results</h3>
-            <div class="aqm-stats-grid">
-                <div class="aqm-stat-box">
-                    <h4>Total Participants</h4>
-                    <span class="aqm-stat-number"><?php echo esc_html($stats['total_participants']); ?></span>
-                </div>
-                <div class="aqm-stat-box">
-                    <h4>Completion Rate</h4>
-                    <span class="aqm-stat-number"><?php echo esc_html($stats['completion_rate']); ?>%</span>
-                </div>
-                <div class="aqm-stat-box">
-                    <h4>Average Score</h4>
-                    <span class="aqm-stat-number"><?php echo esc_html($stats['average_score']); ?></span>
-                </div>
-            </div>
-        </div>
-        <?php
-        return ob_get_clean();
-    }
-}
-
-// Database class
-class AQM_Database {
-    
-    public function get_campaign($campaign_id) {
-        global $wpdb;
-        return $wpdb->get_row($wpdb->prepare(
-            "SELECT * FROM {$wpdb->prefix}aqm_campaigns WHERE id = %d",
-            $campaign_id
-        ));
-    }
-    
-    public function get_campaign_questions($campaign_id) {
-        global $wpdb;
-        return $wpdb->get_results($wpdb->prepare(
-            "SELECT * FROM {$wpdb->prefix}aqm_questions WHERE campaign_id = %d ORDER BY order_index ASC",
-            $campaign_id
-        ));
-    }
-    
-    public function get_campaign_stats($campaign_id) {
-        global $wpdb;
-        
-        $total_participants = $wpdb->get_var($wpdb->prepare(
-            "SELECT COUNT(*) FROM {$wpdb->prefix}aqm_responses WHERE campaign_id = %d",
-            $campaign_id
-        ));
-        
-        $completed = $wpdb->get_var($wpdb->prepare(
-            "SELECT COUNT(*) FROM {$wpdb->prefix}aqm_responses WHERE campaign_id = %d AND status = 'completed'",
-            $campaign_id
-        ));
-        
-        $completion_rate = $total_participants > 0 ? round(($completed / $total_participants) * 100, 2) : 0;
-        
-        $average_score = $wpdb->get_var($wpdb->prepare(
-            "SELECT AVG(total_score) FROM {$wpdb->prefix}aqm_responses WHERE campaign_id = %d AND status = 'completed'",
-            $campaign_id
-        ));
-        
-        return array(
-            'total_participants' => $total_participants,
-            'completion_rate' => $completion_rate,
-            'average_score' => round($average_score, 2)
-        );
-    }
-    
-    public function save_response($data) {
-        global $wpdb;
-        
-        return $wpdb->insert(
-            $wpdb->prefix . 'aqm_responses',
-            $data,
-            array('%d', '%d', '%s', '%s', '%s', '%d', '%d', '%s', '%s', '%s')
-        );
-    }
-    
-    public function save_answer($response_id, $question_id, $answer_value, $score = 0) {
-        global $wpdb;
-        
-        return $wpdb->insert(
-            $wpdb->prefix . 'aqm_answers',
-            array(
-                'response_id' => $response_id,
-                'question_id' => $question_id,
-                'answer_value' => $answer_value,
-                'answer_score' => $score
-            ),
-            array('%d', '%d', '%s', '%d')
-        );
-    }
-    
-    public function log_analytics($campaign_id, $event_type, $event_data, $user_id = null) {
-        global $wpdb;
-        
-        return $wpdb->insert(
-            $wpdb->prefix . 'aqm_analytics',
-            array(
-                'campaign_id' => $campaign_id,
-                'event_type' => $event_type,
-                'event_data' => json_encode($event_data),
-                'user_id' => $user_id,
-                'session_id' => session_id(),
-                'ip_address' => $_SERVER['REMOTE_ADDR'],
-                'user_agent' => $_SERVER['HTTP_USER_AGENT'],
-                'page_url' => $_SERVER['REQUEST_URI']
-            ),
-            array('%d', '%s', '%s', '%d', '%s', '%s', '%s', '%s')
-        );
-    }
-}
-
-// Initialize the plugin
-new AdvancedQuizManager();
-
-// Admin class
-class AQM_Admin {
-    
-    public function __construct() {
-        add_action('admin_menu', array($this, 'add_admin_menu'));
-        add_action('wp_ajax_aqm_save_campaign', array($this, 'save_campaign'));
-        add_action('wp_ajax_aqm_get_districts', array($this, 'get_districts'));
-        add_action('wp_ajax_aqm_get_wards', array($this, 'get_wards'));
-    }
-    
-    public function add_admin_menu() {
-        add_menu_page(
-            'Quiz Manager',
-            'Quiz Manager',
-            'manage_options',
-            'quiz-manager',
-            array($this, 'admin_page'),
-            'dashicons-feedback',
-            30
-        );
-        
-        add_submenu_page(
-            'quiz-manager',
-            'Campaigns',
-            'Campaigns',
-            'manage_options',
-            'quiz-manager-campaigns',
-            array($this, 'campaigns_page')
-        );
-        
-        add_submenu_page(
-            'quiz-manager',
-            'Analytics',
-            'Analytics',
-            'manage_options',
-            'quiz-manager-analytics',
-            array($this, 'analytics_page')
-        );
-        
-        add_submenu_page(
-            'quiz-manager',
-            'Gifts',
-            'Gifts',
-            'manage_options',
-            'quiz-manager-gifts',
-            array($this, 'gifts_page')
-        );
-    }
-    
-    public function admin_page() {
-        echo '<div class="wrap"><h1>Quiz Manager Dashboard</h1>';
-        echo '<p>Welcome to the Quiz Manager plugin. Use the menu to manage campaigns, view analytics, and configure gifts.</p>';
-        echo '</div>';
-    }
-    
-    public function campaigns_page() {
-        echo '<div class="wrap"><h1>Campaign Management</h1>';
-        echo '<p>Create and manage quiz campaigns with Vietnamese provinces integration.</p>';
-        echo '</div>';
-    }
-    
-    public function analytics_page() {
-        echo '<div class="wrap"><h1>Quiz Analytics</h1>';
-        echo '<p>View detailed analytics and reports for your quiz campaigns.</p>';
-        echo '</div>';
-    }
-    
-    public function gifts_page() {
-        echo '<div class="wrap"><h1>Gift Management</h1>';
-        echo '<p>Manage gifts and rewards for quiz participants.</p>';
-        echo '</div>';
-    }
-    
-    public function get_districts() {
-        check_ajax_referer('aqm_nonce', 'nonce');
-        
-        $province_code = sanitize_text_field($_POST['province_code']);
-        $aqm = new AdvancedQuizManager();
-        $provinces_data = $aqm->get_vietnam_provinces_json();
-        
-        $districts = array();
-        foreach ($provinces_data as $province) {
-            if ($province['code'] === $province_code && isset($province['districts'])) {
-                $districts = $province['districts'];
-                break;
-            }
-        }
-        
-        wp_send_json_success($districts);
-    }
-    
-    public function get_wards() {
-        check_ajax_referer('aqm_nonce', 'nonce');
-        
-        $district_code = sanitize_text_field($_POST['district_code']);
-        // You would implement ward loading logic here
-        
-        wp_send_json_success(array());
-    }
-}
-
-// API class for frontend AJAX
-class AQM_API {
-    
-    public function __construct() {
-        add_action('wp_ajax_aqm_submit_quiz', array($this, 'submit_quiz'));
-        add_action('wp_ajax_nopriv_aqm_submit_quiz', array($this, 'submit_quiz'));
-        add_action('wp_ajax_aqm_get_provinces', array($this, 'get_provinces'));
-        add_action('wp_ajax_nopriv_aqm_get_provinces', array($this, 'get_provinces'));
-    }
-    
-    public function submit_quiz() {
-        check_ajax_referer('aqm_front_nonce', 'nonce');
-        
-        $campaign_id = intval($_POST['campaign_id']);
-        $answers = $_POST['answers'];
-        
-        // Process quiz submission
-        $db = new AQM_Database();
-        
-        // Save response
-        $response_id = $db->save_response(array(
-            'campaign_id' => $campaign_id,
-            'user_email' => sanitize_email($_POST['user_email'] ?? ''),
-            'user_name' => sanitize_text_field($_POST['user_name'] ?? ''),
-            'status' => 'completed',
-            'ip_address' => $_SERVER['REMOTE_ADDR']
-        ));
-        
-        // Save answers
-        $total_score = 0;
-        foreach ($answers as $question_id => $answer_value) {
-            $score = 0; // Calculate score based on question type
-            $db->save_answer($response_id, $question_id, $answer_value, $score);
-            $total_score += $score;
-        }
-        
-        // Log analytics
-        $db->log_analytics($campaign_id, 'quiz_completed', array(
-            'response_id' => $response_id,
-            'total_score' => $total_score
-        ));
-        
-        wp_send_json_success(array(
-            'message' => 'Quiz submitted successfully!',
-            'score' => $total_score,
-            'response_id' => $response_id
-        ));
-    }
-    
-    public function get_provinces() {
-        $aqm = new AdvancedQuizManager();
-        wp_send_json_success($aqm->get_vietnam_provinces_json());
-    }
-}
-
-// Frontend class
-class AQM_Frontend {
-    
-    public function __construct() {
-        add_action('wp_enqueue_scripts', array($this, 'enqueue_scripts'));
-    }
-    
-    public function enqueue_scripts() {
-        // Frontend scripts are handled in the main class
     }
 }
 ?>
