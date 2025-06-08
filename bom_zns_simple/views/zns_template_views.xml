@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- UPDATED ZNS Template Views with "Pending" as default Apply To -->
+    <!-- ZNS Template Views - Only using existing methods -->
     <record id="zns_template_form_view" model="ir.ui.view">
         <field name="name">zns.template.form</field>
         <field name="model">zns.template</field>
@@ -8,7 +8,6 @@
             <form string="ZNS Template">
                 <header>
                     <button name="sync_template_params" string="Sync Parameters from BOM" type="object" class="btn-primary"/>
-                    <button name="force_refresh_params" string="Force Refresh Parameters" type="object" class="btn-warning"/>
                     <button name="test_template" string="Test Template" type="object" class="btn-info"/>
                 </header>
                 <sheet>
@@ -17,62 +16,28 @@
                             <field name="name" placeholder="Template Name"/>
                         </h1>
                     </div>
-                    
-                    <!-- Status Alerts -->
-                    <div class="alert alert-warning" role="alert" attrs="{'invisible': [('apply_to', '!=', 'pending')]}">
-                        <h5>⚠️ Template Status: Pending</h5>
-                        <p>This template is set to 'Pending' and won't be used by any documents. Please configure the 'Apply To' field below to activate it.</p>
-                    </div>
-                    
-                    <div class="alert alert-success" role="alert" attrs="{'invisible': [('apply_to', '=', 'pending')]}">
-                        <h5>✅ Template Configured</h5>
-                        <p>This template is configured for <field name="apply_to" readonly="1"/> and will be available for auto-selection.</p>
-                    </div>
-                    
-                    <div class="alert alert-info" role="alert" attrs="{'invisible': [('parameters_synced', '=', True)]}">
-                        <h5>📋 Parameters Not Synced</h5>
-                        <p>Click "Sync Parameters from BOM" to load template parameters from your BOM dashboard.</p>
-                    </div>
-                    
                     <group>
                         <group>
                             <field name="template_id" placeholder="e.g., 248079"/>
                             <field name="template_type"/>
-                            <field name="apply_to" widget="radio" options="{'horizontal': false}"/>
                             <field name="connection_id"/>
                             <field name="active"/>
                         </group>
                         <group>
-                            <field name="parameters_synced" readonly="1"/>
                             <field name="last_sync" readonly="1"/>
                             <field name="sync_status" readonly="1" widget="text" attrs="{'invisible': [('sync_status', '=', False)]}"/>
                         </group>
                     </group>
                     
-                    <!-- Apply To Configuration Guide -->
-                    <group string="📋 Apply To Configuration Guide">
-                        <div class="alert alert-info">
-                            <h4>How to Configure 'Apply To':</h4>
-                            <ul>
-                                <li><strong>Pending:</strong> Template not used by any documents (default for new templates)</li>
-                                <li><strong>Sales Orders:</strong> Template available for SO confirmation, updates</li>
-                                <li><strong>Invoices:</strong> Template available for invoice posting, payment reminders</li>
-                                <li><strong>Contacts:</strong> Template available for manual contact messaging</li>
-                            </ul>
-                            <p><strong>Note:</strong> Templates must be manually configured from 'Pending' to a specific document type to be used.</p>
-                        </div>
-                    </group>
-                    
                     <notebook>
                         <page string="Parameters and Mapping">
                             <div class="alert alert-info">
-                                <h4>📋 Parameter Configuration:</h4>
+                                <h4>📋 How to Set Up Parameters:</h4>
                                 <ol>
-                                    <li><strong>Sync from BOM:</strong> Click "Sync Parameters from BOM" to load from your BOM template</li>
-                                    <li><strong>Field Mapping:</strong> Map each parameter to document fields for auto-fill</li>
-                                    <li><strong>Document Types:</strong> Set "Apply To" above to specify SO/Invoice/Contact usage</li>
+                                    <li><strong>Sync from BOM:</strong> Click "Sync Parameters from BOM" to automatically load parameters from your BOM template</li>
+                                    <li><strong>Map to SO Fields:</strong> For each parameter, select which Sale Order field it should get data from</li>
+                                    <li><strong>Custom Values:</strong> Set default values or custom values for parameters</li>
                                 </ol>
-                                <p><strong>Smart Sync:</strong> Parameters are preserved during sync to maintain your mappings. Use "Force Refresh" only if BOM template changed.</p>
                             </div>
                             
                             <field name="parameter_ids" nolabel="1">
@@ -81,87 +46,93 @@
                                     <field name="title"/>
                                     <field name="param_type"/>
                                     <field name="required" readonly="1"/>
-                                    <field name="field_mapping" placeholder="Select field mapping"/>
-                                    <field name="custom_value" attrs="{'invisible': [('field_mapping', '!=', 'custom')], 'required': [('field_mapping', '=', 'custom')]}"/>
+                                    <field name="so_field_mapping" placeholder="Select field to auto-map"/>
+                                    <field name="custom_value" attrs="{'invisible': [('so_field_mapping', '!=', 'custom')], 'required': [('so_field_mapping', '=', 'custom')]}"/>
                                     <field name="default_value"/>
                                     <field name="description" optional="hide"/>
                                 </tree>
                             </field>
                             
                             <div class="alert alert-success mt-3">
-                                <h5>✅ Available Field Mappings:</h5>
+                                <h5>✅ Available SO Field Mappings:</h5>
                                 <div class="row">
-                                    <div class="col-md-3">
+                                    <div class="col-md-4">
                                         <strong>Customer:</strong><br/>
                                         • Customer Name<br/>
-                                        • Customer Phone/Mobile<br/>
+                                        • Customer Mobile/Phone<br/>
                                         • Customer Email<br/>
                                         • Customer VAT<br/>
-                                        • Customer Address<br/>
+                                        • Customer Code<br/>
                                     </div>
-                                    <div class="col-md-3">
-                                        <strong>Document:</strong><br/>
-                                        • Document Number<br/>
-                                        • Document Date<br/>
+                                    <div class="col-md-4">
+                                        <strong>Order:</strong><br/>
+                                        • SO Number<br/>
+                                        • Order Date<br/>
                                         • Total Amount<br/>
                                         • Tax Amount<br/>
-                                        • Currency &amp; Status<br/>
+                                        • Customer Reference<br/>
                                     </div>
-                                    <div class="col-md-3">
-                                        <strong>Company:</strong><br/>
-                                        • Company Name<br/>
-                                        • Company Tax ID<br/>
-                                        • Company Phone<br/>
-                                        • Company Email<br/>
-                                        • Company Address<br/>
-                                    </div>
-                                    <div class="col-md-3">
+                                    <div class="col-md-4">
                                         <strong>Other:</strong><br/>
-                                        • Salesperson Info<br/>
-                                        • Custom Values<br/>
-                                        • Notes &amp; References<br/>
+                                        • Salesperson<br/>
+                                        • Company Name<br/>
+                                        • Company VAT<br/>
+                                        • Custom Value<br/>
                                     </div>
                                 </div>
                             </div>
                         </page>
                         
+                        <page string="Template Info">
+                            <group>
+                                <group string="BOM Template Details">
+                                    <field name="template_id" readonly="1"/>
+                                    <field name="template_type" readonly="1"/>
+                                </group>
+                                <group string="Sync Information">
+                                    <field name="last_sync" readonly="1"/>
+                                    <div class="o_form_label">Last Sync Status</div>
+                                    <div>
+                                        <field name="sync_status" readonly="1" nolabel="1" widget="text" attrs="{'invisible': [('sync_status', '=', False)]}"/>
+                                    </div>
+                                </group>
+                            </group>
+                            
+                            <div class="alert alert-warning" attrs="{'invisible': [('sync_status', '=', False)]}">
+                                <h5>🔄 Sync Status Details:</h5>
+                                <field name="sync_status" readonly="1" widget="text" nolabel="1"/>
+                            </div>
+                        </page>
+                        
                         <page string="Usage Guide">
                             <div class="alert alert-info">
-                                <h4>📖 Template Configuration Guide</h4>
+                                <h4>📖 Template Usage Guide</h4>
                                 
-                                <h5>1. Apply To Selection (REQUIRED)</h5>
+                                <h5>1. Sync Parameters from BOM</h5>
+                                <p>Click "Sync Parameters from BOM" to automatically load all parameters from your BOM ZNS template. This will:</p>
                                 <ul>
-                                    <li><strong>Pending:</strong> Default state - template not used anywhere</li>
-                                    <li><strong>Sales Orders:</strong> Available for SO auto-send when confirmed</li>
-                                    <li><strong>Invoices:</strong> Available for invoice auto-send when posted</li>
-                                    <li><strong>Contacts:</strong> Available for manual contact messaging</li>
-                                </ul>
-                                <p><strong>Important:</strong> You must change from 'Pending' to activate the template!</p>
-                                
-                                <h5>2. Smart Parameter Sync</h5>
-                                <ul>
-                                    <li><strong>First Sync:</strong> Creates all parameters from BOM</li>
-                                    <li><strong>Subsequent Syncs:</strong> Preserves your mappings (no clearing)</li>
-                                    <li><strong>Force Refresh:</strong> Clears and re-syncs (use only if BOM template changed)</li>
+                                    <li>Fetch parameter names, types, and requirements from BOM API</li>
+                                    <li>Clear existing parameters and create new ones</li>
+                                    <li>Show sync status and any errors</li>
                                 </ul>
                                 
-                                <h5>3. Auto Sync Protection</h5>
+                                <h5>2. Map Parameters to Sale Order Fields</h5>
+                                <p>For each parameter, you can map it to a Sale Order field for automatic data filling:</p>
                                 <ul>
-                                    <li><strong>No Duplicates:</strong> Auto sync uses template_id as primary key</li>
-                                    <li><strong>Preserve Mappings:</strong> Existing templates are never touched</li>
-                                    <li><strong>New Only:</strong> Auto sync only creates new templates</li>
+                                    <li><strong>Customer Name</strong> → partner_id.name</li>
+                                    <li><strong>SO Number</strong> → name</li>
+                                    <li><strong>Total Amount</strong> → amount_total</li>
+                                    <li><strong>Order Date</strong> → date_order</li>
+                                    <li><strong>Customer Phone</strong> → partner_id.mobile</li>
+                                    <li><strong>Custom Value</strong> → Use your own text</li>
                                 </ul>
                                 
-                                <h5>4. Field Mapping Benefits</h5>
-                                <ul>
-                                    <li><strong>Auto-fill parameters</strong> from document data</li>
-                                    <li><strong>Consistent messaging</strong> across all documents</li>
-                                    <li><strong>Reduced errors</strong> with automatic data extraction</li>
-                                    <li><strong>Support for company tax ID</strong> and all document fields</li>
-                                </ul>
+                                <h5>3. Common BOM Parameter Names</h5>
+                                <p>Common parameter names used in BOM ZNS templates:</p>
+                                <code>customer_name, so_no, amount, order_date, customer_phone, product_name, salesperson</code>
                                 
-                                <h5>5. Common Parameter Names</h5>
-                                <code>customer_name, order_id, amount, order_date, customer_phone, company_name, company_tax_id</code>
+                                <h5>4. Testing</h5>
+                                <p>Use "Test Template" to verify your parameter mapping works correctly with sample data.</p>
                             </div>
                         </page>
                     </notebook>
@@ -170,26 +141,21 @@
         </field>
     </record>
 
-    <!-- UPDATED Template Tree View - Shows apply_to and parameters_synced status -->
+    <!-- Template Tree View -->
     <record id="zns_template_tree_view" model="ir.ui.view">
         <field name="name">zns.template.tree</field>
         <field name="model">zns.template</field>
         <field name="arch" type="xml">
-            <tree string="ZNS Templates" 
-                  decoration-success="active==True and apply_to!='pending' and parameters_synced==True" 
-                  decoration-warning="active==True and apply_to=='pending'"
-                  decoration-info="active==True and apply_to!='pending' and parameters_synced==False"
+            <tree string="ZNS Templates" decoration-success="active==True and last_sync!=False" 
+                  decoration-warning="active==True and last_sync==False"
                   decoration-muted="active==False">
                 <field name="name"/>
                 <field name="template_id"/>
                 <field name="template_type"/>
-                <field name="apply_to"/>
                 <field name="connection_id"/>
                 <field name="active"/>
-                <field name="parameters_synced"/>
                 <field name="last_sync"/>
-                <button name="sync_template_params" string="Sync" type="object" icon="fa-refresh" class="btn-link" attrs="{'invisible': [('parameters_synced', '=', True)]}"/>
-                <button name="force_refresh_params" string="Force Refresh" type="object" icon="fa-refresh" class="btn-link" attrs="{'invisible': [('parameters_synced', '=', False)]}"/>
+                <button name="sync_template_params" string="Sync" type="object" icon="fa-refresh" class="btn-link"/>
                 <button name="test_template" string="Test" type="object" icon="fa-play" class="btn-link"/>
             </tree>
         </field>
@@ -210,8 +176,8 @@
                             <field name="required"/>
                         </group>
                         <group>
-                            <field name="field_mapping"/>
-                            <field name="custom_value" attrs="{'invisible': [('field_mapping', '!=', 'custom')], 'required': [('field_mapping', '=', 'custom')]}"/>
+                            <field name="so_field_mapping"/>
+                            <field name="custom_value" attrs="{'invisible': [('so_field_mapping', '!=', 'custom')], 'required': [('so_field_mapping', '=', 'custom')]}"/>
                             <field name="default_value"/>
                         </group>
                     </group>
@@ -233,22 +199,26 @@
                 📋 Create your first ZNS template!
             </p>
             <p>
-                Configure ZNS templates with smart sync and document type selection.
+                Set up ZNS message templates from your BOM dashboard and map parameters to Sale Order fields.
             </p>
             <p>
                 <strong>Quick Start:</strong><br/>
-                1. Auto sync creates templates as 'Pending'<br/>
-                2. Edit template and set 'Apply To' (SO/Invoice/Contact)<br/>
-                3. Sync parameters from BOM (preserves mappings)<br/>
-                4. Map parameters to document fields<br/>
-                5. Templates auto-apply based on document type
-            </p>
-            <p>
-                <strong>Smart Features:</strong><br/>
-                • No duplicate templates (by Template ID)<br/>
-                • Parameters preserved during sync<br/>
-                • Manual configuration required to activate
+                1. Create new template<br/>
+                2. Enter Template ID from BOM<br/>
+                3. Click "Sync Parameters from BOM"<br/>
+                4. Map parameters to SO fields<br/>
+                5. Test with sample data
             </p>
         </field>
     </record>
+
+    <!-- Sync All Templates Action (safe method call) -->
+    <record id="zns_template_sync_all_action" model="ir.actions.act_window">
+        <field name="name">Sync All Templates</field>
+        <field name="res_model">zns.template</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+        <field name="context">{'default_action': 'sync_all'}</field>
+    </record>
+	
 </odoo>

@@ -63,23 +63,31 @@ class ZnsHelper(models.AbstractModel):
 
     @api.model
     def build_sale_order_params(self, sale_order, template):
-        """Enhanced parameter building for sale orders using template parameter mappings"""
+        """Enhanced parameter building for sale orders with safe handling"""
         params = {}
+        
+        # Handle templates without parameters (like some OTP templates)
+        if not template.parameter_ids:
+            _logger.info(f"Template {template.name} has no parameters, returning empty params")
+            return params
         
         # Use template parameter mappings if available
         for param in template.parameter_ids:
             value = None
             
-            # First try to get mapped value from field mapping
-            if hasattr(param, 'field_mapping') and param.field_mapping:
-                value = param.get_mapped_value(sale_order)
-            # Fallback to old so_field_mapping for backward compatibility
-            elif hasattr(param, 'so_field_mapping') and param.so_field_mapping:
-                value = param.get_mapped_value(sale_order)
+            # Check if parameter has SO field mapping (safely)
+            if hasattr(param, 'so_field_mapping') and param.so_field_mapping:
+                try:
+                    value = param.get_mapped_value(sale_order)
+                except Exception as e:
+                    _logger.warning(f"Error getting mapped value for {param.name}: {e}")
             
             # If no mapping or mapping failed, try standard parameter names
             if not value:
-                value = self._get_standard_so_param_value(sale_order, param.name)
+                try:
+                    value = self._get_standard_so_param_value(sale_order, param.name)
+                except Exception as e:
+                    _logger.warning(f"Error getting standard SO param {param.name}: {e}")
             
             # Use default if no value found
             if not value:
@@ -164,40 +172,23 @@ class ZnsHelper(models.AbstractModel):
 
     @api.model
     def build_invoice_params(self, invoice, template):
-        """Enhanced parameter building for invoices using template parameter mappings"""
+        """Enhanced parameter building for invoices with safe handling"""
         params = {}
+        
+        # Handle templates without parameters (like some OTP templates)
+        if not template.parameter_ids:
+            _logger.info(f"Template {template.name} has no parameters, returning empty params")
+            return params
         
         # Use template parameter mappings if available
         for param in template.parameter_ids:
             value = None
             
-            # Get mapped value from invoice fields
-            if hasattr(param, 'field_mapping') and param.field_mapping:
-                value = param.get_mapped_value(invoice)
-            # Fallback to old so_field_mapping for backward compatibility
-            elif hasattr(param, 'so_field_mapping') and param.so_field_mapping:
-                # Adapt SO field mapping to invoice fields
-                invoice_mapping = self._adapt_so_mapping_to_invoice(param.so_field_mapping)
-                if invoice_mapping:
-                    try:
-                        obj = invoice
-                        for field_part in invoice_mapping.split('.'):
-                            obj = getattr(obj, field_part, '')
-                            if not obj:
-                                break
-                        
-                        if param.param_type == 'date' and hasattr(obj, 'strftime'):
-                            value = obj.strftime('%d/%m/%Y')
-                        elif param.param_type == 'number':
-                            value = str(obj) if obj else '0'
-                        else:
-                            value = str(obj) if obj else ''
-                    except Exception as e:
-                        _logger.warning(f"Error mapping invoice parameter {param.name}: {e}")
-            
-            # If no mapping or mapping failed, try standard parameter names
-            if not value:
+            # Try standard parameter names for invoices
+            try:
                 value = self._get_standard_invoice_param_value(invoice, param.name)
+            except Exception as e:
+                _logger.warning(f"Error getting standard invoice param {param.name}: {e}")
             
             # Use default if no value found
             if not value:
@@ -208,26 +199,6 @@ class ZnsHelper(models.AbstractModel):
         
         return params
 
-    def _adapt_so_mapping_to_invoice(self, so_mapping):
-        """Adapt Sale Order field mapping to Invoice fields"""
-        # Map SO fields to invoice fields
-        mapping_conversions = {
-            'name': 'name',  # Invoice number
-            'date_order': 'invoice_date',
-            'amount_total': 'amount_total',
-            'amount_untaxed': 'amount_untaxed',
-            'amount_tax': 'amount_tax',
-            'user_id.name': 'invoice_user_id.name',
-            'client_order_ref': 'ref',
-            'commitment_date': 'invoice_date_due',
-            'note': 'narration',
-            'state': 'state',
-            'currency_id.name': 'currency_id.name',
-            'payment_term_id.name': 'invoice_payment_term_id.name',
-        }
-        
-        return mapping_conversions.get(so_mapping, so_mapping)
-
     def _get_standard_invoice_param_value(self, invoice, param_name):
         """Get standard parameter values for invoice by common names"""
         param_mappings = {
@@ -237,21 +208,21 @@ class ZnsHelper(models.AbstractModel):
             'customer_email': invoice.partner_id.email,
             'customer_code': invoice.partner_id.ref,
             'customer_address': invoice.partner_id.contact_address,
+            'customer_city': invoice.partner_id.city,
+            'customer_country': invoice.partner_id.country_id.name if invoice.partner_id.country_id else '',
             'customer_vat': invoice.partner_id.vat,
             
             # Invoice details
             'invoice_number': invoice.name,
             'invoice_no': invoice.name,
-            'invoice_id': invoice.name,
-            'bill_number': invoice.name,
             'invoice_date': invoice.invoice_date.strftime('%d/%m/%Y') if invoice.invoice_date else '',
             'due_date': invoice.invoice_date_due.strftime('%d/%m/%Y') if invoice.invoice_date_due else '',
             'payment_terms': invoice.invoice_payment_term_id.name if invoice.invoice_payment_term_id else '',
             'invoice_note': invoice.narration,
+            'invoice_notes': invoice.narration,
             'currency': invoice.currency_id.name,
-            'reference': invoice.ref or '',
-            'origin': invoice.invoice_origin or '',
-            'sale_order': invoice.invoice_origin or '',  # Often contains SO reference
+            'invoice_reference': invoice.ref,
+            'payment_reference': invoice.payment_reference,
             
             # Amounts
             'amount': invoice.amount_total,
@@ -259,55 +230,57 @@ class ZnsHelper(models.AbstractModel):
             'subtotal': invoice.amount_untaxed,
             'tax_amount': invoice.amount_tax,
             'remaining_amount': invoice.amount_residual,
+            'paid_amount': invoice.amount_total - invoice.amount_residual,
             'amount_vnd': f"{invoice.amount_total:,.0f}".replace(',', '.'),
             'remaining_vnd': f"{invoice.amount_residual:,.0f}".replace(',', '.'),
+            'paid_vnd': f"{(invoice.amount_total - invoice.amount_residual):,.0f}".replace(',', '.'),
             'amount_words': self._number_to_words_vn(invoice.amount_total),
+            'remaining_words': self._number_to_words_vn(invoice.amount_residual),
             
-            # Status and type
-            'invoice_status': dict(invoice._fields['state'].selection).get(invoice.state),
-            'invoice_type': dict(invoice._fields['move_type'].selection).get(invoice.move_type),
-            'is_paid': 'Yes' if invoice.amount_residual == 0 else 'No',
-            'payment_status': 'Paid' if invoice.amount_residual == 0 else 'Unpaid',
+            # Product details (if invoice has lines)
+            'product_count': len(invoice.invoice_line_ids.filtered(lambda l: not l.display_type)),
+            'main_product': invoice.invoice_line_ids.filtered(lambda l: not l.display_type)[0].product_id.name if invoice.invoice_line_ids.filtered(lambda l: not l.display_type) else '',
+            'product_name': invoice.invoice_line_ids.filtered(lambda l: not l.display_type)[0].product_id.name if invoice.invoice_line_ids.filtered(lambda l: not l.display_type) else '',
+            'total_qty': sum(invoice.invoice_line_ids.filtered(lambda l: not l.display_type).mapped('quantity')),
+            'product_list': ', '.join(invoice.invoice_line_ids.filtered(lambda l: not l.display_type).mapped('product_id.name')[:3]),
             
-            # Company details (includes vat)
+            # Company details
             'company_name': invoice.company_id.name,
             'company_vat': invoice.company_id.vat,
             'company_tax_id': invoice.company_id.vat,
             'company_phone': invoice.company_id.phone,
             'company_email': invoice.company_id.email,
+            'company_address': invoice.company_id.contact_address,
             
-            # Dates in different formats
-            'invoice_date_short': invoice.invoice_date.strftime('%d/%m') if invoice.invoice_date else '',
-            'due_date_short': invoice.invoice_date_due.strftime('%d/%m') if invoice.invoice_date_due else '',
+            # Related Sale Order (if exists)
+            'order_id': invoice.invoice_origin if invoice.invoice_origin else '',
+            'so_no': invoice.invoice_origin if invoice.invoice_origin else '',
+            'order_reference': invoice.ref if invoice.ref else '',
             
-            # Product information (if available)
-            'product_count': len(invoice.invoice_line_ids),
-            'main_product': invoice.invoice_line_ids[0].product_id.name if invoice.invoice_line_ids else '',
-            'product_list': ', '.join(invoice.invoice_line_ids.mapped('product_id.name')[:3]) if invoice.invoice_line_ids else '',
+            # Status and dates
+            'invoice_status': dict(invoice._fields['state'].selection).get(invoice.state),
+            'is_paid': 'Yes' if invoice.amount_residual == 0 else 'No',
+            'is_overdue': 'Yes' if (invoice.invoice_date_due and invoice.invoice_date_due < invoice._context.get('today', fields.Date.context_today(invoice)) and invoice.amount_residual > 0) else 'No',
+            
+            # Invoice type
+            'invoice_type': dict(invoice._fields['move_type'].selection).get(invoice.move_type),
+            'is_refund': 'Yes' if invoice.move_type in ['out_refund', 'in_refund'] else 'No',
         }
         
         return param_mappings.get(param_name, '')
 
     @api.model
     def send_sale_order_zns(self, sale_order, template_id=None):
-        """Quick send ZNS for sale order with enhanced parameter mapping - UPDATED: Filter out 'pending' templates"""
+        """Quick send ZNS for sale order using your existing configuration"""
+        config = self.env['zns.configuration'].get_default_config()
+        
         if not template_id:
-            # Find best template mapping
-            template_mapping = self.env['zns.template.mapping']._find_best_mapping('sale.order', sale_order)
-            if template_mapping:
-                template = template_mapping.template_id
-            else:
-                # UPDATED: Find templates configured for sale orders (not pending)
-                template = self.env['zns.template'].search([
-                    ('template_type', '=', 'transaction'),
-                    ('active', '=', True),
-                    ('apply_to', '=', 'sale_order')  # Only templates configured for SO
-                ], limit=1, order='id')
+            template = config.get_template_for_document('sale.order', sale_order)
         else:
             template = self.env['zns.template'].browse(template_id)
         
         if not template:
-            raise UserError(_("No ZNS templates configured for Sale Orders. Please set templates to 'Sales Orders' in Templates menu."))
+            raise UserError(_("No ZNS template found"))
         
         phone = self.format_phone_vietnamese(
             sale_order.partner_id.mobile or sale_order.partner_id.phone
@@ -333,24 +306,16 @@ class ZnsHelper(models.AbstractModel):
 
     @api.model
     def send_invoice_zns(self, invoice, template_id=None):
-        """Quick send ZNS for invoice with enhanced parameter mapping - UPDATED: Filter out 'pending' templates"""
+        """Quick send ZNS for invoice using your existing configuration"""
+        config = self.env['zns.configuration'].get_default_config()
+        
         if not template_id:
-            # Find best template mapping
-            template_mapping = self.env['zns.template.mapping']._find_best_mapping('account.move', invoice)
-            if template_mapping:
-                template = template_mapping.template_id
-            else:
-                # UPDATED: Find templates configured for invoices (not pending)
-                template = self.env['zns.template'].search([
-                    ('template_type', '=', 'transaction'),
-                    ('active', '=', True),
-                    ('apply_to', '=', 'invoice')  # Only templates configured for invoices
-                ], limit=1, order='id')
+            template = config.get_template_for_document('account.move', invoice)
         else:
             template = self.env['zns.template'].browse(template_id)
         
         if not template:
-            raise UserError(_("No ZNS templates configured for Invoices. Please set templates to 'Invoices' in Templates menu."))
+            raise UserError(_("No ZNS template found"))
         
         phone = self.format_phone_vietnamese(
             invoice.partner_id.mobile or invoice.partner_id.phone
