@@ -1,0 +1,1638 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{CAMPAIGN_TITLE}} - Mobile Quiz</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 0;
+            overflow-x: hidden;
+        }
+
+        .quiz-container {
+            max-width: 100%;
+            margin: 0;
+            background: #fff;
+            min-height: 100vh;
+            position: relative;
+            animation: slideUp 0.5s ease;
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(50px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .quiz-header {
+            background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+            color: white;
+            text-align: center;
+            padding: 40px 20px 30px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .quiz-header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="20" cy="20" r="2" fill="rgba(255,255,255,0.1)"/><circle cx="80" cy="30" r="3" fill="rgba(255,255,255,0.1)"/><circle cx="40" cy="70" r="2" fill="rgba(255,255,255,0.1)"/><circle cx="90" cy="80" r="2" fill="rgba(255,255,255,0.1)"/></svg>');
+            animation: float 6s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .quiz-header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+            position: relative;
+            z-index: 1;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .quiz-header p {
+            font-size: 16px;
+            opacity: 0.95;
+            position: relative;
+            z-index: 1;
+            margin-bottom: 20px;
+        }
+
+        .question-counter {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255,255,255,0.2);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            backdrop-filter: blur(10px);
+        }
+
+        .progress-container {
+            background: rgba(255,255,255,0.1);
+            padding: 0 20px 20px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .progress-bar {
+            background: rgba(255,255,255,0.2);
+            height: 8px;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+
+        .progress-fill {
+            background: linear-gradient(90deg, #00d2ff, #3a7bd5);
+            height: 100%;
+            border-radius: 10px;
+            transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            width: 0%;
+            box-shadow: 0 0 10px rgba(0, 210, 255, 0.4);
+        }
+
+        .progress-text {
+            text-align: center;
+            font-size: 14px;
+            color: rgba(255,255,255,0.9);
+            font-weight: 500;
+        }
+
+        .quiz-content {
+            padding: 30px 20px;
+            min-height: calc(100vh - 300px);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .question-slide {
+            display: none;
+            animation: fadeInSlide 0.5s ease;
+            flex: 1;
+        }
+
+        .question-slide.active {
+            display: flex;
+            flex-direction: column;
+        }
+
+        @keyframes fadeInSlide {
+            from { 
+                opacity: 0; 
+                transform: translateX(30px);
+            }
+            to { 
+                opacity: 1; 
+                transform: translateX(0);
+            }
+        }
+
+        .question-number {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            margin-bottom: 20px;
+            font-size: 18px;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .question-text {
+            font-size: 22px;
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 30px;
+            line-height: 1.5;
+        }
+
+        .question-group {
+            background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+            padding: 8px 16px;
+            border-radius: 25px;
+            font-size: 12px;
+            color: #6c757d;
+            display: inline-block;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        .input-group {
+            margin-bottom: 25px;
+            flex: 1;
+        }
+
+        .input-group label {
+            display: block;
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        .required {
+            color: #dc3545;
+        }
+
+        .input-group input,
+        .input-group select,
+        .input-group textarea {
+            width: 100%;
+            padding: 16px 20px;
+            border: 2px solid #e9ecef;
+            border-radius: 12px;
+            font-size: 16px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            background: #fff;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+
+        .input-group select {
+            background-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%23666" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6,9 12,15 18,9"></polyline></svg>');
+            background-repeat: no-repeat;
+            background-position: right 16px center;
+            background-size: 16px;
+            padding-right: 50px;
+        }
+
+        .input-group input:focus,
+        .input-group select:focus,
+        .input-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .multiple-choice {
+            display: grid;
+            gap: 15px;
+            flex: 1;
+        }
+
+        .choice-option {
+            background: #fff;
+            border: 2px solid #e9ecef;
+            border-radius: 16px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            position: relative;
+            overflow: hidden;
+            min-height: 70px;
+        }
+
+        .choice-option::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .choice-option:hover {
+            border-color: #667eea;
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.2);
+        }
+
+        .choice-option.selected {
+            border-color: #667eea;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+        }
+
+        .choice-option.selected::before {
+            opacity: 1;
+        }
+
+        .choice-option input[type="radio"] {
+            margin-right: 15px;
+            transform: scale(1.3);
+        }
+
+        .choice-option span {
+            position: relative;
+            z-index: 1;
+            font-weight: 500;
+            font-size: 16px;
+            line-height: 1.4;
+        }
+
+        .rating-container {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            margin: 30px 0;
+            flex-wrap: wrap;
+        }
+
+        .star {
+            font-size: 36px;
+            color: #ddd;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            user-select: none;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+        }
+
+        .star:hover,
+        .star.active {
+            color: #ffc107;
+            transform: scale(1.2);
+            filter: drop-shadow(0 4px 8px rgba(255, 193, 7, 0.4));
+        }
+
+        .star:hover ~ .star {
+            color: #ddd;
+            transform: scale(1);
+        }
+
+        .rating-feedback {
+            text-align: center;
+            margin-top: 15px;
+            font-size: 16px;
+            font-weight: 500;
+            color: #667eea;
+            min-height: 24px;
+        }
+
+        .province-cascade {
+            display: grid;
+            gap: 20px;
+        }
+
+        .location-select {
+            position: relative;
+        }
+
+        .location-select.disabled {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+
+        .buttons-container {
+            display: flex;
+            gap: 15px;
+            margin-top: auto;
+            padding-top: 30px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 18px 24px;
+            border: none;
+            border-radius: 16px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+            min-height: 56px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            transition: left 0.6s;
+        }
+
+        .btn:hover::before {
+            left: 100%;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.5);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+            box-shadow: 0 4px 15px rgba(108, 117, 125, 0.3);
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: #5a6268;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(108, 117, 125, 0.4);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none !important;
+            box-shadow: none !important;
+        }
+
+        .error-message {
+            background: linear-gradient(135deg, #f8d7da, #f5c6cb);
+            color: #721c24;
+            padding: 16px 20px;
+            border-radius: 12px;
+            margin-top: 20px;
+            border-left: 4px solid #dc3545;
+            display: none;
+            animation: shake 0.5s ease-in-out;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+
+        .success-message {
+            background: linear-gradient(135deg, #d4edda, #c3e6cb);
+            color: #155724;
+            padding: 16px 20px;
+            border-radius: 12px;
+            margin-top: 20px;
+            border-left: 4px solid #28a745;
+            display: none;
+            animation: slideInUp 0.5s ease;
+        }
+
+        @keyframes slideInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .quiz-completion {
+            text-align: center;
+            padding: 50px 20px;
+            display: none;
+        }
+
+        .completion-icon {
+            font-size: 80px;
+            margin-bottom: 25px;
+            animation: bounceIn 1s ease;
+        }
+
+        @keyframes bounceIn {
+            0% { transform: scale(0); opacity: 0; }
+            50% { transform: scale(1.1); opacity: 1; }
+            100% { transform: scale(1); }
+        }
+
+        .completion-title {
+            font-size: 32px;
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 20px;
+        }
+
+        .completion-score {
+            font-size: 56px;
+            font-weight: bold;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 25px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .completion-subtitle {
+            font-size: 18px;
+            color: #6c757d;
+            margin-bottom: 30px;
+        }
+
+        .gift-notification {
+            background: linear-gradient(135deg, #ffd700, #ffed4e);
+            color: #8b7d00;
+            padding: 25px;
+            border-radius: 20px;
+            margin: 25px 0;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(255, 215, 0, 0.4);
+            animation: giftPulse 2s ease-in-out infinite;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .gift-notification::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            animation: giftShine 3s ease-in-out infinite;
+        }
+
+        @keyframes giftPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+        }
+
+        @keyframes giftShine {
+            0% { left: -100%; }
+            100% { left: 100%; }
+        }
+
+        .gift-notification h3 {
+            margin-bottom: 15px;
+            font-size: 20px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .gift-code {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 24px;
+            font-weight: bold;
+            background: rgba(255,255,255,0.4);
+            padding: 15px 20px;
+            border-radius: 12px;
+            margin: 15px 0;
+            letter-spacing: 3px;
+            position: relative;
+            z-index: 1;
+            border: 2px dashed rgba(139, 125, 0, 0.3);
+        }
+
+        .gift-description {
+            font-size: 16px;
+            margin-bottom: 20px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .completion-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-top: 30px;
+        }
+
+        .loading-spinner {
+            border: 4px solid rgba(102, 126, 234, 0.2);
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+            display: none;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            text-align: center;
+            color: #6c757d;
+            margin-top: 15px;
+            font-weight: 500;
+        }
+
+        .file-upload-area {
+            border: 2px dashed #dee2e6;
+            border-radius: 16px;
+            padding: 40px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .file-upload-area:hover {
+            border-color: #667eea;
+            background: rgba(102, 126, 234, 0.05);
+        }
+
+        .file-upload-area.dragover {
+            border-color: #667eea;
+            background: rgba(102, 126, 234, 0.1);
+            transform: scale(1.02);
+        }
+
+        .file-upload-icon {
+            font-size: 48px;
+            color: #6c757d;
+            margin-bottom: 15px;
+        }
+
+        .file-upload-text {
+            font-size: 16px;
+            color: #495057;
+            font-weight: 500;
+        }
+
+        /* Validation Styles */
+        .input-error {
+            border-color: #dc3545 !important;
+            box-shadow: 0 0 0 4px rgba(220, 53, 69, 0.1) !important;
+        }
+
+        .validation-message {
+            color: #dc3545;
+            font-size: 14px;
+            margin-top: 8px;
+            display: none;
+        }
+
+        /* Mobile Optimizations */
+        @media (max-width: 480px) {
+            .quiz-header {
+                padding: 30px 15px 25px;
+            }
+            
+            .quiz-header h1 {
+                font-size: 24px;
+            }
+            
+            .quiz-content {
+                padding: 25px 15px;
+            }
+            
+            .question-text {
+                font-size: 20px;
+            }
+            
+            .star {
+                font-size: 32px;
+                gap: 8px;
+            }
+            
+            .rating-container {
+                gap: 8px;
+            }
+            
+            .choice-option {
+                padding: 16px;
+                min-height: 60px;
+            }
+            
+            .choice-option span {
+                font-size: 15px;
+            }
+            
+            .completion-score {
+                font-size: 48px;
+            }
+            
+            .completion-title {
+                font-size: 28px;
+            }
+            
+            .gift-code {
+                font-size: 20px;
+                letter-spacing: 2px;
+            }
+            
+            .question-counter {
+                top: 15px;
+                right: 15px;
+                padding: 6px 12px;
+                font-size: 12px;
+            }
+        }
+
+        /* Dark mode support */
+        @media (prefers-color-scheme: dark) {
+            .quiz-container {
+                background: #1a1a1a;
+                color: #ffffff;
+            }
+            
+            .question-text {
+                color: #ffffff;
+            }
+            
+            .input-group label {
+                color: #e9ecef;
+            }
+            
+            .input-group input,
+            .input-group select,
+            .input-group textarea {
+                background: #2d2d2d;
+                border-color: #404040;
+                color: #ffffff;
+            }
+            
+            .choice-option {
+                background: #2d2d2d;
+                border-color: #404040;
+                color: #ffffff;
+            }
+        }
+
+        /* Accessibility improvements */
+        @media (prefers-reduced-motion: reduce) {
+            * {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+
+        /* Focus indicators for keyboard navigation */
+        .btn:focus,
+        .choice-option:focus,
+        .star:focus {
+            outline: 3px solid #667eea;
+            outline-offset: 2px;
+        }
+
+        /* High contrast mode support */
+        @media (prefers-contrast: high) {
+            .btn-primary {
+                background: #000000;
+                border: 2px solid #ffffff;
+            }
+            
+            .choice-option {
+                border-width: 3px;
+            }
+            
+            .choice-option.selected {
+                background: #000000;
+                color: #ffffff;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="quiz-container" id="quiz-container" data-campaign-id="{{CAMPAIGN_ID}}">
+        <!-- Quiz Header -->
+        <div class="quiz-header">
+            <div class="question-counter">
+                <span id="current-question">1</span> / <span id="total-questions">5</span>
+            </div>
+            <h1>{{CAMPAIGN_TITLE}}</h1>
+            <p>{{CAMPAIGN_DESCRIPTION}}</p>
+            
+            <!-- Progress Bar -->
+            <div class="progress-container">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progress-fill"></div>
+                </div>
+                <div class="progress-text" id="progress-text">Câu hỏi 1 / 5</div>
+            </div>
+        </div>
+
+        <!-- Quiz Content -->
+        <div class="quiz-content" id="quiz-content">
+            <!-- Loading state -->
+            <div id="loading-state" class="loading-state">
+                <div class="loading-spinner" style="display: block;"></div>
+                <div class="loading-text">Đang tải câu hỏi...</div>
+            </div>
+            
+            <!-- Questions will be dynamically inserted here -->
+        </div>
+
+        <!-- Quiz Completion -->
+        <div class="quiz-completion" id="quiz-completion">
+            <div class="completion-icon">🎉</div>
+            <div class="completion-title">Chúc mừng!</div>
+            <div class="completion-score" id="final-score">85/100</div>
+            <div class="completion-subtitle">Bạn đã hoàn thành quiz thành công!</div>
+            
+            <div class="gift-notification" id="gift-notification" style="display: none;">
+                <h3>🎁 Chúc mừng! Bạn đã nhận được quà!</h3>
+                <div class="gift-description" id="gift-description">Voucher mua sắm trị giá 100.000 VND</div>
+                <div class="gift-code" id="gift-code">GIFT-ABC123</div>
+                <p>Sử dụng mã này để nhận quà của bạn!</p>
+            </div>
+            
+            <div class="completion-actions">
+                <button class="btn btn-primary" onclick="copyGiftCode()" id="copy-btn" style="display: none;">
+                    📋 Sao chép mã quà
+                </button>
+                <button class="btn btn-secondary" onclick="shareResults()">
+                    📤 Chia sẻ kết quả
+                </button>
+                <button class="btn btn-secondary" onclick="restartQuiz()">
+                    🔄 Làm lại quiz
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Quiz Configuration
+        const QUIZ_CONFIG = {
+            campaignId: '{{CAMPAIGN_ID}}',
+            ajaxUrl: '{{AJAX_URL}}',
+            nonce: '{{NONCE}}',
+            autoSave: true,
+            autoSaveInterval: 30000 // 30 seconds
+        };
+
+        // Quiz State
+        let quizState = {
+            currentQuestion: 1,
+            totalQuestions: 0,
+            questions: [],
+            answers: {},
+            score: 0,
+            isComplete: false
+        };
+
+        // Initialize Quiz
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeQuiz();
+        });
+
+        async function initializeQuiz() {
+            try {
+                // Load campaign info and questions
+                await loadCampaignData();
+                await loadQuestions();
+                
+                if (quizState.questions.length === 0) {
+                    showError('Không có câu hỏi nào được tìm thấy.');
+                    return;
+                }
+                
+                // Setup UI
+                updateTotalQuestions();
+                renderCurrentQuestion();
+                hideLoading();
+                
+                // Setup auto-save if enabled
+                if (QUIZ_CONFIG.autoSave) {
+                    setupAutoSave();
+                }
+                
+            } catch (error) {
+                console.error('Quiz initialization error:', error);
+                showError('Có lỗi xảy ra khi tải quiz. Vui lòng thử lại.');
+            }
+        }
+
+        async function loadCampaignData() {
+            try {
+                const response = await fetch(QUIZ_CONFIG.ajaxUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: new URLSearchParams({
+                        action: 'aqm_get_campaign_info',
+                        campaign_id: QUIZ_CONFIG.campaignId
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Update campaign info in header if needed
+                    console.log('Campaign loaded:', data.data);
+                } else {
+                    throw new Error(data.data || 'Failed to load campaign');
+                }
+            } catch (error) {
+                console.error('Error loading campaign:', error);
+                throw error;
+            }
+        }
+
+        async function loadQuestions() {
+            try {
+                const response = await fetch(QUIZ_CONFIG.ajaxUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: new URLSearchParams({
+                        action: 'aqm_get_campaign_questions',
+                        campaign_id: QUIZ_CONFIG.campaignId
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    quizState.questions = data.data;
+                    quizState.totalQuestions = data.data.length;
+                } else {
+                    throw new Error(data.data || 'Failed to load questions');
+                }
+            } catch (error) {
+                console.error('Error loading questions:', error);
+                throw error;
+            }
+        }
+
+        function renderCurrentQuestion() {
+            const question = quizState.questions[quizState.currentQuestion - 1];
+            if (!question) return;
+
+            const questionHtml = generateQuestionHtml(question);
+            
+            document.getElementById('quiz-content').innerHTML = questionHtml;
+            
+            // Update progress
+            updateProgress();
+            updateQuestionCounter();
+            
+            // Setup question-specific interactions
+            setupQuestionInteractions(question);
+            
+            // Load saved answer if exists
+            loadSavedAnswer(question);
+        }
+
+        function generateQuestionHtml(question) {
+            const questionNumber = quizState.currentQuestion;
+            const isRequired = question.is_required == 1;
+            const requiredMark = isRequired ? '<span class="required">*</span>' : '';
+            
+            let questionContent = '';
+            
+            switch (question.question_type) {
+                case 'text':
+                case 'email':
+                case 'phone':
+                case 'number':
+                    questionContent = generateTextInput(question);
+                    break;
+                case 'multiple_choice':
+                    questionContent = generateMultipleChoice(question);
+                    break;
+                case 'rating':
+                    questionContent = generateRating(question);
+                    break;
+                case 'provinces':
+                    questionContent = generateProvinceSelect(question);
+                    break;
+                case 'date':
+                    questionContent = generateDateInput(question);
+                    break;
+                case 'textarea':
+                    questionContent = generateTextarea(question);
+                    break;
+                default:
+                    questionContent = generateTextInput(question);
+            }
+            
+            return `
+                <div class="question-slide active" data-question-id="${question.id}">
+                    <div class="question-number">${questionNumber}</div>
+                    ${question.question_group ? `<div class="question-group">${question.question_group}</div>` : ''}
+                    <div class="question-text">${question.question_text}${requiredMark}</div>
+                    
+                    <div class="input-group">
+                        ${questionContent}
+                    </div>
+
+                    <div class="buttons-container">
+                        ${questionNumber > 1 ? `
+                            <button type="button" class="btn btn-secondary" onclick="previousQuestion()">
+                                ← Câu trước
+                            </button>
+                        ` : ''}
+                        
+                        <button type="button" class="btn btn-primary" onclick="nextQuestion()" id="next-btn">
+                            ${questionNumber === quizState.totalQuestions ? 'Hoàn thành' : 'Câu tiếp theo →'}
+                        </button>
+                    </div>
+
+                    <div class="error-message" id="error-message"></div>
+                    <div class="success-message" id="success-message"></div>
+                </div>
+            `;
+        }
+
+        function generateTextInput(question) {
+            const inputType = getInputType(question.question_type);
+            const placeholder = question.options?.placeholder || `Nhập ${question.question_text.toLowerCase()}`;
+            
+            return `
+                <input type="${inputType}" 
+                       id="answer" 
+                       name="answer" 
+                       placeholder="${placeholder}"
+                       ${question.is_required == 1 ? 'required' : ''}>
+            `;
+        }
+
+        function generateMultipleChoice(question) {
+            if (!question.options?.choices) return '';
+            
+            return `
+                <div class="multiple-choice">
+                    ${question.options.choices.map((choice, index) => `
+                        <div class="choice-option" data-value="${choice}" onclick="selectChoice(this)">
+                            <input type="radio" name="answer" value="${choice}" id="choice-${index}">
+                            <span>${choice}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function generateRating(question) {
+            const maxRating = question.options?.max_rating || 5;
+            const ratingTexts = {
+                1: 'Rất không hài lòng',
+                2: 'Không hài lòng', 
+                3: 'Bình thường',
+                4: 'Hài lòng',
+                5: 'Rất hài lòng'
+            };
+            
+            return `
+                <div class="rating-container">
+                    ${Array.from({length: maxRating}, (_, i) => `
+                        <span class="star" data-rating="${i + 1}" onclick="selectRating(${i + 1})">⭐</span>
+                    `).join('')}
+                </div>
+                <div class="rating-feedback" id="rating-feedback">Chọn số sao để đánh giá</div>
+                <input type="hidden" name="answer" id="rating-value">
+            `;
+        }
+
+        function generateProvinceSelect(question) {
+            return `
+                <div class="province-cascade">
+                    <select id="answer" name="answer" ${question.is_required == 1 ? 'required' : ''}>
+                        <option value="">Chọn tỉnh/thành phố</option>
+                    </select>
+                </div>
+            `;
+        }
+
+        function generateDateInput(question) {
+            return `
+                <input type="date" 
+                       id="answer" 
+                       name="answer"
+                       ${question.is_required == 1 ? 'required' : ''}>
+            `;
+        }
+
+        function generateTextarea(question) {
+            const placeholder = question.options?.placeholder || `Nhập ${question.question_text.toLowerCase()}`;
+            
+            return `
+                <textarea id="answer" 
+                          name="answer" 
+                          rows="4" 
+                          placeholder="${placeholder}"
+                          ${question.is_required == 1 ? 'required' : ''}></textarea>
+            `;
+        }
+
+        function setupQuestionInteractions(question) {
+            switch (question.question_type) {
+                case 'provinces':
+                    setupProvinceSelect();
+                    break;
+                case 'rating':
+                    setupRatingInteraction();
+                    break;
+                case 'multiple_choice':
+                    setupMultipleChoiceInteraction();
+                    break;
+            }
+        }
+
+        async function setupProvinceSelect() {
+            try {
+                const response = await fetch(QUIZ_CONFIG.ajaxUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: new URLSearchParams({
+                        action: 'aqm_get_vietnam_provinces'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    const select = document.getElementById('answer');
+                    data.data.forEach(province => {
+                        const option = document.createElement('option');
+                        option.value = province.name;
+                        option.textContent = province.name;
+                        select.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading provinces:', error);
+            }
+        }
+
+        function setupRatingInteraction() {
+            const stars = document.querySelectorAll('.star');
+            const feedback = document.getElementById('rating-feedback');
+            
+            const ratingTexts = {
+                1: 'Rất không hài lòng',
+                2: 'Không hài lòng',
+                3: 'Bình thường', 
+                4: 'Hài lòng',
+                5: 'Rất hài lòng'
+            };
+            
+            stars.forEach(star => {
+                star.addEventListener('mouseenter', function() {
+                    const rating = parseInt(this.dataset.rating);
+                    highlightStars(rating);
+                    feedback.textContent = ratingTexts[rating] || '';
+                });
+                
+                star.addEventListener('mouseleave', function() {
+                    const currentRating = document.getElementById('rating-value').value;
+                    if (currentRating) {
+                        highlightStars(parseInt(currentRating));
+                        feedback.textContent = ratingTexts[currentRating] || '';
+                    } else {
+                        highlightStars(0);
+                        feedback.textContent = 'Chọn số sao để đánh giá';
+                    }
+                });
+            });
+        }
+
+        function setupMultipleChoiceInteraction() {
+            // Already handled by onclick in HTML
+        }
+
+        function selectChoice(element) {
+            // Remove selection from all choices
+            document.querySelectorAll('.choice-option').forEach(choice => {
+                choice.classList.remove('selected');
+            });
+            
+            // Select current choice
+            element.classList.add('selected');
+            element.querySelector('input[type="radio"]').checked = true;
+        }
+
+        function selectRating(rating) {
+            document.getElementById('rating-value').value = rating;
+            highlightStars(rating);
+            
+            const ratingTexts = {
+                1: 'Rất không hài lòng',
+                2: 'Không hài lòng',
+                3: 'Bình thường',
+                4: 'Hài lòng', 
+                5: 'Rất hài lòng'
+            };
+            
+            document.getElementById('rating-feedback').textContent = ratingTexts[rating] || '';
+        }
+
+        function highlightStars(rating) {
+            document.querySelectorAll('.star').forEach((star, index) => {
+                if (index < rating) {
+                    star.classList.add('active');
+                } else {
+                    star.classList.remove('active');
+                }
+            });
+        }
+
+        function getInputType(questionType) {
+            const typeMap = {
+                'text': 'text',
+                'email': 'email',
+                'phone': 'tel',
+                'number': 'number',
+                'date': 'date'
+            };
+            return typeMap[questionType] || 'text';
+        }
+
+        function nextQuestion() {
+            if (!validateCurrentQuestion()) {
+                return;
+            }
+
+            saveCurrentAnswer();
+
+            if (quizState.currentQuestion < quizState.totalQuestions) {
+                quizState.currentQuestion++;
+                renderCurrentQuestion();
+            } else {
+                completeQuiz();
+            }
+        }
+
+        function previousQuestion() {
+            if (quizState.currentQuestion > 1) {
+                saveCurrentAnswer();
+                quizState.currentQuestion--;
+                renderCurrentQuestion();
+            }
+        }
+
+        function validateCurrentQuestion() {
+            const question = quizState.questions[quizState.currentQuestion - 1];
+            
+            if (question.is_required != 1) {
+                return true; // Not required, validation passes
+            }
+
+            let answer = getCurrentAnswer();
+            
+            if (!answer || (typeof answer === 'string' && answer.trim() === '')) {
+                showError('Vui lòng trả lời câu hỏi này.');
+                return false;
+            }
+
+            // Type-specific validation
+            if (question.question_type === 'email' && answer) {
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                if (!emailRegex.test(answer)) {
+                    showError('Vui lòng nhập địa chỉ email hợp lệ.');
+                    return false;
+                }
+            }
+
+            hideError();
+            return true;
+        }
+
+        function getCurrentAnswer() {
+            const question = quizState.questions[quizState.currentQuestion - 1];
+            
+            switch (question.question_type) {
+                case 'multiple_choice':
+                    const selectedChoice = document.querySelector('.choice-option.selected input[type="radio"]');
+                    return selectedChoice ? selectedChoice.value : '';
+                case 'rating':
+                    return document.getElementById('rating-value').value;
+                default:
+                    const answerInput = document.getElementById('answer');
+                    return answerInput ? answerInput.value : '';
+            }
+        }
+
+        function saveCurrentAnswer() {
+            const question = quizState.questions[quizState.currentQuestion - 1];
+            const answer = getCurrentAnswer();
+            
+            quizState.answers[`question_${question.id}`] = answer;
+            
+            // Auto-save to prevent data loss
+            if (QUIZ_CONFIG.autoSave) {
+                saveProgress();
+            }
+        }
+
+        function loadSavedAnswer(question) {
+            const savedAnswer = quizState.answers[`question_${question.id}`];
+            if (!savedAnswer) return;
+
+            switch (question.question_type) {
+                case 'multiple_choice':
+                    const choiceElement = document.querySelector(`[data-value="${savedAnswer}"]`);
+                    if (choiceElement) {
+                        selectChoice(choiceElement);
+                    }
+                    break;
+                case 'rating':
+                    selectRating(parseInt(savedAnswer));
+                    break;
+                default:
+                    const answerInput = document.getElementById('answer');
+                    if (answerInput) {
+                        answerInput.value = savedAnswer;
+                    }
+            }
+        }
+
+        async function completeQuiz() {
+            showLoading();
+            
+            try {
+                // Calculate final score
+                const finalScore = calculateFinalScore();
+                
+                // Submit quiz
+                const response = await fetch(QUIZ_CONFIG.ajaxUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: new URLSearchParams({
+                        action: 'aqm_submit_quiz_enhanced',
+                        campaign_id: QUIZ_CONFIG.campaignId,
+                        quiz_data: JSON.stringify(quizState.answers),
+                        final_score: finalScore,
+                        nonce: QUIZ_CONFIG.nonce
+                    })
+                });
+                
+                const data = await response.json();
+                
+                hideLoading();
+                
+                if (data.success) {
+                    showCompletionScreen(data.data);
+                } else {
+                    showError(data.data?.message || 'Có lỗi xảy ra khi gửi quiz.');
+                }
+                
+            } catch (error) {
+                hideLoading();
+                console.error('Quiz submission error:', error);
+                showError('Có lỗi xảy ra. Vui lòng thử lại.');
+            }
+        }
+
+        function calculateFinalScore() {
+            // Simple scoring based on completion
+            const answeredQuestions = Object.keys(quizState.answers).length;
+            return Math.round((answeredQuestions / quizState.totalQuestions) * 100);
+        }
+
+        function showCompletionScreen(result) {
+            quizState.isComplete = true;
+            
+            // Hide quiz content
+            document.getElementById('quiz-content').style.display = 'none';
+            
+            // Show completion screen
+            const completionScreen = document.getElementById('quiz-completion');
+            completionScreen.style.display = 'block';
+            
+            // Update score
+            document.getElementById('final-score').textContent = `${result.final_score}/100`;
+            
+            // Show gift if awarded
+            if (result.gift_awarded && result.gift_code) {
+                showGiftNotification(result);
+            }
+            
+            // Clear auto-save data
+            if (QUIZ_CONFIG.autoSave) {
+                clearSavedProgress();
+            }
+        }
+
+        function showGiftNotification(result) {
+            const giftNotification = document.getElementById('gift-notification');
+            const giftCode = document.getElementById('gift-code');
+            const giftDescription = document.getElementById('gift-description');
+            const copyBtn = document.getElementById('copy-btn');
+            
+            giftCode.textContent = result.gift_code;
+            if (result.gift_name) {
+                giftDescription.textContent = result.gift_name;
+            }
+            
+            giftNotification.style.display = 'block';
+            copyBtn.style.display = 'block';
+        }
+
+        function updateProgress() {
+            const progress = (quizState.currentQuestion / quizState.totalQuestions) * 100;
+            document.getElementById('progress-fill').style.width = progress + '%';
+            document.getElementById('progress-text').textContent = 
+                `Câu hỏi ${quizState.currentQuestion} / ${quizState.totalQuestions}`;
+        }
+
+        function updateQuestionCounter() {
+            document.getElementById('current-question').textContent = quizState.currentQuestion;
+        }
+
+        function updateTotalQuestions() {
+            document.getElementById('total-questions').textContent = quizState.totalQuestions;
+        }
+
+        function showLoading() {
+            document.getElementById('loading-state').style.display = 'block';
+        }
+
+        function hideLoading() {
+            document.getElementById('loading-state').style.display = 'none';
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('error-message');
+            if (errorDiv) {
+                errorDiv.textContent = message;
+                errorDiv.style.display = 'block';
+                
+                // Auto-hide after 5 seconds
+                setTimeout(() => {
+                    hideError();
+                }, 5000);
+            }
+        }
+
+        function hideError() {
+            const errorDiv = document.getElementById('error-message');
+            if (errorDiv) {
+                errorDiv.style.display = 'none';
+            }
+        }
+
+        function showSuccess(message) {
+            const successDiv = document.getElementById('success-message');
+            if (successDiv) {
+                successDiv.textContent = message;
+                successDiv.style.display = 'block';
+                
+                setTimeout(() => {
+                    successDiv.style.display = 'none';
+                }, 3000);
+            }
+        }
+
+        // Auto-save functionality
+        function setupAutoSave() {
+            setInterval(() => {
+                if (!quizState.isComplete) {
+                    saveProgress();
+                }
+            }, QUIZ_CONFIG.autoSaveInterval);
+        }
+
+        async function saveProgress() {
+            try {
+                const response = await fetch(QUIZ_CONFIG.ajaxUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: new URLSearchParams({
+                        action: 'aqm_save_quiz_progress',
+                        campaign_id: QUIZ_CONFIG.campaignId,
+                        current_question: quizState.currentQuestion,
+                        progress_data: JSON.stringify(quizState.answers),
+                        nonce: QUIZ_CONFIG.nonce
+                    })
+                });
+                
+                const data = await response.json();
+                console.log('Progress saved:', data.success);
+                
+            } catch (error) {
+                console.error('Auto-save error:', error);
+            }
+        }
+
+        function clearSavedProgress() {
+            // Clear any saved progress from localStorage or server
+            localStorage.removeItem(`quiz_progress_${QUIZ_CONFIG.campaignId}`);
+        }
+
+        // Utility functions
+        function copyGiftCode() {
+            const giftCode = document.getElementById('gift-code').textContent;
+            
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(giftCode).then(() => {
+                    showSuccess('Đã sao chép mã quà!');
+                    
+                    // Update button text temporarily
+                    const copyBtn = document.getElementById('copy-btn');
+                    const originalText = copyBtn.textContent;
+                    copyBtn.textContent = '✅ Đã sao chép!';
+                    setTimeout(() => {
+                        copyBtn.textContent = originalText;
+                    }, 2000);
+                });
+            } else {
+                // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = giftCode;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                showSuccess('Đã sao chép mã quà!');
+            }
+        }
+
+        function shareResults() {
+            const shareText = `Tôi vừa hoàn thành quiz "${document.querySelector('.quiz-header h1').textContent}" và đạt được ${quizState.score || 85}/100 điểm! 🎉`;
+            
+            if (navigator.share) {
+                navigator.share({
+                    title: 'Kết quả Quiz',
+                    text: shareText,
+                    url: window.location.href
+                }).catch(err => console.log('Error sharing:', err));
+            } else {
+                // Fallback - copy to clipboard
+                if (navigator.clipboard) {
+                    navigator.clipboard.writeText(shareText + ' ' + window.location.href).then(() => {
+                        showSuccess('Đã sao chép link chia sẻ!');
+                    });
+                }
+            }
+        }
+
+        function restartQuiz() {
+            if (confirm('Bạn có chắc chắn muốn làm lại quiz?')) {
+                // Reset state
+                quizState = {
+                    currentQuestion: 1,
+                    totalQuestions: quizState.totalQuestions,
+                    questions: quizState.questions,
+                    answers: {},
+                    score: 0,
+                    isComplete: false
+                };
+                
+                // Hide completion screen
+                document.getElementById('quiz-completion').style.display = 'none';
+                
+                // Show quiz content
+                document.getElementById('quiz-content').style.display = 'flex';
+                
+                // Render first question
+                renderCurrentQuestion();
+            }
+        }
+
+        // Keyboard navigation
+        document.addEventListener('keydown', function(e) {
+            if (quizState.isComplete) return;
+            
+            switch (e.key) {
+                case 'ArrowRight':
+                case 'Enter':
+                    if (!e.target.matches('input, textarea, select')) {
+                        e.preventDefault();
+                        nextQuestion();
+                    }
+                    break;
+                case 'ArrowLeft':
+                    if (!e.target.matches('input, textarea, select')) {
+                        e.preventDefault();
+                        previousQuestion();
+                    }
+                    break;
+                case '1':
+                case '2':
+                case '3':
+                case '4':
+                case '5':
+                    // Quick rating selection
+                    if (!e.target.matches('input, textarea, select')) {
+                        const rating = parseInt(e.key);
+                        const ratingElement = document.querySelector(`[data-rating="${rating}"]`);
+                        if (ratingElement) {
+                            selectRating(rating);
+                        }
+                    }
+                    break;
+            }
+        });
+
+        // Touch gestures for mobile
+        let touchStartX = 0;
+        let touchEndX = 0;
+
+        document.addEventListener('touchstart', function(e) {
+            touchStartX = e.changedTouches[0].screenX;
+        });
+
+        document.addEventListener('touchend', function(e) {
+            touchEndX = e.changedTouches[0].screenX;
+            handleSwipeGesture();
+        });
+
+        function handleSwipeGesture() {
+            const swipeThreshold = 50;
+            const swipeDistance = touchEndX - touchStartX;
+            
+            if (Math.abs(swipeDistance) > swipeThreshold) {
+                if (swipeDistance > 0) {
+                    // Swipe right - previous question
+                    previousQuestion();
+                } else {
+                    // Swipe left - next question
+                    nextQuestion();
+                }
+            }
+        }
+
+        // Prevent form submission on Enter key in inputs
+        document.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && e.target.matches('input:not([type="submit"])')) {
+                e.preventDefault();
+                nextQuestion();
+            }
+        });
+
+        // Page visibility API for auto-save
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden && !quizState.isComplete) {
+                saveProgress();
+            }
+        });
+
+        // Before unload warning
+        window.addEventListener('beforeunload', function(e) {
+            if (!quizState.isComplete && Object.keys(quizState.answers).length > 0) {
+                e.preventDefault();
+                e.returnValue = '';
+                return '';
+            }
+        });
+    </script>
+</body>
+</html>
