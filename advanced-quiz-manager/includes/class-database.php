@@ -812,5 +812,23 @@ class AQM_Database {
         
         return $csv_data;
     }
+	
+	// Add this method to the AQM_Database class:
+	public function check_missing_tables() {
+		global $wpdb;
+		
+		$missing_tables = array();
+		$required_tables = array('aqm_provinces', 'aqm_districts', 'aqm_wards', 'aqm_gifts', 'aqm_gift_awards');
+		
+		foreach ($required_tables as $table) {
+			$table_name = $wpdb->prefix . $table;
+			if ($wpdb->get_var("SHOW TABLES LIKE '$table_name'") != $table_name) {
+				$missing_tables[] = $table;
+			}
+		}
+		
+		return $missing_tables;
+	}
+	
 }
 ?>

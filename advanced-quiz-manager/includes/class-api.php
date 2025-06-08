@@ -61,6 +61,16 @@ class AQM_API {
         
         // REST API endpoints
         add_action('rest_api_init', array($this, 'register_rest_routes'));
+		
+		    // ADD THESE NEW HOOKS:
+		add_action('wp_ajax_aqm_get_vietnam_provinces', array($this, 'get_vietnam_provinces'));
+		add_action('wp_ajax_nopriv_aqm_get_vietnam_provinces', array($this, 'get_vietnam_provinces'));
+		
+		add_action('wp_ajax_aqm_get_vietnam_districts', array($this, 'get_vietnam_districts'));
+		add_action('wp_ajax_nopriv_aqm_get_vietnam_districts', array($this, 'get_vietnam_districts'));
+		
+		add_action('wp_ajax_aqm_submit_quiz_enhanced', array($this, 'submit_quiz_enhanced'));
+		add_action('wp_ajax_nopriv_aqm_submit_quiz_enhanced', array($this, 'submit_quiz_enhanced'));
     }
     
     // FRONTEND AJAX HANDLERS

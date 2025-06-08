@@ -23,6 +23,12 @@ require_once AQM_PLUGIN_PATH . 'includes/enhanced-database.php';
 require_once AQM_PLUGIN_PATH . 'includes/gift-management.php';
 require_once AQM_PLUGIN_PATH . 'includes/question-management.php';
 require_once AQM_PLUGIN_PATH . 'includes/enhanced-api.php';
+require_once AQM_PLUGIN_PATH . 'includes/class-enhanced-database.php';
+require_once AQM_PLUGIN_PATH . 'includes/class-gift-manager.php';
+require_once AQM_PLUGIN_PATH . 'includes/class-question-manager.php';
+require_once AQM_PLUGIN_PATH . 'includes/class-enhanced-api.php';
+require_once AQM_PLUGIN_PATH . 'includes/class-shortcodes.php';
+
 // Main plugin class
 class AdvancedQuizManager {
     
@@ -47,6 +53,7 @@ class AdvancedQuizManager {
     public function activate() {
         $this->create_tables();
         $this->create_default_data();
+		do_action('aqm_enhanced_activation');
         flush_rewrite_rules();
     }
     

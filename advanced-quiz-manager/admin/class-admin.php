@@ -33,11 +33,31 @@ class AQM_Admin {
             'Quiz Manager',
             'manage_options',
             'quiz-manager',
-            array($this, 'dashboard_page'),
+            array($this, 'admin_dashboard_page'),
             'dashicons-feedback',
             30
         );
-        
+		
+		    // ADD THESE NEW MENU ITEMS:
+		add_submenu_page(
+			'quiz-manager',
+			'Question Management',
+			'Question Management',
+			'manage_options', 
+			'quiz-manager-questions',
+			array($this, 'questions_page_redirect')
+		);
+		
+		add_submenu_page(
+			'quiz-manager',
+			'Gift Management', 
+			'Gift Management',
+			'manage_options',
+			'quiz-manager-gifts', 
+			array($this, 'gifts_page_redirect')
+		);
+	}
+		
         // Submenu pages
         add_submenu_page(
             'quiz-manager',
@@ -923,5 +943,15 @@ class AQM_Admin {
     public function settings_page() {
         echo '<div class="wrap"><h1>Quiz Settings</h1><p>Global plugin settings will be here.</p></div>';
     }
+	
+	// ADD THESE NEW METHODS:
+	public function questions_page_redirect() {
+		wp_redirect(admin_url('admin.php?page=quiz-manager-questions'));
+	}
+
+	public function gifts_page_redirect() {
+		wp_redirect(admin_url('admin.php?page=quiz-manager-gifts'));
+	}
+	
 }
 ?>
