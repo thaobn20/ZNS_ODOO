@@ -19,10 +19,10 @@ define('AQM_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('AQM_PLUGIN_PATH', plugin_dir_path(__FILE__));
 define('AQM_VERSION', '1.0.0');
 // Add to advanced-quiz-manager.php after existing includes
-require_once AQM_PLUGIN_PATH . 'includes/enhanced-database.php';
-require_once AQM_PLUGIN_PATH . 'includes/gift-management.php';
-require_once AQM_PLUGIN_PATH . 'includes/question-management.php';
-require_once AQM_PLUGIN_PATH . 'includes/enhanced-api.php';
+//require_once AQM_PLUGIN_PATH . 'includes/enhanced-database.php';
+//require_once AQM_PLUGIN_PATH . 'includes/gift-management.php';
+//require_once AQM_PLUGIN_PATH . 'includes/question-management.php';
+//require_once AQM_PLUGIN_PATH . 'includes/enhanced-api.php';
 require_once AQM_PLUGIN_PATH . 'includes/class-enhanced-database.php';
 require_once AQM_PLUGIN_PATH . 'includes/class-gift-manager.php';
 require_once AQM_PLUGIN_PATH . 'includes/class-question-manager.php';
