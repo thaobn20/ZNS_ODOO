@@ -51,6 +51,7 @@ class AdvancedQuizManager {
     }
     
     public function activate() {
+        // Force table creation
         $this->create_tables();
         $this->create_default_data();
         $this->set_default_options();
@@ -63,6 +64,10 @@ class AdvancedQuizManager {
         
         // Add activation notice
         set_transient('aqm_activation_notice', true, 30);
+        
+        // Mark tables as created
+        update_option('aqm_tables_created', true);
+        update_option('aqm_db_version', '2.0.0');
     }
     
     public function deactivate() {
