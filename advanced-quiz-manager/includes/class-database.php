@@ -93,15 +93,6 @@ class AQM_Database {
     
     // QUESTION METHODS
     
-    public function get_campaign_questions($campaign_id) {
-        return $this->wpdb->get_results($this->wpdb->prepare(
-            "SELECT * FROM {$this->wpdb->prefix}aqm_questions 
-             WHERE campaign_id = %d 
-             ORDER BY order_index ASC",
-            $campaign_id
-        ));
-    }
-    
     public function create_question($campaign_id, $data) {
         $question_data = array_merge($data, array(
             'campaign_id' => $campaign_id,
@@ -280,11 +271,17 @@ class AQM_Database {
     
     // PROVINCE METHODS
     
-    public function get_provinces() {
-        return $this->wpdb->get_results(
-            "SELECT * FROM {$this->wpdb->prefix}aqm_provinces ORDER BY name ASC"
-        );
-    }
+	public function get_provinces() {
+		global $wpdb;
+		
+		$provinces = $wpdb->get_results(
+			"SELECT * FROM {$wpdb->prefix}aqm_provinces 
+			 ORDER BY name ASC"
+		);
+		
+		return $provinces ?: array();
+	}
+
     
     public function get_districts_by_province($province_code) {
         return $this->wpdb->get_results($this->wpdb->prepare(
@@ -398,40 +395,202 @@ class AQM_Database {
         
         return $_SERVER['REMOTE_ADDR'] ?? '';
     }
-    
-    public function get_dashboard_stats() {
-        $stats = array();
-        
-        // Total campaigns
-        $stats['total_campaigns'] = $this->wpdb->get_var(
-            "SELECT COUNT(*) FROM {$this->wpdb->prefix}aqm_campaigns"
-        );
-        
-        // Active campaigns
-        $stats['active_campaigns'] = $this->wpdb->get_var(
-            "SELECT COUNT(*) FROM {$this->wpdb->prefix}aqm_campaigns WHERE status = 'active'"
-        );
-        
-        // Total responses
-        $stats['total_responses'] = $this->wpdb->get_var(
-            "SELECT COUNT(*) FROM {$this->wpdb->prefix}aqm_responses"
-        );
-        
-        // Recent responses (last 24 hours)
-        $stats['recent_responses'] = $this->wpdb->get_var(
-            "SELECT COUNT(*) FROM {$this->wpdb->prefix}aqm_responses 
-             WHERE submitted_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)"
-        );
-        
-        // Total gifts claimed
-        $stats['gifts_claimed'] = $this->wpdb->get_var(
-            "SELECT COUNT(*) FROM {$this->wpdb->prefix}aqm_responses 
-             WHERE gift_code IS NOT NULL"
-        );
-        
-        return $stats;
-    }
-    
+		public function import_provinces_data($provinces_data) {
+			global $wpdb;
+			
+			$provinces_count = 0;
+			
+			foreach ($provinces_data as $province_data) {
+				// Insert province
+				$province_insert = array(
+					'code' => sanitize_text_field($province_data['code']),
+					'name' => sanitize_text_field($province_data['name']),
+					'name_en' => sanitize_text_field($province_data['name_en'] ?? ''),
+					'full_name' => sanitize_text_field($province_data['full_name'] ?? $province_data['name']),
+					'created_at' => current_time('mysql')
+				);
+				
+				$wpdb->replace("{$wpdb->prefix}aqm_provinces", $province_insert);
+				$provinces_count++;
+			}
+			
+			return array(
+				'provinces' => $provinces_count,
+				'districts' => 0,
+				'wards' => 0
+			);
+		}
+
+		/**
+		 * Get dashboard stats - ADD ONLY IF YOU DON'T HAVE IT
+		 */
+		public function get_dashboard_stats() {
+			global $wpdb;
+			
+			return array(
+				'total_campaigns' => $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}aqm_campaigns") ?: 0,
+				'total_responses' => $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}aqm_responses") ?: 0,
+				'active_campaigns' => $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}aqm_campaigns WHERE status = 'active'") ?: 0,
+				'gifts_claimed' => $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}aqm_gift_claims") ?: 0
+			);
+		}
+
+		/**
+		 * Get campaign questions
+		 */
+		public function get_campaign_questions($campaign_id) {
+			global $wpdb;
+			
+			$questions = $wpdb->get_results($wpdb->prepare(
+				"SELECT * FROM {$wpdb->prefix}aqm_questions WHERE campaign_id = %d ORDER BY order_index ASC",
+				$campaign_id
+			));
+			
+			return $questions ?: array();
+		}
+
+		/**
+		 * Create a new question
+		 */
+		public function create_question($data) {
+			global $wpdb;
+			
+			$data['created_at'] = current_time('mysql');
+			$result = $wpdb->insert("{$wpdb->prefix}aqm_questions", $data);
+			
+			return $result ? $wpdb->insert_id : false;
+		}
+
+		/**
+		 * Update a question
+		 */
+		public function update_question($question_id, $data) {
+			global $wpdb;
+			
+			$data['updated_at'] = current_time('mysql');
+			return $wpdb->update("{$wpdb->prefix}aqm_questions", $data, array('id' => $question_id)) !== false;
+		}
+
+		/**
+		 * Delete a question
+		 */
+		public function create_gift($data) {
+			global $wpdb;
+			
+			$data['created_at'] = current_time('mysql');
+			$result = $wpdb->insert("{$wpdb->prefix}aqm_gifts", $data);
+			
+			return $result ? $wpdb->insert_id : false;
+		}
+
+		/**
+		 * Get campaign gifts
+		 */
+		public function get_campaign_gifts($campaign_id) {
+			global $wpdb;
+			
+			$gifts = $wpdb->get_results($wpdb->prepare(
+				"SELECT * FROM {$wpdb->prefix}aqm_gifts 
+				 WHERE campaign_id = %d 
+				 ORDER BY created_at ASC",
+				$campaign_id
+			));
+			
+			return $gifts ?: array();
+		}
+
+		/**
+		 * Create a new gift
+		 */
+		public function create_gift($data) {
+			global $wpdb;
+			
+			$data['created_at'] = current_time('mysql');
+			$result = $wpdb->insert("{$wpdb->prefix}aqm_gifts", $data);
+			
+			return $result ? $wpdb->insert_id : false;
+		}
+
+		/**
+		 * Update a gift
+		 */
+		public function update_gift($gift_id, $data) {
+			global $wpdb;
+			
+			$data['updated_at'] = current_time('mysql');
+			return $wpdb->update("{$wpdb->prefix}aqm_gifts", $data, array('id' => $gift_id)) !== false;
+		}
+
+
+		/**
+		 * Delete a gift
+		 */
+		public function delete_gift($gift_id) {
+			global $wpdb;
+			
+			return $wpdb->delete("{$wpdb->prefix}aqm_gifts", array('id' => $gift_id)) !== false;
+		}
+
+		/**
+		 * Get response analytics for a campaign
+		 */
+		public function get_response_analytics($campaign_id) {
+			global $wpdb;
+			
+			return array(
+				'total_responses' => $wpdb->get_var($wpdb->prepare(
+					"SELECT COUNT(*) FROM {$wpdb->prefix}aqm_responses WHERE campaign_id = %d",
+					$campaign_id
+				)) ?: 0
+			);
+		}
+
+		/**
+		 * Get campaigns with optional filters
+		 */
+		public function get_campaigns($filters = array()) {
+			global $wpdb;
+			
+			$where = array('1=1');
+			$values = array();
+			
+			if (!empty($filters['status'])) {
+				$where[] = 'status = %s';
+				$values[] = $filters['status'];
+			}
+			
+			if (!empty($filters['limit'])) {
+				$limit = ' LIMIT ' . intval($filters['limit']);
+			} else {
+				$limit = '';
+			}
+			
+			$sql = "SELECT * FROM {$wpdb->prefix}aqm_campaigns 
+					WHERE " . implode(' AND ', $where) . "
+					ORDER BY created_at DESC" . $limit;
+			
+			if (!empty($values)) {
+				$sql = $wpdb->prepare($sql, ...$values);
+			}
+			
+			$campaigns = $wpdb->get_results($sql);
+			
+			return $campaigns ?: array();
+		}
+
+		/**
+		 * Get a single campaign
+		 */
+		public function get_campaign($campaign_id) {
+			global $wpdb;
+			
+			$campaign = $wpdb->get_row($wpdb->prepare(
+				"SELECT * FROM {$wpdb->prefix}aqm_campaigns WHERE id = %d",
+				$campaign_id
+			));
+			
+			return $campaign;
+		}
     public function create_tables() {
         global $wpdb;
         $charset_collate = $wpdb->get_charset_collate();
