@@ -272,7 +272,7 @@ class AQM_Database {
         
         return array(
             'total_responses' => $total_responses,
-            'average_score' => round($avg_score, 2),
+            'average_score' => $avg_score !== null ? round(floatval($avg_score), 2) : 0,
             'gifts_claimed' => $gifts_claimed,
             'completion_rate' => 100 // Since we only save completed responses
         );
