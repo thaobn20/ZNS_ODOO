@@ -1,0 +1,348 @@
+[
+  {
+    "code": "01",
+    "name": "Hà Nội",
+    "name_en": "Hanoi",
+    "full_name": "Thành phố Hà Nội",
+    "full_name_en": "Hanoi City",
+    "code_name": "ha_noi",
+    "districts": [
+      {
+        "code": "001",
+        "name": "Ba Đình",
+        "name_en": "Ba Dinh",
+        "full_name": "Quận Ba Đình",
+        "wards": [
+          {
+            "code": "00001",
+            "name": "Phúc Xá",
+            "name_en": "Phuc Xa",
+            "full_name": "Phường Phúc Xá"
+          },
+          {
+            "code": "00002",
+            "name": "Trúc Bạch",
+            "name_en": "Truc Bach", 
+            "full_name": "Phường Trúc Bạch"
+          }
+        ]
+      },
+      {
+        "code": "002",
+        "name": "Hoàn Kiếm",
+        "name_en": "Hoan Kiem",
+        "full_name": "Quận Hoàn Kiếm",
+        "wards": [
+          {
+            "code": "00019",
+            "name": "Phúc Tân",
+            "name_en": "Phuc Tan",
+            "full_name": "Phường Phúc Tân"
+          },
+          {
+            "code": "00020",
+            "name": "Đồng Xuân",
+            "name_en": "Dong Xuan",
+            "full_name": "Phường Đồng Xuân"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "code": "79",
+    "name": "Hồ Chí Minh",
+    "name_en": "Ho Chi Minh",
+    "full_name": "Thành phố Hồ Chí Minh",
+    "full_name_en": "Ho Chi Minh City",
+    "code_name": "ho_chi_minh",
+    "districts": [
+      {
+        "code": "760",
+        "name": "Quận 1",
+        "name_en": "District 1",
+        "full_name": "Quận 1",
+        "wards": [
+          {
+            "code": "26734",
+            "name": "Tân Định",
+            "name_en": "Tan Dinh",
+            "full_name": "Phường Tân Định"
+          },
+          {
+            "code": "26737",
+            "name": "Đa Kao",
+            "name_en": "Da Kao",
+            "full_name": "Phường Đa Kao"
+          },
+          {
+            "code": "26740",
+            "name": "Bến Nghé",
+            "name_en": "Ben Nghe",
+            "full_name": "Phường Bến Nghé"
+          }
+        ]
+      },
+      {
+        "code": "761",
+        "name": "Quận 12",
+        "name_en": "District 12",
+        "full_name": "Quận 12",
+        "wards": [
+          {
+            "code": "27259",
+            "name": "Thạnh Xuân",
+            "name_en": "Thanh Xuan",
+            "full_name": "Phường Thạnh Xuân"
+          },
+          {
+            "code": "27262",
+            "name": "Thạnh Lộc",
+            "name_en": "Thanh Loc",
+            "full_name": "Phường Thạnh Lộc"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "code": "48",
+    "name": "Đà Nẵng",
+    "name_en": "Da Nang",
+    "full_name": "Thành phố Đà Nẵng",
+    "full_name_en": "Da Nang City",
+    "code_name": "da_nang",
+    "districts": [
+      {
+        "code": "490",
+        "name": "Liên Chiểu",
+        "name_en": "Lien Chieu",
+        "full_name": "Quận Liên Chiểu",
+        "wards": [
+          {
+            "code": "20194",
+            "name": "Hòa Hiệp Bắc",
+            "name_en": "Hoa Hiep Bac",
+            "full_name": "Phường Hòa Hiệp Bắc"
+          },
+          {
+            "code": "20195",
+            "name": "Hòa Hiệp Nam",
+            "name_en": "Hoa Hiep Nam",
+            "full_name": "Phường Hòa Hiệp Nam"
+          }
+        ]
+      },
+      {
+        "code": "491",
+        "name": "Thanh Khê",
+        "name_en": "Thanh Khe",
+        "full_name": "Quận Thanh Khê",
+        "wards": [
+          {
+            "code": "20203",
+            "name": "Tam Thuận",
+            "name_en": "Tam Thuan",
+            "full_name": "Phường Tam Thuận"
+          },
+          {
+            "code": "20206",
+            "name": "Thanh Khê Tây",
+            "name_en": "Thanh Khe Tay",
+            "full_name": "Phường Thanh Khê Tây"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "code": "31",
+    "name": "Hải Phòng",
+    "name_en": "Hai Phong",
+    "full_name": "Thành phố Hải Phòng",
+    "full_name_en": "Hai Phong City",
+    "code_name": "hai_phong",
+    "districts": [
+      {
+        "code": "323",
+        "name": "Hồng Bàng",
+        "name_en": "Hong Bang",
+        "full_name": "Quận Hồng Bàng",
+        "wards": [
+          {
+            "code": "12043",
+            "name": "Quán Toan",
+            "name_en": "Quan Toan",
+            "full_name": "Phường Quán Toan"
+          },
+          {
+            "code": "12046",
+            "name": "Hùng Vương",
+            "name_en": "Hung Vuong",
+            "full_name": "Phường Hùng Vương"
+          }
+        ]
+      },
+      {
+        "code": "324",
+        "name": "Ngô Quyền",
+        "name_en": "Ngo Quyen",
+        "full_name": "Quận Ngô Quyền",
+        "wards": [
+          {
+            "code": "12058",
+            "name": "Máy Chai",
+            "name_en": "May Chai",
+            "full_name": "Phường Máy Chai"
+          },
+          {
+            "code": "12061",
+            "name": "Máy Tơ",
+            "name_en": "May To",
+            "full_name": "Phường Máy Tơ"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "code": "92",
+    "name": "Cần Thơ",
+    "name_en": "Can Tho",
+    "full_name": "Thành phố Cần Thơ",
+    "full_name_en": "Can Tho City",
+    "code_name": "can_tho",
+    "districts": [
+      {
+        "code": "916",
+        "name": "Ninh Kiều",
+        "name_en": "Ninh Kieu",
+        "full_name": "Quận Ninh Kiều",
+        "wards": [
+          {
+            "code": "31117",
+            "name": "Cái Khế",
+            "name_en": "Cai Khe",
+            "full_name": "Phường Cái Khế"
+          },
+          {
+            "code": "31120",
+            "name": "Thới Bình",
+            "name_en": "Thoi Binh",
+            "full_name": "Phường Thới Bình"
+          }
+        ]
+      },
+      {
+        "code": "917",
+        "name": "Ô Môn",
+        "name_en": "O Mon",
+        "full_name": "Quận Ô Môn",
+        "wards": [
+          {
+            "code": "31144",
+            "name": "Châu Văn Liêm",
+            "name_en": "Chau Van Liem",
+            "full_name": "Phường Châu Văn Liêm"
+          },
+          {
+            "code": "31147",
+            "name": "Thới Hòa",
+            "name_en": "Thoi Hoa",
+            "full_name": "Phường Thới Hòa"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "code": "02",
+    "name": "Hà Giang",
+    "name_en": "Ha Giang",
+    "full_name": "Tỉnh Hà Giang",
+    "full_name_en": "Ha Giang Province",
+    "code_name": "ha_giang",
+    "districts": [
+      {
+        "code": "024",
+        "name": "Hà Giang",
+        "name_en": "Ha Giang",
+        "full_name": "Thành phố Hà Giang",
+        "wards": [
+          {
+            "code": "00697",
+            "name": "Quang Trung",
+            "name_en": "Quang Trung",
+            "full_name": "Phường Quang Trung"
+          },
+          {
+            "code": "00700",
+            "name": "Trần Phú",
+            "name_en": "Tran Phu",
+            "full_name": "Phường Trần Phú"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "code": "04",
+    "name": "Cao Bằng",
+    "name_en": "Cao Bang",
+    "full_name": "Tỉnh Cao Bằng",
+    "full_name_en": "Cao Bang Province",
+    "code_name": "cao_bang",
+    "districts": [
+      {
+        "code": "040",
+        "name": "Cao Bằng",
+        "name_en": "Cao Bang",
+        "full_name": "Thành phố Cao Bằng",
+        "wards": [
+          {
+            "code": "01225",
+            "name": "Sông Hiến",
+            "name_en": "Song Hien",
+            "full_name": "Phường Sông Hiến"
+          },
+          {
+            "code": "01228",
+            "name": "Sông Bằng",
+            "name_en": "Song Bang",
+            "full_name": "Phường Sông Bằng"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "code": "06",
+    "name": "Bắc Kạn",
+    "name_en": "Bac Kan",
+    "full_name": "Tỉnh Bắc Kạn",
+    "full_name_en": "Bac Kan Province",
+    "code_name": "bac_kan",
+    "districts": [
+      {
+        "code": "058",
+        "name": "Bắc Kạn",
+        "name_en": "Bac Kan",
+        "full_name": "Thành phố Bắc Kạn",
+        "wards": [
+          {
+            "code": "01765",
+            "name": "Nguyễn Thị Minh Khai",
+            "name_en": "Nguyen Thi Minh Khai",
+            "full_name": "Phường Nguyễn Thị Minh Khai"
+          },
+          {
+            "code": "01768",
+            "name": "Sông Cầu",
+            "name_en": "Song Cau",
+            "full_name": "Phường Sông Cầu"
+          }
+        ]
+      }
+    ]
+  }
+]

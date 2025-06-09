@@ -1,540 +1,391 @@
-// Frontend JavaScript for Advanced Quiz Manager
+// Frontend JavaScript for Advanced Quiz Manager - Mobile Implementation
 // File: assets/js/frontend.js
 
 jQuery(document).ready(function($) {
     
-    // Initialize quiz functionality
+    // Quiz state management
+    let currentQuestion = 0;
+    let userAnswers = {};
+    let userData = {};
+    let quizData = {};
+    
+    // DOM elements
+    const registrationForm = $('#aqm-registration-form');
+    const quizContainer = $('#aqm-quiz-container');
+    const loadingState = $('#aqm-loading-state');
+    const resultContainer = $('#aqm-result-container');
+    const progressFill = $('#aqm-progress-fill');
+    
+    // Initialize quiz
     initializeQuiz();
     
     function initializeQuiz() {
-        // Handle province selection
-        $('.aqm-provinces-select').on('change', function() {
+        // Load quiz data from script tag
+        const quizDataElement = document.getElementById('aqm-quiz-data');
+        if (quizDataElement) {
+            quizData = JSON.parse(quizDataElement.textContent);
+        }
+        
+        // Form submission handler
+        $('#aqm-user-form').on('submit', function(e) {
+            e.preventDefault();
+            handleUserFormSubmission();
+        });
+        
+        // Province selection handler
+        $('#aqm-province').on('change', function() {
             const provinceCode = $(this).val();
-            const questionContainer = $(this).closest('.aqm-question-container');
-            const districtSelect = questionContainer.find('.aqm-districts-select');
-            const wardSelect = questionContainer.find('.aqm-wards-select');
-            
             if (provinceCode) {
-                loadDistricts(provinceCode, districtSelect);
-                districtSelect.show().prop('required', true);
-                wardSelect.hide().prop('required', false).html('<option value="">Select Ward</option>');
-            } else {
-                districtSelect.hide().prop('required', false).html('<option value="">Select District</option>');
-                wardSelect.hide().prop('required', false).html('<option value="">Select Ward</option>');
+                loadDistricts(provinceCode);
             }
         });
         
-        // Handle district selection
-        $(document).on('change', '.aqm-districts-select', function() {
-            const districtCode = $(this).val();
-            const questionContainer = $(this).closest('.aqm-question-container');
-            const wardSelect = questionContainer.find('.aqm-wards-select');
-            
-            if (districtCode) {
-                loadWards(districtCode, wardSelect);
-                wardSelect.show().prop('required', true);
-            } else {
-                wardSelect.hide().prop('required', false).html('<option value="">Select Ward</option>');
+        // Navigation buttons
+        $('#aqm-prev-btn').on('click', function() {
+            if (currentQuestion > 0) {
+                currentQuestion--;
+                loadQuestion(currentQuestion);
+                updateProgress();
             }
         });
         
-        // Handle rating interactions
-        $('.aqm-rating-container').each(function() {
-            const container = $(this);
-            const stars = container.find('.aqm-rating-label');
-            
-            stars.hover(
-                function() {
-                    const index = stars.index(this);
-                    highlightStars(container, index);
-                },
-                function() {
-                    const checked = container.find('input:checked');
-                    if (checked.length) {
-                        const checkedIndex = stars.index(checked.parent());
-                        highlightStars(container, checkedIndex);
+        $('#aqm-next-btn').on('click', function() {
+            const currentAnswers = getCurrentQuestionAnswers();
+            if (currentAnswers.length > 0) {
+                userAnswers[quizData.questions[currentQuestion].id] = currentAnswers;
+                
+                if (currentQuestion < quizData.questions.length - 1) {
+                    currentQuestion++;
+                    loadQuestion(currentQuestion);
+                    updateProgress();
+                } else {
+                    submitQuiz();
+                }
+            } else {
+                showError('Please select at least one answer.');
+            }
+        });
+        
+        // Touch gesture support
+        let touchStartX = 0;
+        let touchEndX = 0;
+        
+        $(document).on('touchstart', function(e) {
+            touchStartX = e.changedTouches[0].screenX;
+        });
+        
+        $(document).on('touchend', function(e) {
+            touchEndX = e.changedTouches[0].screenX;
+            handleSwipe();
+        });
+        
+        // Initialize progress
+        updateProgress(0);
+    }
+    
+    function handleUserFormSubmission() {
+        if (!validateForm()) {
+            return;
+        }
+        
+        // Get form data
+        const formData = {
+            full_name: $('#aqm-full-name').val().trim(),
+            phone_number: $('#aqm-phone-number').val().trim(),
+            province: $('#aqm-province').val(),
+            pharmacy_code: $('#aqm-pharmacy-code').val().trim(),
+            campaign_id: quizData.campaign_id
+        };
+        
+        // Check phone number
+        checkPhoneNumber(formData.phone_number, formData.campaign_id)
+            .then(function(response) {
+                if (response.success) {
+                    userData = formData;
+                    startQuiz();
+                } else {
+                    if (response.data && response.data.code === 'phone_exists') {
+                        showAlreadyParticipatedPopup();
                     } else {
-                        highlightStars(container, -1);
+                        showError('Error: ' + (response.data ? response.data.message : 'Unknown error'));
                     }
                 }
-            );
-            
-            stars.on('click', function() {
-                const index = stars.index(this);
-                highlightStars(container, index);
+            })
+            .catch(function() {
+                showError(aqm_front.strings.error);
             });
-        });
-        
-        // Handle form submission
-        $('.aqm-quiz-form').on('submit', function(e) {
-            e.preventDefault();
-            submitQuiz($(this));
-        });
-        
-        // Track analytics events
-        trackQuizStart();
-        trackQuestionInteractions();
     }
     
-    function loadDistricts(provinceCode, districtSelect) {
-        // Use the provinces data from localized script
-        const provincesData = aqm_front.provinces_data;
-        const province = provincesData.find(p => p.code === provinceCode);
+    function validateForm() {
+        let isValid = true;
         
-        districtSelect.html('<option value="">Select District</option>');
-        
-        if (province && province.districts) {
-            province.districts.forEach(function(district) {
-                districtSelect.append(
-                    `<option value="${district.code}">${district.name}</option>`
-                );
-            });
+        // Validate full name
+        const fullName = $('#aqm-full-name').val().trim();
+        if (!fullName) {
+            showFieldError('aqm-full-name', 'aqm-name-error', aqm_front.strings.name_required);
+            isValid = false;
+        } else {
+            hideFieldError('aqm-full-name', 'aqm-name-error');
         }
-    }
-    
-    function loadWards(districtCode, wardSelect) {
-        // For demo purposes, adding some sample wards
-        // In a real implementation, you would load this from your database
-        const sampleWards = [
-            { code: '001', name: 'Phường 1' },
-            { code: '002', name: 'Phường 2' },
-            { code: '003', name: 'Phường 3' },
-            { code: '004', name: 'Phường 4' },
-            { code: '005', name: 'Phường 5' }
-        ];
         
-        wardSelect.html('<option value="">Select Ward</option>');
-        
-        sampleWards.forEach(function(ward) {
-            wardSelect.append(
-                `<option value="${ward.code}">${ward.name}</option>`
-            );
-        });
-    }
-    
-    function highlightStars(container, index) {
-        const stars = container.find('.aqm-star');
-        stars.removeClass('highlighted');
-        
-        if (index >= 0) {
-            stars.slice(0, index + 1).addClass('highlighted');
+        // Validate phone number
+        const phoneNumber = $('#aqm-phone-number').val().trim();
+        const phoneRegex = /^[0-9]{10,11}$/;
+        if (!phoneNumber || !phoneRegex.test(phoneNumber)) {
+            showFieldError('aqm-phone-number', 'aqm-phone-error', aqm_front.strings.phone_required);
+            isValid = false;
+        } else {
+            hideFieldError('aqm-phone-number', 'aqm-phone-error');
         }
+        
+        // Validate province
+        const province = $('#aqm-province').val();
+        if (!province) {
+            showFieldError('aqm-province', 'aqm-province-error', aqm_front.strings.province_required);
+            isValid = false;
+        } else {
+            hideFieldError('aqm-province', 'aqm-province-error');
+        }
+        
+        return isValid;
     }
     
-    function submitQuiz(form) {
-        const formData = new FormData(form[0]);
-        const campaignId = form.find('input[name="campaign_id"]').val();
-        const submitBtn = form.find('.aqm-submit-btn');
-        
-        // Disable submit button
-        submitBtn.prop('disabled', true).text('Submitting...');
-        
-        // Collect answers
-        const answers = {};
-        form.find('[name^="question_"]').each(function() {
-            const name = $(this).attr('name');
-            const questionId = name.replace('question_', '').split('_')[0];
-            let value = $(this).val();
-            
-            if ($(this).attr('type') === 'radio' && !$(this).is(':checked')) {
-                return;
+    function showFieldError(fieldId, errorId, message) {
+        $('#' + fieldId).addClass('error');
+        $('#' + errorId).text(message).show();
+    }
+    
+    function hideFieldError(fieldId, errorId) {
+        $('#' + fieldId).removeClass('error');
+        $('#' + errorId).hide();
+    }
+    
+    function checkPhoneNumber(phone, campaignId) {
+        return $.ajax({
+            url: aqm_front.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'aqm_check_phone',
+                phone: phone,
+                campaign_id: campaignId,
+                nonce: aqm_front.nonce
             }
-            
-            // Handle province/district/ward combinations
-            if (name.includes('_district') || name.includes('_ward')) {
-                const baseQuestionId = name.replace('_district', '').replace('_ward', '').replace('question_', '');
-                if (!answers[baseQuestionId]) {
-                    answers[baseQuestionId] = {};
+        });
+    }
+    
+    function loadDistricts(provinceCode) {
+        $.ajax({
+            url: aqm_front.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'aqm_get_districts',
+                province_code: provinceCode,
+                nonce: aqm_front.nonce
+            },
+            success: function(response) {
+                if (response.success) {
+                    // Populate districts dropdown if needed
+                    console.log('Districts loaded:', response.data);
                 }
+            }
+        });
+    }
+    
+    function showLoading() {
+        registrationForm.hide();
+        loadingState.show();
+        updateProgress(10);
+    }
+    
+    function hideLoading() {
+        loadingState.hide();
+    }
+    
+    function startQuiz() {
+        showLoading();
+        
+        setTimeout(function() {
+            hideLoading();
+            registrationForm.hide();
+            quizContainer.show().addClass('aqm-fade-in');
+            currentQuestion = 0;
+            userAnswers = {};
+            loadQuestion(currentQuestion);
+            updateProgress(20);
+        }, 1500);
+    }
+    
+    function loadQuestion(index) {
+        if (!quizData.questions || index >= quizData.questions.length) {
+            return;
+        }
+        
+        const question = quizData.questions[index];
+        
+        // Update question counter and title
+        $('#aqm-question-counter').text(`Question ${index + 1} of ${quizData.questions.length}`);
+        $('#aqm-question-title').text(question.question);
+        
+        // Clear and populate answers
+        const answersContainer = $('#aqm-answers-container');
+        answersContainer.empty();
+        
+        if (question.options && question.options.length > 0) {
+            question.options.forEach(function(option, optionIndex) {
+                const answerDiv = $(`
+                    <div class="aqm-answer-option" data-option-id="${option.id}">
+                        <input type="checkbox" id="aqm-option-${option.id}" value="${option.id}">
+                        <div class="aqm-answer-text">${option.text}</div>
+                    </div>
+                `);
                 
-                if (name.includes('_district')) {
-                    answers[baseQuestionId].district = value;
-                } else if (name.includes('_ward')) {
-                    answers[baseQuestionId].ward = value;
-                }
-            } else {
-                if (typeof answers[questionId] === 'object') {
-                    answers[questionId].province = value;
-                } else {
-                    answers[questionId] = value;
-                }
-            }
+                answerDiv.on('click', function() {
+                    const checkbox = $(this).find('input[type="checkbox"]');
+                    const isChecked = checkbox.prop('checked');
+                    
+                    // For single choice questions, uncheck others
+                    if (question.type === 'single_choice') {
+                        answersContainer.find('.aqm-answer-option').removeClass('selected');
+                        answersContainer.find('input[type="checkbox"]').prop('checked', false);
+                    }
+                    
+                    checkbox.prop('checked', !isChecked);
+                    $(this).toggleClass('selected', !isChecked);
+                });
+                
+                answersContainer.append(answerDiv);
+            });
+        }
+        
+        // Restore previous answers if any
+        if (userAnswers[question.id]) {
+            userAnswers[question.id].forEach(function(answerId) {
+                const option = answersContainer.find(`[data-option-id="${answerId}"]`);
+                option.addClass('selected');
+                option.find('input[type="checkbox"]').prop('checked', true);
+            });
+        }
+        
+        // Update navigation buttons
+        $('#aqm-prev-btn').prop('disabled', index === 0);
+        $('#aqm-next-btn').text(index === quizData.questions.length - 1 ? 'Submit' : 'Next →');
+    }
+    
+    function getCurrentQuestionAnswers() {
+        const answers = [];
+        $('#aqm-answers-container .aqm-answer-option.selected').each(function() {
+            answers.push($(this).data('option-id'));
         });
+        return answers;
+    }
+    
+    function updateProgress(percentage) {
+        if (percentage === undefined) {
+            const totalQuestions = quizData.questions ? quizData.questions.length : 1;
+            percentage = 20 + ((currentQuestion + 1) / totalQuestions) * 60; // 20% for registration, 60% for questions
+        }
         
-        // Convert object answers to JSON strings
-        Object.keys(answers).forEach(questionId => {
-            if (typeof answers[questionId] === 'object') {
-                answers[questionId] = JSON.stringify(answers[questionId]);
+        progressFill.css('width', percentage + '%');
+    }
+    
+    function submitQuiz() {
+        // Add final answer
+        if (quizData.questions[currentQuestion]) {
+            const currentAnswers = getCurrentQuestionAnswers();
+            if (currentAnswers.length > 0) {
+                userAnswers[quizData.questions[currentQuestion].id] = currentAnswers;
             }
-        });
+        }
         
-        formData.append('action', 'aqm_submit_quiz');
-        formData.append('nonce', aqm_front.nonce);
-        formData.append('answers', JSON.stringify(answers));
-        
-        // Track submission start
-        trackEvent('quiz_submission_started', { campaign_id: campaignId });
+        updateProgress(90);
         
         $.ajax({
             url: aqm_front.ajax_url,
             type: 'POST',
-            data: formData,
-            processData: false,
-            contentType: false,
+            data: {
+                action: 'aqm_submit_quiz',
+                campaign_id: quizData.campaign_id,
+                full_name: userData.full_name,
+                phone_number: userData.phone_number,
+                province: userData.province,
+                pharmacy_code: userData.pharmacy_code,
+                answers: JSON.stringify(userAnswers),
+                nonce: aqm_front.nonce
+            },
+            beforeSend: function() {
+                $('#aqm-next-btn').prop('disabled', true).text('Submitting...');
+            },
             success: function(response) {
                 if (response.success) {
-                    showQuizResults(form, response.data);
-                    trackEvent('quiz_completed', {
-                        campaign_id: campaignId,
-                        score: response.data.score,
-                        response_id: response.data.response_id
-                    });
-                    
-                    // Check for gift eligibility
-                    checkGiftEligibility(campaignId, response.data.score);
+                    updateProgress(100);
+                    showResults(response.data);
                 } else {
-                    showError(form, response.data.message || 'Submission failed');
+                    if (response.data && response.data.code === 'phone_exists') {
+                        showAlreadyParticipatedPopup();
+                    } else {
+                        showError('Submission failed: ' + (response.data ? response.data.message : 'Unknown error'));
+                    }
                 }
             },
             error: function() {
-                showError(form, 'Network error. Please try again.');
+                showError(aqm_front.strings.error);
             },
             complete: function() {
-                submitBtn.prop('disabled', false).text('Submit Quiz');
+                $('#aqm-next-btn').prop('disabled', false).text('Submit');
             }
         });
     }
     
-    function showQuizResults(form, data) {
-        const container = form.closest('.aqm-quiz-container');
-        const resultDiv = container.find('.aqm-quiz-result');
+    function showResults(data) {
+        quizContainer.hide();
         
-        let resultHTML = `
-            <div class="aqm-success-message">
-                <h3>🎉 Quiz Completed Successfully!</h3>
-                <p>Thank you for participating in our quiz.</p>
-                <div class="aqm-score-display">
-                    <strong>Your Score: ${data.score} points</strong>
-                </div>
-            </div>
-        `;
+        // Update result display
+        $('#aqm-result-score').text(`${data.score}/${data.total}`);
+        $('#aqm-result-message').text(data.message);
         
-        resultDiv.html(resultHTML).show();
-        form.hide();
-        
-        // Scroll to results
-        $('html, body').animate({
-            scrollTop: resultDiv.offset().top - 100
-        }, 500);
-    }
-    
-    function showError(form, message) {
-        const container = form.closest('.aqm-quiz-container');
-        let errorDiv = container.find('.aqm-error-message');
-        
-        if (errorDiv.length === 0) {
-            errorDiv = $('<div class="aqm-error-message"></div>');
-            container.prepend(errorDiv);
+        // Show reward if available
+        if (data.gift) {
+            $('#aqm-reward-card').show();
+            $('#aqm-reward-code').text(data.gift.code);
         }
         
-        errorDiv.html(`<p class="error">❌ ${message}</p>`).show();
-        
-        setTimeout(() => {
-            errorDiv.fadeOut();
-        }, 5000);
+        resultContainer.show().addClass('aqm-fade-in');
     }
     
-    function checkGiftEligibility(campaignId, score) {
-        $.ajax({
-            url: aqm_front.ajax_url,
-            type: 'POST',
-            data: {
-                action: 'aqm_check_gift_eligibility',
-                nonce: aqm_front.nonce,
-                campaign_id: campaignId,
-                score: score
-            },
-            success: function(response) {
-                if (response.success && response.data.gift) {
-                    showGiftPopup(response.data.gift);
+    function showAlreadyParticipatedPopup() {
+        $('#aqm-already-participated-popup').show().addClass('show');
+    }
+    
+    function showError(message) {
+        alert(message); // Simple error display, can be enhanced with modal
+    }
+    
+    function handleSwipe() {
+        const swipeThreshold = 50;
+        
+        if (quizContainer.is(':visible')) {
+            if (touchEndX < touchStartX - swipeThreshold) {
+                // Swipe left - next question
+                if (currentQuestion < quizData.questions.length - 1) {
+                    $('#aqm-next-btn').click();
                 }
             }
-        });
-    }
-    
-    function showGiftPopup(gift) {
-        const popup = $(`
-            <div class="aqm-gift-popup-overlay">
-                <div class="aqm-gift-popup">
-                    <div class="aqm-gift-header">
-                        <h3>🎁 Congratulations!</h3>
-                        <button class="aqm-close-popup">&times;</button>
-                    </div>
-                    <div class="aqm-gift-content">
-                        <h4>${gift.name}</h4>
-                        <p>${gift.description}</p>
-                        ${gift.image_url ? `<img src="${gift.image_url}" alt="${gift.name}" class="aqm-gift-image">` : ''}
-                        ${gift.claim_code ? `<div class="aqm-claim-code">
-                            <strong>Claim Code: ${gift.claim_code}</strong>
-                            <button class="aqm-copy-code" data-code="${gift.claim_code}">Copy Code</button>
-                        </div>` : ''}
-                    </div>
-                    <div class="aqm-gift-actions">
-                        <button class="aqm-claim-gift" data-gift-id="${gift.id}">Claim Gift</button>
-                    </div>
-                </div>
-            </div>
-        `);
-        
-        $('body').append(popup);
-        popup.fadeIn();
-        
-        // Handle popup close
-        popup.find('.aqm-close-popup, .aqm-gift-popup-overlay').on('click', function(e) {
-            if (e.target === this) {
-                popup.fadeOut(() => popup.remove());
-            }
-        });
-        
-        // Handle code copy
-        popup.find('.aqm-copy-code').on('click', function() {
-            const code = $(this).data('code');
-            navigator.clipboard.writeText(code).then(() => {
-                $(this).text('Copied!').addClass('copied');
-                setTimeout(() => {
-                    $(this).text('Copy Code').removeClass('copied');
-                }, 2000);
-            });
-        });
-        
-        // Handle gift claim
-        popup.find('.aqm-claim-gift').on('click', function() {
-            const giftId = $(this).data('gift-id');
-            claimGift(giftId, popup);
-        });
-    }
-    
-    function claimGift(giftId, popup) {
-        $.ajax({
-            url: aqm_front.ajax_url,
-            type: 'POST',
-            data: {
-                action: 'aqm_claim_gift',
-                nonce: aqm_front.nonce,
-                gift_id: giftId
-            },
-            success: function(response) {
-                if (response.success) {
-                    popup.find('.aqm-gift-actions').html('<p class="success">Gift claimed successfully!</p>');
-                    trackEvent('gift_claimed', { gift_id: giftId });
-                } else {
-                    popup.find('.aqm-gift-actions').html(`<p class="error">${response.data.message}</p>`);
+            
+            if (touchEndX > touchStartX + swipeThreshold) {
+                // Swipe right - previous question
+                if (currentQuestion > 0) {
+                    $('#aqm-prev-btn').click();
                 }
             }
-        });
-    }
-    
-    function trackQuizStart() {
-        $('.aqm-quiz-container').each(function() {
-            const campaignId = $(this).data('campaign-id');
-            trackEvent('quiz_started', { campaign_id: campaignId });
-        });
-    }
-    
-    function trackQuestionInteractions() {
-        $('.aqm-question-container input, .aqm-question-container select').on('change', function() {
-            const questionContainer = $(this).closest('.aqm-question-container');
-            const questionId = questionContainer.data('question-id');
-            const questionType = questionContainer.data('question-type');
-            
-            trackEvent('question_answered', {
-                question_id: questionId,
-                question_type: questionType,
-                answer_length: $(this).val().length
-            });
-        });
-    }
-    
-    function trackEvent(eventType, eventData) {
-        $.ajax({
-            url: aqm_front.ajax_url,
-            type: 'POST',
-            data: {
-                action: 'aqm_track_event',
-                nonce: aqm_front.nonce,
-                event_type: eventType,
-                event_data: JSON.stringify(eventData)
-            }
-        });
-    }
-    
-    // Auto-save functionality for long quizzes
-    function initAutoSave() {
-        let autoSaveTimer;
-        
-        $('.aqm-quiz-form input, .aqm-quiz-form select, .aqm-quiz-form textarea').on('change input', function() {
-            clearTimeout(autoSaveTimer);
-            autoSaveTimer = setTimeout(() => {
-                saveQuizProgress($(this).closest('.aqm-quiz-form'));
-            }, 3000); // Save after 3 seconds of inactivity
-        });
-    }
-    
-    function saveQuizProgress(form) {
-        const formData = new FormData(form[0]);
-        formData.append('action', 'aqm_save_progress');
-        formData.append('nonce', aqm_front.nonce);
-        
-        $.ajax({
-            url: aqm_front.ajax_url,
-            type: 'POST',
-            data: formData,
-            processData: false,
-            contentType: false,
-            success: function(response) {
-                if (response.success) {
-                    showProgressSaved();
-                }
-            }
-        });
-    }
-    
-    function showProgressSaved() {
-        let indicator = $('.aqm-progress-indicator');
-        if (indicator.length === 0) {
-            indicator = $('<div class="aqm-progress-indicator">Progress saved</div>');
-            $('body').append(indicator);
-        }
-        
-        indicator.show().fadeOut(2000);
-    }
-    
-    // Initialize auto-save for longer quizzes
-    if ($('.aqm-question-container').length > 5) {
-        initAutoSave();
-    }
-    
-    // Progress bar for multi-step quizzes
-    function updateProgressBar() {
-        const totalQuestions = $('.aqm-question-container').length;
-        const answeredQuestions = $('.aqm-question-container').filter(function() {
-            const inputs = $(this).find('input, select, textarea');
-            return inputs.filter(function() {
-                return $(this).val() !== '';
-            }).length > 0;
-        }).length;
-        
-        const progress = (answeredQuestions / totalQuestions) * 100;
-        
-        let progressBar = $('.aqm-progress-bar');
-        if (progressBar.length === 0) {
-            progressBar = $(`
-                <div class="aqm-progress-bar-container">
-                    <div class="aqm-progress-bar">
-                        <div class="aqm-progress-fill"></div>
-                    </div>
-                    <span class="aqm-progress-text">${answeredQuestions}/${totalQuestions} questions completed</span>
-                </div>
-            `);
-            $('.aqm-quiz-form').prepend(progressBar);
-        }
-        
-        progressBar.find('.aqm-progress-fill').css('width', progress + '%');
-        progressBar.find('.aqm-progress-text').text(`${answeredQuestions}/${totalQuestions} questions completed`);
-    }
-    
-    // Update progress on any input change
-    $(document).on('change input', '.aqm-question-container input, .aqm-question-container select, .aqm-question-container textarea', function() {
-        updateProgressBar();
-    });
-    
-    // Initialize progress bar
-    updateProgressBar();
-    
-    // Smooth scrolling for long forms
-    $('.aqm-question-container').each(function(index) {
-        if (index > 0) {
-            $(this).hide();
-        }
-    });
-    
-    // Next/Previous navigation for step-by-step quizzes
-    if ($('.aqm-question-container').length > 3) {
-        addStepNavigation();
-    }
-    
-    function addStepNavigation() {
-        let currentStep = 0;
-        const totalSteps = $('.aqm-question-container').length;
-        
-        // Add navigation buttons
-        $('.aqm-quiz-actions').prepend(`
-            <div class="aqm-step-navigation">
-                <button type="button" class="aqm-prev-btn" disabled>Previous</button>
-                <span class="aqm-step-indicator">Step 1 of ${totalSteps}</span>
-                <button type="button" class="aqm-next-btn">Next</button>
-            </div>
-        `);
-        
-        // Handle navigation
-        $('.aqm-next-btn').on('click', function() {
-            if (validateCurrentStep(currentStep)) {
-                currentStep++;
-                updateStepDisplay();
-            }
-        });
-        
-        $('.aqm-prev-btn').on('click', function() {
-            currentStep--;
-            updateStepDisplay();
-        });
-        
-        function updateStepDisplay() {
-            $('.aqm-question-container').hide();
-            $('.aqm-question-container').eq(currentStep).show();
-            
-            $('.aqm-prev-btn').prop('disabled', currentStep === 0);
-            $('.aqm-next-btn').toggle(currentStep < totalSteps - 1);
-            $('.aqm-submit-btn').toggle(currentStep === totalSteps - 1);
-            $('.aqm-step-indicator').text(`Step ${currentStep + 1} of ${totalSteps}`);
-        }
-        
-        function validateCurrentStep(step) {
-            const currentQuestion = $('.aqm-question-container').eq(step);
-            const requiredInputs = currentQuestion.find('[required]');
-            
-            let isValid = true;
-            requiredInputs.each(function() {
-                if (!$(this).val()) {
-                    $(this).addClass('error');
-                    isValid = false;
-                } else {
-                    $(this).removeClass('error');
-                }
-            });
-            
-            if (!isValid) {
-                showError($('.aqm-quiz-form'), 'Please complete all required fields before proceeding.');
-            }
-            
-            return isValid;
         }
     }
-});
-
-// Utility functions
-function formatNumber(num) {
-    return new Intl.NumberFormat().format(num);
-}
-
-function debounce(func, wait) {
-    let timeout;
-    return function executedFunction(...args) {
-        const later = () => {
-            clearTimeout(timeout);
-            func(...args);
-        };
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
+    
+    // Global functions
+    window.aqmClosePopup = function() {
+        $('.aqm-popup').removeClass('show').hide();
     };
-}
+    
+    window.aqmRestartQuiz = function() {
+        location.reload();
+    };
+});
