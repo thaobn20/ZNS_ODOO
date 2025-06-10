@@ -14,7 +14,7 @@ Conduct quiz campaigns to collect customer data, auto-score answers, and offer r
 |------------------|------------------|---------------------------------------------------------|
 | Full Name        | Text             | Required                                                |
 | Phone Number     | Text (validated) | Required – Check if already joined this campaign        |
-| Province/City    | Dropdown         | Uses `provine-vietnam.json` API                        |
+| Province/City    | Dropdown         | Uses `provine-vietnam.json` API                         |
 | Pharmacy Code    | Text             | Optional, or required depending on campaign             |
 
 🛡️ Phone is checked via AJAX:  
@@ -69,7 +69,7 @@ Conduct quiz campaigns to collect customer data, auto-score answers, and offer r
 +----------------------------+
 | Full Name:        [_____] |
 | Phone:            [_____] |
-| Province/City:    [▼ Hanoi] ← dropdown from API
+| Province/City:    [▼ Hanoi] ← dropdown from API then choose provice
 | Pharmacy Code:    [_____] |
 | [ Continue → ]             |
 +----------------------------+
