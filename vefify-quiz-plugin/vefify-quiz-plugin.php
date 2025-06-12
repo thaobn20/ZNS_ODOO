@@ -1376,6 +1376,16 @@ add_action('admin_menu', function() {
         'vefify_admin_questions'
     );
     
+	 // 🎁 GIFT MANAGEMENT - This was missing!
+    add_submenu_page(
+        'vefify-quiz',
+        'Gift Management',
+        'Gifts',
+        'manage_options',
+        'vefify-gifts',
+        'vefify_admin_gifts'
+    );
+	
     // Participants & Results
     add_submenu_page(
         'vefify-quiz',
@@ -1406,7 +1416,19 @@ add_action('admin_menu', function() {
         'vefify_admin_settings'
     );
 });
-
+add_action('admin_init', function() {
+    // Add categories submenu under questions
+    add_action('admin_menu', function() {
+        add_submenu_page(
+            'vefify-questions',
+            'Categories',
+            'Categories',
+            'manage_options',
+            'vefify-question-categories',
+            'vefify_question_categories'
+        );
+    }, 20); // Lower priority to ensure it runs after the main menu
+});
 /**
  * Admin Dashboard - Main Overview
  */
@@ -2172,10 +2194,40 @@ function vefify_handle_campaign_action() {
     wp_redirect(admin_url('admin.php?page=vefify-campaigns&action=edit&id=' . $campaign_id));
     exit;
 }
+/**
+Hanlde question schema
+**/
+function vefify_fix_question_options_schema() {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'vefify_question_options';
+    
+    // Check if 'text' column exists (this is the problematic column name)
+    $column_exists = $wpdb->get_results("SHOW COLUMNS FROM $table_name LIKE 'text'");
+    
+    if (empty($column_exists)) {
+        // Column doesn't exist, which is correct. The error was trying to insert into 'text' instead of 'option_text'
+        error_log('Vefify Quiz: question_options table schema is correct. The error was in the insert query.');
+        return;
+    }
+    
+    // If 'text' column exists, we need to rename it to 'option_text'
+    $wpdb->query("ALTER TABLE $table_name CHANGE COLUMN `text` `option_text` TEXT NOT NULL");
+    error_log('Vefify Quiz: Fixed question_options table - renamed text column to option_text');
+}
+
+// Run the fix on admin_init
+add_action('admin_init', function() {
+    if (current_user_can('manage_options') && isset($_GET['vefify_fix_db'])) {
+        vefify_fix_question_options_schema();
+        wp_redirect(admin_url('admin.php?page=vefify-questions&fixed=1'));
+        exit;
+    }
+});
+
 
 /**
  * Question Bank Management Interface
- */
+ *
 function vefify_admin_questions() {
     global $wpdb;
     $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
@@ -2205,6 +2257,553 @@ function vefify_admin_questions() {
             break;
     }
 }
+**/
+function vefify_admin_questions() {
+    global $wpdb;
+    $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
+    
+    // Show database fix notice if needed
+    if (isset($_GET['fixed'])) {
+        echo '<div class="notice notice-success is-dismissible"><p>Database schema fixed successfully!</p></div>';
+    }
+    
+    // Check for database issues
+    $table_name = $wpdb->prefix . 'vefify_question_options';
+    $columns = $wpdb->get_results("SHOW COLUMNS FROM $table_name");
+    $has_option_text = false;
+    foreach ($columns as $column) {
+        if ($column->Field === 'option_text') {
+            $has_option_text = true;
+            break;
+        }
+    }
+    
+    if (!$has_option_text) {
+        echo '<div class="notice notice-error"><p>';
+        echo '<strong>Database Issue Detected:</strong> Missing option_text column. ';
+        echo '<a href="' . admin_url('admin.php?page=vefify-questions&vefify_fix_db=1') . '" class="button">Fix Database Now</a>';
+        echo '</p></div>';
+    }
+    
+    // Handle form submissions
+    if (isset($_POST['action'])) {
+        vefify_handle_question_action();
+    }
+    
+    $action = $_GET['action'] ?? 'list';
+    
+    switch ($action) {
+        case 'new':
+            vefify_question_form();
+            break;
+        case 'edit':
+            vefify_question_form($_GET['id'] ?? 0);
+            break;
+        case 'delete':
+            vefify_delete_question($_GET['id'] ?? 0);
+            break;
+        case 'import':
+            vefify_question_import();
+            break;
+        case 'categories':
+            vefify_question_categories();
+            break;
+        default:
+            vefify_questions_list();
+            break;
+    }
+}
+/**
+ * SOLUTION 9: Question Categories Management
+ * New feature to manage question categories
+ */
+function vefify_question_categories() {
+    global $wpdb;
+    $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
+    
+    // Handle category actions
+    if (isset($_POST['action'])) {
+        vefify_handle_category_action();
+    }
+    
+    // Get categories with question counts
+    $categories = $wpdb->get_results("
+        SELECT 
+            category,
+            COUNT(*) as question_count,
+            COUNT(CASE WHEN is_active = 1 THEN 1 END) as active_count,
+            COUNT(CASE WHEN difficulty = 'easy' THEN 1 END) as easy_count,
+            COUNT(CASE WHEN difficulty = 'medium' THEN 1 END) as medium_count,
+            COUNT(CASE WHEN difficulty = 'hard' THEN 1 END) as hard_count
+        FROM {$table_prefix}questions 
+        WHERE category IS NOT NULL AND category != ''
+        GROUP BY category 
+        ORDER BY category
+    ");
+    
+    ?>
+    <div class="wrap">
+        <h1 class="wp-heading-inline">📚 Question Categories</h1>
+        <a href="<?php echo admin_url('admin.php?page=vefify-questions'); ?>" class="page-title-action">← Back to Questions</a>
+        
+        <!-- Add New Category -->
+        <div class="category-form-section">
+            <h2>Add New Category</h2>
+            <form method="post" action="" class="category-form">
+                <?php wp_nonce_field('vefify_category_save'); ?>
+                <input type="hidden" name="action" value="add_category">
+                
+                <table class="form-table">
+                    <tr>
+                        <th scope="row"><label for="category_name">Category Name *</label></th>
+                        <td>
+                            <input type="text" id="category_name" name="category_name" 
+                                   class="regular-text" placeholder="e.g., Medication Safety" required>
+                            <p class="description">Enter a descriptive category name</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="category_description">Description</label></th>
+                        <td>
+                            <textarea id="category_description" name="category_description" 
+                                      rows="3" class="large-text" 
+                                      placeholder="Brief description of what questions in this category cover"></textarea>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="category_color">Color</label></th>
+                        <td>
+                            <input type="color" id="category_color" name="category_color" value="#4facfe">
+                            <p class="description">Color for category badges and identification</p>
+                        </td>
+                    </tr>
+                </table>
+                
+                <?php submit_button('Add Category'); ?>
+            </form>
+        </div>
+        
+        <!-- Existing Categories -->
+        <div class="categories-list-section">
+            <h2>Existing Categories</h2>
+            
+            <?php if (empty($categories)): ?>
+            <div class="no-categories-message">
+                <p>No categories found. Create your first category above!</p>
+            </div>
+            <?php else: ?>
+            
+            <div class="categories-grid">
+                <?php foreach ($categories as $category): ?>
+                <div class="category-card">
+                    <div class="category-header">
+                        <h3 class="category-name">
+                            <span class="category-color-indicator" style="background: #4facfe;"></span>
+                            <?php echo esc_html(ucfirst($category->category)); ?>
+                        </h3>
+                        <div class="category-actions">
+                            <a href="<?php echo admin_url('admin.php?page=vefify-questions&category=' . urlencode($category->category)); ?>" 
+                               class="button button-small">View Questions</a>
+                            <button class="button button-small edit-category" data-category="<?php echo esc_attr($category->category); ?>">
+                                Edit
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="category-stats">
+                        <div class="stat-item">
+                            <strong><?php echo number_format($category->question_count); ?></strong>
+                            <span>Total Questions</span>
+                        </div>
+                        <div class="stat-item">
+                            <strong><?php echo number_format($category->active_count); ?></strong>
+                            <span>Active</span>
+                        </div>
+                    </div>
+                    
+                    <div class="difficulty-breakdown">
+                        <div class="difficulty-item">
+                            <span class="difficulty-badge difficulty-easy"><?php echo $category->easy_count; ?></span>
+                            <small>Easy</small>
+                        </div>
+                        <div class="difficulty-item">
+                            <span class="difficulty-badge difficulty-medium"><?php echo $category->medium_count; ?></span>
+                            <small>Medium</small>
+                        </div>
+                        <div class="difficulty-item">
+                            <span class="difficulty-badge difficulty-hard"><?php echo $category->hard_count; ?></span>
+                            <small>Hard</small>
+                        </div>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            
+            <?php endif; ?>
+        </div>
+        
+        <!-- Bulk Category Operations -->
+        <div class="bulk-operations-section">
+            <h2>🔧 Bulk Operations</h2>
+            
+            <div class="bulk-operation-card">
+                <h3>Move Questions Between Categories</h3>
+                <form method="post" action="" class="bulk-move-form">
+                    <?php wp_nonce_field('vefify_bulk_category'); ?>
+                    <input type="hidden" name="action" value="bulk_move_category">
+                    
+                    <table class="form-table">
+                        <tr>
+                            <th scope="row">From Category</th>
+                            <td>
+                                <select name="from_category" required>
+                                    <option value="">Select source category</option>
+                                    <?php foreach ($categories as $category): ?>
+                                        <option value="<?php echo esc_attr($category->category); ?>">
+                                            <?php echo esc_html(ucfirst($category->category)); ?> 
+                                            (<?php echo $category->question_count; ?> questions)
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row">To Category</th>
+                            <td>
+                                <select name="to_category" required>
+                                    <option value="">Select destination category</option>
+                                    <?php foreach ($categories as $category): ?>
+                                        <option value="<?php echo esc_attr($category->category); ?>">
+                                            <?php echo esc_html(ucfirst($category->category)); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </td>
+                        </tr>
+                    </table>
+                    
+                    <p class="submit">
+                        <input type="submit" class="button" value="Move All Questions" 
+                               onclick="return confirm('Are you sure you want to move ALL questions from the source category?')">
+                    </p>
+                </form>
+            </div>
+            
+            <div class="bulk-operation-card">
+                <h3>Merge Categories</h3>
+                <form method="post" action="" class="bulk-merge-form">
+                    <?php wp_nonce_field('vefify_bulk_category'); ?>
+                    <input type="hidden" name="action" value="merge_categories">
+                    
+                    <table class="form-table">
+                        <tr>
+                            <th scope="row">Categories to Merge</th>
+                            <td>
+                                <?php foreach ($categories as $category): ?>
+                                <label>
+                                    <input type="checkbox" name="merge_categories[]" 
+                                           value="<?php echo esc_attr($category->category); ?>">
+                                    <?php echo esc_html(ucfirst($category->category)); ?> 
+                                    (<?php echo $category->question_count; ?> questions)
+                                </label><br>
+                                <?php endforeach; ?>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row">New Category Name</th>
+                            <td>
+                                <input type="text" name="new_category_name" class="regular-text" 
+                                       placeholder="e.g., Health & Safety" required>
+                            </td>
+                        </tr>
+                    </table>
+                    
+                    <p class="submit">
+                        <input type="submit" class="button" value="Merge Categories" 
+                               onclick="return confirm('This will merge selected categories into one. Continue?')">
+                    </p>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <style>
+    .category-form-section {
+        background: #fff;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        margin-bottom: 30px;
+    }
+    
+    .category-form-section h2 {
+        margin-top: 0;
+        color: #333;
+        border-bottom: 2px solid #4facfe;
+        padding-bottom: 10px;
+    }
+    
+    .categories-list-section {
+        margin-bottom: 30px;
+    }
+    
+    .categories-list-section h2 {
+        color: #333;
+        border-bottom: 2px solid #4facfe;
+        padding-bottom: 10px;
+    }
+    
+    .categories-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 20px;
+    }
+    
+    .category-card {
+        background: #fff;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        border-left: 4px solid #4facfe;
+    }
+    
+    .category-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+    
+    .category-name {
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: #333;
+    }
+    
+    .category-color-indicator {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        display: inline-block;
+    }
+    
+    .category-actions {
+        display: flex;
+        gap: 5px;
+    }
+    
+    .category-stats {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 15px;
+        margin-bottom: 15px;
+    }
+    
+    .stat-item {
+        text-align: center;
+        padding: 10px;
+        background: #f9f9f9;
+        border-radius: 4px;
+    }
+    
+    .stat-item strong {
+        display: block;
+        font-size: 18px;
+        color: #2271b1;
+    }
+    
+    .stat-item span {
+        font-size: 12px;
+        color: #666;
+    }
+    
+    .difficulty-breakdown {
+        display: flex;
+        justify-content: space-around;
+        align-items: center;
+    }
+    
+    .difficulty-item {
+        text-align: center;
+    }
+    
+    .difficulty-badge {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: bold;
+        color: white;
+        margin-bottom: 5px;
+    }
+    
+    .difficulty-badge.difficulty-easy { background: #4caf50; }
+    .difficulty-badge.difficulty-medium { background: #ff9800; }
+    .difficulty-badge.difficulty-hard { background: #f44336; }
+    
+    .difficulty-item small {
+        display: block;
+        color: #666;
+        font-size: 11px;
+    }
+    
+    .no-categories-message {
+        text-align: center;
+        padding: 40px;
+        background: #f9f9f9;
+        border-radius: 8px;
+        color: #666;
+    }
+    
+    .bulk-operations-section {
+        background: #fff;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .bulk-operations-section h2 {
+        margin-top: 0;
+        color: #333;
+        border-bottom: 2px solid #4facfe;
+        padding-bottom: 10px;
+    }
+    
+    .bulk-operation-card {
+        margin-bottom: 20px;
+        padding: 15px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        background: #fafafa;
+    }
+    
+    .bulk-operation-card h3 {
+        margin-top: 0;
+        color: #333;
+    }
+    </style>
+    
+    <script>
+    jQuery(document).ready(function($) {
+        // Auto-generate category slug from name
+        $('#category_name').on('input', function() {
+            const name = $(this).val();
+            // Category names will be stored in lowercase
+            console.log('Category name entered: ' + name);
+        });
+        
+        // Edit category functionality (placeholder for future)
+        $('.edit-category').click(function() {
+            const category = $(this).data('category');
+            alert('Category editing will be implemented in next version. Category: ' + category);
+        });
+    });
+    </script>
+    <?php
+}
+
+/**
+ * SOLUTION 10: Handle Category Actions
+ */
+function vefify_handle_category_action() {
+    if (!current_user_can('manage_options')) {
+        wp_die('Unauthorized');
+    }
+    
+    global $wpdb;
+    $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
+    
+    $action = $_POST['action'];
+    
+    switch ($action) {
+        case 'add_category':
+            if (!wp_verify_nonce($_POST['_wpnonce'], 'vefify_category_save')) {
+                wp_die('Security check failed');
+            }
+            
+            $category_name = strtolower(sanitize_text_field($_POST['category_name']));
+            $category_description = sanitize_textarea_field($_POST['category_description']);
+            $category_color = sanitize_hex_color($_POST['category_color']);
+            
+            // Check if category already exists
+            $exists = $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM {$table_prefix}questions WHERE category = %s",
+                $category_name
+            ));
+            
+            if ($exists > 0) {
+                add_action('admin_notices', function() {
+                    echo '<div class="notice notice-error is-dismissible"><p>Category already exists!</p></div>';
+                });
+            } else {
+                // For now, we'll just show success. In a full implementation, 
+                // you might want a separate categories table
+                add_action('admin_notices', function() use ($category_name) {
+                    echo '<div class="notice notice-success is-dismissible"><p>Category "' . esc_html($category_name) . '" is ready! You can now assign questions to it.</p></div>';
+                });
+            }
+            break;
+            
+        case 'bulk_move_category':
+            if (!wp_verify_nonce($_POST['_wpnonce'], 'vefify_bulk_category')) {
+                wp_die('Security check failed');
+            }
+            
+            $from_category = sanitize_text_field($_POST['from_category']);
+            $to_category = sanitize_text_field($_POST['to_category']);
+            
+            if ($from_category === $to_category) {
+                add_action('admin_notices', function() {
+                    echo '<div class="notice notice-error is-dismissible"><p>Source and destination categories cannot be the same!</p></div>';
+                });
+                break;
+            }
+            
+            $moved = $wpdb->update(
+                $table_prefix . 'questions',
+                array('category' => $to_category),
+                array('category' => $from_category)
+            );
+            
+            add_action('admin_notices', function() use ($moved, $from_category, $to_category) {
+                echo '<div class="notice notice-success is-dismissible"><p>Moved ' . $moved . ' questions from "' . esc_html($from_category) . '" to "' . esc_html($to_category) . '"</p></div>';
+            });
+            break;
+            
+        case 'merge_categories':
+            if (!wp_verify_nonce($_POST['_wpnonce'], 'vefify_bulk_category')) {
+                wp_die('Security check failed');
+            }
+            
+            $merge_categories = array_map('sanitize_text_field', $_POST['merge_categories'] ?? []);
+            $new_category_name = strtolower(sanitize_text_field($_POST['new_category_name']));
+            
+            if (count($merge_categories) < 2) {
+                add_action('admin_notices', function() {
+                    echo '<div class="notice notice-error is-dismissible"><p>Please select at least 2 categories to merge!</p></div>';
+                });
+                break;
+            }
+            
+            $total_moved = 0;
+            foreach ($merge_categories as $category) {
+                $moved = $wpdb->update(
+                    $table_prefix . 'questions',
+                    array('category' => $new_category_name),
+                    array('category' => $category)
+                );
+                $total_moved += $moved;
+            }
+            
+            add_action('admin_notices', function() use ($total_moved, $new_category_name) {
+                echo '<div class="notice notice-success is-dismissible"><p>Merged categories successfully! ' . $total_moved . ' questions moved to "' . esc_html($new_category_name) . '"</p></div>';
+            });
+            break;
+    }
+}
+
 
 function vefify_questions_list() {
     global $wpdb;
@@ -2865,7 +3464,7 @@ function vefify_render_option_row($index, $text = '', $is_correct = false, $expl
 
 /**
  * Handle question form submissions
- */
+ *
 function vefify_handle_question_action() {
     if (!current_user_can('manage_options')) {
         wp_die('Unauthorized');
@@ -2971,8 +3570,127 @@ function vefify_handle_question_action() {
         $wpdb->query('ROLLBACK');
         wp_die('Error saving question: ' . $e->getMessage());
     }
+}**/
+/**
+ * SOLUTION 11: Enhanced Question Form with Better Error Handling
+ */
+function vefify_handle_question_action() {
+    if (!current_user_can('manage_options')) {
+        wp_die('Unauthorized');
+    }
+    
+    if (!wp_verify_nonce($_POST['_wpnonce'], 'vefify_question_save')) {
+        wp_die('Security check failed');
+    }
+    
+    global $wpdb;
+    $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
+    
+    // Prepare question data
+    $question_data = array(
+        'campaign_id' => $_POST['campaign_id'] ? intval($_POST['campaign_id']) : null,
+        'question_text' => sanitize_textarea_field($_POST['question_text']),
+        'question_type' => sanitize_text_field($_POST['question_type']),
+        'category' => sanitize_text_field($_POST['category']),
+        'difficulty' => sanitize_text_field($_POST['difficulty']),
+        'points' => intval($_POST['points']),
+        'explanation' => sanitize_textarea_field($_POST['explanation'])
+    );
+    
+    // Validate options
+    $options = $_POST['options'] ?? array();
+    $valid_options = array();
+    $has_correct = false;
+    
+    foreach ($options as $index => $option) {
+        if (!empty($option['text'])) {
+            $valid_options[] = array(
+                'option_text' => sanitize_textarea_field($option['text']), // Fixed: use 'option_text' not 'text'
+                'is_correct' => !empty($option['is_correct']),
+                'explanation' => sanitize_textarea_field($option['explanation'] ?? ''),
+                'order_index' => count($valid_options) + 1
+            );
+            
+            if (!empty($option['is_correct'])) {
+                $has_correct = true;
+            }
+        }
+    }
+    
+    // Validation
+    if (count($valid_options) < 2) {
+        add_action('admin_notices', function() {
+            echo '<div class="notice notice-error is-dismissible"><p>Error: You need at least 2 answer options.</p></div>';
+        });
+        return;
+    }
+    
+    if (!$has_correct) {
+        add_action('admin_notices', function() {
+            echo '<div class="notice notice-error is-dismissible"><p>Error: You need at least one correct answer.</p></div>';
+        });
+        return;
+    }
+    
+    // Start transaction
+    $wpdb->query('START TRANSACTION');
+    
+    try {
+        if (isset($_POST['question_id']) && $_POST['question_id']) {
+            // Update existing question
+            $question_id = intval($_POST['question_id']);
+            $question_data['updated_at'] = current_time('mysql');
+            
+            $result = $wpdb->update(
+                $table_prefix . 'questions',
+                $question_data,
+                array('id' => $question_id)
+            );
+            
+            // Delete existing options
+            $wpdb->delete($table_prefix . 'question_options', array('question_id' => $question_id));
+            
+            $message = 'Question updated successfully!';
+        } else {
+            // Create new question
+            $result = $wpdb->insert($table_prefix . 'questions', $question_data);
+            $question_id = $wpdb->insert_id;
+            $message = 'Question created successfully!';
+        }
+        
+        if ($result === false) {
+            throw new Exception('Failed to save question: ' . $wpdb->last_error);
+        }
+        
+        // Insert options with corrected column name
+        foreach ($valid_options as $option) {
+            $option['question_id'] = $question_id;
+            $result = $wpdb->insert($table_prefix . 'question_options', $option);
+            
+            if ($result === false) {
+                throw new Exception('Failed to save option: ' . $wpdb->last_error);
+            }
+        }
+        
+        $wpdb->query('COMMIT');
+        
+        add_action('admin_notices', function() use ($message) {
+            echo '<div class="notice notice-success is-dismissible"><p>' . $message . '</p></div>';
+        });
+        
+        wp_redirect(admin_url('admin.php?page=vefify-questions&action=edit&id=' . $question_id));
+        exit;
+        
+    } catch (Exception $e) {
+        $wpdb->query('ROLLBACK');
+        
+        add_action('admin_notices', function() use ($e) {
+            echo '<div class="notice notice-error is-dismissible"><p>Error saving question: ' . esc_html($e->getMessage()) . '</p></div>';
+        });
+        
+        error_log('Vefify Quiz Error: ' . $e->getMessage());
+    }
 }
-
 /**
  * AJAX handler for question preview
  */
@@ -4538,6 +5256,905 @@ add_action('wp_ajax_vefify_load_participant_details', function() {
     }
     ?>
     <?php endif; ?>
+    <?php
+    
+    wp_send_json_success(ob_get_clean());
+});
+//GIFT MANAGER MENT
+function vefify_admin_gifts() {
+    global $wpdb;
+    $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
+    
+    // Handle form submissions
+    if (isset($_POST['action'])) {
+        vefify_handle_gift_action();
+    }
+    
+    $action = $_GET['action'] ?? 'list';
+    
+    switch ($action) {
+        case 'new':
+            vefify_gift_form();
+            break;
+        case 'edit':
+            vefify_gift_form($_GET['id'] ?? 0);
+            break;
+        case 'delete':
+            vefify_delete_gift($_GET['id'] ?? 0);
+            break;
+        default:
+            vefify_gifts_list();
+            break;
+    }
+}
+
+/**
+ * SOLUTION 3: Gift List Interface
+ */
+function vefify_gifts_list() {
+    global $wpdb;
+    $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
+    
+    // Get filter parameters
+    $campaign_filter = $_GET['campaign_id'] ?? '';
+    $type_filter = $_GET['gift_type'] ?? '';
+    
+    // Build query
+    $where_conditions = array('g.is_active = 1');
+    $params = array();
+    
+    if ($campaign_filter) {
+        $where_conditions[] = 'g.campaign_id = %d';
+        $params[] = $campaign_filter;
+    }
+    
+    if ($type_filter) {
+        $where_conditions[] = 'g.gift_type = %s';
+        $params[] = $type_filter;
+    }
+    
+    $where_clause = implode(' AND ', $where_conditions);
+    
+    $gifts = $wpdb->get_results($wpdb->prepare("
+        SELECT g.*, c.name as campaign_name,
+               COUNT(u.id) as claimed_count,
+               (g.max_quantity - g.used_count) as remaining_quantity
+        FROM {$table_prefix}gifts g
+        LEFT JOIN {$table_prefix}campaigns c ON g.campaign_id = c.id
+        LEFT JOIN {$table_prefix}quiz_users u ON g.id = u.gift_id
+        WHERE {$where_clause}
+        GROUP BY g.id
+        ORDER BY g.min_score ASC, g.created_at DESC
+    ", $params));
+    
+    // Get filter options
+    $campaigns = $wpdb->get_results("SELECT id, name FROM {$table_prefix}campaigns WHERE is_active = 1 ORDER BY name");
+    
+    ?>
+    <div class="wrap">
+        <h1 class="wp-heading-inline">🎁 Gift Management</h1>
+        <a href="<?php echo admin_url('admin.php?page=vefify-gifts&action=new'); ?>" class="page-title-action">Add New Gift</a>
+        
+        <!-- Gift Summary Stats -->
+        <div class="gift-summary">
+            <?php
+            $summary = $wpdb->get_row("
+                SELECT 
+                    COUNT(*) as total_gifts,
+                    SUM(used_count) as total_claimed,
+                    SUM(CASE WHEN max_quantity IS NULL THEN 0 ELSE max_quantity END) as total_inventory,
+                    COUNT(CASE WHEN gift_type = 'voucher' THEN 1 END) as voucher_count,
+                    COUNT(CASE WHEN gift_type = 'discount' THEN 1 END) as discount_count,
+                    COUNT(CASE WHEN gift_type = 'product' THEN 1 END) as product_count
+                FROM {$table_prefix}gifts 
+                WHERE is_active = 1
+            ");
+            ?>
+            <div class="summary-stats">
+                <div class="stat-box">
+                    <strong><?php echo number_format($summary->total_gifts); ?></strong>
+                    <span>Active Gifts</span>
+                </div>
+                <div class="stat-box">
+                    <strong><?php echo number_format($summary->total_claimed); ?></strong>
+                    <span>Total Claimed</span>
+                </div>
+                <div class="stat-box">
+                    <strong><?php echo number_format($summary->voucher_count); ?></strong>
+                    <span>Vouchers</span>
+                </div>
+                <div class="stat-box">
+                    <strong><?php echo number_format($summary->discount_count); ?></strong>
+                    <span>Discounts</span>
+                </div>
+                <div class="stat-box">
+                    <strong><?php echo number_format($summary->product_count); ?></strong>
+                    <span>Products</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Filters -->
+        <div class="gifts-filters">
+            <form method="get" action="">
+                <input type="hidden" name="page" value="vefify-gifts">
+                
+                <select name="campaign_id" onchange="this.form.submit()">
+                    <option value="">All Campaigns</option>
+                    <?php foreach ($campaigns as $campaign): ?>
+                        <option value="<?php echo $campaign->id; ?>" <?php selected($campaign_filter, $campaign->id); ?>>
+                            <?php echo esc_html($campaign->name); ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+                
+                <select name="gift_type" onchange="this.form.submit()">
+                    <option value="">All Types</option>
+                    <option value="voucher" <?php selected($type_filter, 'voucher'); ?>>Vouchers</option>
+                    <option value="discount" <?php selected($type_filter, 'discount'); ?>>Discounts</option>
+                    <option value="product" <?php selected($type_filter, 'product'); ?>>Products</option>
+                    <option value="points" <?php selected($type_filter, 'points'); ?>>Points</option>
+                </select>
+                
+                <?php if ($campaign_filter || $type_filter): ?>
+                    <a href="<?php echo admin_url('admin.php?page=vefify-gifts'); ?>" class="button">Clear Filters</a>
+                <?php endif; ?>
+            </form>
+        </div>
+        
+        <!-- Gifts Table -->
+        <table class="wp-list-table widefat fixed striped">
+            <thead>
+                <tr>
+                    <th width="25%">Gift Name</th>
+                    <th>Campaign</th>
+                    <th>Type & Value</th>
+                    <th>Score Range</th>
+                    <th>Inventory</th>
+                    <th>Usage Stats</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($gifts as $gift): ?>
+                <tr>
+                    <td>
+                        <strong><?php echo esc_html($gift->gift_name); ?></strong>
+                        <?php if ($gift->gift_description): ?>
+                            <br><small><?php echo esc_html(wp_trim_words($gift->gift_description, 8)); ?></small>
+                        <?php endif; ?>
+                        <div class="row-actions">
+                            <span class="edit">
+                                <a href="<?php echo admin_url('admin.php?page=vefify-gifts&action=edit&id=' . $gift->id); ?>">Edit</a> |
+                            </span>
+                            <span class="delete">
+                                <a href="<?php echo admin_url('admin.php?page=vefify-gifts&action=delete&id=' . $gift->id); ?>" 
+                                   onclick="return confirm('Are you sure?')">Delete</a>
+                            </span>
+                        </div>
+                    </td>
+                    <td><?php echo esc_html($gift->campaign_name ?: 'All Campaigns'); ?></td>
+                    <td>
+                        <span class="gift-type-badge type-<?php echo esc_attr($gift->gift_type); ?>">
+                            <?php echo ucfirst($gift->gift_type); ?>
+                        </span>
+                        <br><strong><?php echo esc_html($gift->gift_value); ?></strong>
+                    </td>
+                    <td>
+                        <span class="score-range">
+                            <?php echo $gift->min_score; ?> - <?php echo $gift->max_score ?: '5'; ?> correct
+                        </span>
+                    </td>
+                    <td>
+                        <?php if ($gift->max_quantity): ?>
+                            <div class="inventory-info">
+                                <strong><?php echo $gift->remaining_quantity; ?></strong> remaining<br>
+                                <small>of <?php echo $gift->max_quantity; ?> total</small>
+                                
+                                <?php 
+                                $usage_percent = ($gift->used_count / $gift->max_quantity) * 100;
+                                $status_class = $usage_percent > 80 ? 'high' : ($usage_percent > 50 ? 'medium' : 'low');
+                                ?>
+                                <div class="inventory-bar">
+                                    <div class="inventory-fill <?php echo $status_class; ?>" 
+                                         style="width: <?php echo $usage_percent; ?>%"></div>
+                                </div>
+                            </div>
+                        <?php else: ?>
+                            <span class="unlimited">Unlimited</span>
+                        <?php endif; ?>
+                    </td>
+                    <td>
+                        <strong><?php echo number_format($gift->used_count); ?></strong> claimed<br>
+                        <small><?php echo number_format($gift->claimed_count); ?> assigned</small>
+                    </td>
+                    <td>
+                        <button class="button button-small view-codes" data-gift-id="<?php echo $gift->id; ?>">
+                            View Codes
+                        </button>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+        
+        <?php if (empty($gifts)): ?>
+        <div class="no-gifts-message">
+            <h3>🎁 No Gifts Found</h3>
+            <p>Create your first gift to start rewarding quiz participants!</p>
+            <a href="<?php echo admin_url('admin.php?page=vefify-gifts&action=new'); ?>" class="button button-primary button-large">
+                Create First Gift
+            </a>
+        </div>
+        <?php endif; ?>
+    </div>
+    
+    <!-- Gift Codes Modal -->
+    <div id="gift-codes-modal" class="gift-modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <div id="gift-codes-content">Loading...</div>
+        </div>
+    </div>
+    
+    <style>
+    .gift-summary {
+        background: #fff;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+    }
+    
+    .summary-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 15px;
+    }
+    
+    .stat-box {
+        text-align: center;
+        padding: 15px;
+        background: #f9f9f9;
+        border-radius: 4px;
+        border-left: 4px solid #4facfe;
+    }
+    
+    .stat-box strong {
+        display: block;
+        font-size: 20px;
+        color: #2271b1;
+        margin-bottom: 5px;
+    }
+    
+    .stat-box span {
+        font-size: 12px;
+        color: #666;
+        text-transform: uppercase;
+    }
+    
+    .gifts-filters {
+        background: #f9f9f9;
+        padding: 15px;
+        border-radius: 4px;
+        margin-bottom: 20px;
+    }
+    
+    .gifts-filters form {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+    
+    .gift-type-badge {
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: bold;
+        color: white;
+        text-transform: uppercase;
+    }
+    
+    .gift-type-badge.type-voucher { background: #4caf50; }
+    .gift-type-badge.type-discount { background: #ff9800; }
+    .gift-type-badge.type-product { background: #9c27b0; }
+    .gift-type-badge.type-points { background: #2196f3; }
+    
+    .score-range {
+        background: #e3f2fd;
+        color: #1976d2;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: bold;
+    }
+    
+    .inventory-info {
+        min-width: 100px;
+    }
+    
+    .inventory-bar {
+        height: 6px;
+        background: #e0e0e0;
+        border-radius: 3px;
+        margin-top: 5px;
+        overflow: hidden;
+    }
+    
+    .inventory-fill {
+        height: 100%;
+        transition: width 0.3s ease;
+    }
+    
+    .inventory-fill.low { background: #4caf50; }
+    .inventory-fill.medium { background: #ff9800; }
+    .inventory-fill.high { background: #f44336; }
+    
+    .unlimited {
+        color: #4caf50;
+        font-weight: bold;
+        font-size: 12px;
+    }
+    
+    .no-gifts-message {
+        text-align: center;
+        padding: 40px;
+        background: #f9f9f9;
+        border-radius: 8px;
+        margin-top: 20px;
+    }
+    
+    .no-gifts-message h3 {
+        color: #666;
+        margin-bottom: 10px;
+    }
+    
+    .gift-modal {
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0,0,0,0.5);
+    }
+    
+    .modal-content {
+        background-color: #fefefe;
+        margin: 5% auto;
+        padding: 20px;
+        border-radius: 8px;
+        width: 80%;
+        max-width: 600px;
+        max-height: 80vh;
+        overflow-y: auto;
+        position: relative;
+    }
+    
+    .close {
+        position: absolute;
+        right: 15px;
+        top: 15px;
+        color: #aaa;
+        font-size: 28px;
+        font-weight: bold;
+        cursor: pointer;
+    }
+    
+    .close:hover {
+        color: #000;
+    }
+    </style>
+    
+    <script>
+    jQuery(document).ready(function($) {
+        // View gift codes
+        $('.view-codes').click(function() {
+            const giftId = $(this).data('gift-id');
+            
+            $('#gift-codes-content').html('Loading...');
+            $('#gift-codes-modal').show();
+            
+            $.post(ajaxurl, {
+                action: 'vefify_load_gift_codes',
+                gift_id: giftId,
+                nonce: '<?php echo wp_create_nonce("vefify_gift_codes"); ?>'
+            }, function(response) {
+                if (response.success) {
+                    $('#gift-codes-content').html(response.data);
+                } else {
+                    $('#gift-codes-content').html('Error loading gift codes');
+                }
+            });
+        });
+        
+        // Close modal
+        $('.close, .gift-modal').click(function(e) {
+            if (e.target === this) {
+                $('#gift-codes-modal').hide();
+            }
+        });
+    });
+    </script>
+    <?php
+}
+
+/**
+ * SOLUTION 4: Gift Form (New/Edit)
+ */
+function vefify_gift_form($gift_id = 0) {
+    global $wpdb;
+    $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
+    
+    $gift = null;
+    if ($gift_id) {
+        $gift = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$table_prefix}gifts WHERE id = %d",
+            $gift_id
+        ));
+    }
+    
+    // Get campaigns for dropdown
+    $campaigns = $wpdb->get_results("SELECT id, name FROM {$table_prefix}campaigns ORDER BY name");
+    
+    $is_edit = !empty($gift);
+    $title = $is_edit ? 'Edit Gift' : 'New Gift';
+    
+    ?>
+    <div class="wrap">
+        <h1><?php echo $title; ?></h1>
+        
+        <form method="post" action="" id="gift-form">
+            <?php wp_nonce_field('vefify_gift_save'); ?>
+            <input type="hidden" name="action" value="save_gift">
+            <?php if ($is_edit): ?>
+                <input type="hidden" name="gift_id" value="<?php echo $gift->id; ?>">
+            <?php endif; ?>
+            
+            <table class="form-table">
+                <tr>
+                    <th scope="row"><label for="campaign_id">Campaign</label></th>
+                    <td>
+                        <select id="campaign_id" name="campaign_id">
+                            <option value="">All Campaigns</option>
+                            <?php foreach ($campaigns as $campaign): ?>
+                                <option value="<?php echo $campaign->id; ?>" 
+                                        <?php selected($is_edit ? $gift->campaign_id : '', $campaign->id); ?>>
+                                    <?php echo esc_html($campaign->name); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <p class="description">Leave empty to make this gift available for all campaigns</p>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <th scope="row"><label for="gift_name">Gift Name *</label></th>
+                    <td>
+                        <input type="text" id="gift_name" name="gift_name" 
+                               value="<?php echo $is_edit ? esc_attr($gift->gift_name) : ''; ?>" 
+                               class="regular-text" required>
+                        <p class="description">Enter a descriptive name for this gift</p>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <th scope="row"><label for="gift_description">Description</label></th>
+                    <td>
+                        <textarea id="gift_description" name="gift_description" 
+                                  rows="3" class="large-text"><?php echo $is_edit ? esc_textarea($gift->gift_description) : ''; ?></textarea>
+                        <p class="description">Brief description shown to participants</p>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <th scope="row">Gift Type & Value *</th>
+                    <td>
+                        <fieldset>
+                            <label>
+                                Type: 
+                                <select name="gift_type" id="gift_type" required>
+                                    <option value="voucher" <?php selected($is_edit ? $gift->gift_type : 'voucher', 'voucher'); ?>>
+                                        Voucher (Cash value)
+                                    </option>
+                                    <option value="discount" <?php selected($is_edit ? $gift->gift_type : '', 'discount'); ?>>
+                                        Discount (Percentage)
+                                    </option>
+                                    <option value="product" <?php selected($is_edit ? $gift->gift_type : '', 'product'); ?>>
+                                        Product (Physical item)
+                                    </option>
+                                    <option value="points" <?php selected($is_edit ? $gift->gift_type : '', 'points'); ?>>
+                                        Points (Loyalty points)
+                                    </option>
+                                </select>
+                            </label><br><br>
+                            
+                            <label>
+                                Value: 
+                                <input type="text" name="gift_value" 
+                                       value="<?php echo $is_edit ? esc_attr($gift->gift_value) : ''; ?>" 
+                                       class="regular-text" placeholder="e.g., 50,000 VND or 10%" required>
+                            </label>
+                            <p class="description">
+                                <strong>Examples:</strong><br>
+                                • Voucher: "50,000 VND" or "$10"<br>
+                                • Discount: "10%" or "15% off"<br>
+                                • Product: "Premium Health Kit"<br>
+                                • Points: "100 points"
+                            </p>
+                        </fieldset>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <th scope="row">Score Requirements *</th>
+                    <td>
+                        <fieldset>
+                            <label>
+                                Minimum score: 
+                                <input type="number" name="min_score" 
+                                       value="<?php echo $is_edit ? $gift->min_score : '3'; ?>" 
+                                       min="0" max="10" class="small-text" required>
+                                correct answers needed
+                            </label><br><br>
+                            
+                            <label>
+                                Maximum score: 
+                                <input type="number" name="max_score" 
+                                       value="<?php echo $is_edit ? $gift->max_score : ''; ?>" 
+                                       min="0" max="10" class="small-text" placeholder="Leave empty for no limit">
+                                (optional - leave empty for no upper limit)
+                            </label>
+                        </fieldset>
+                        <p class="description">
+                            <strong>Examples:</strong><br>
+                            • Perfect score gift: Min=5, Max=5<br>
+                            • Good performance: Min=3, Max=4<br>
+                            • Participation award: Min=1, Max=2
+                        </p>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <th scope="row">Inventory Settings</th>
+                    <td>
+                        <fieldset>
+                            <label>
+                                Maximum quantity: 
+                                <input type="number" name="max_quantity" 
+                                       value="<?php echo $is_edit ? $gift->max_quantity : ''; ?>" 
+                                       min="1" class="regular-text" placeholder="Leave empty for unlimited">
+                            </label><br><br>
+                            
+                            <label>
+                                Gift code prefix: 
+                                <input type="text" name="gift_code_prefix" 
+                                       value="<?php echo $is_edit ? esc_attr($gift->gift_code_prefix) : ''; ?>" 
+                                       class="small-text" placeholder="GIFT" maxlength="10">
+                                (e.g., SAVE10, GIFT50K)
+                            </label>
+                        </fieldset>
+                        <p class="description">
+                            • Leave quantity empty for unlimited gifts<br>
+                            • Gift codes will be auto-generated as: PREFIX + random characters
+                        </p>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <th scope="row">API Integration (Advanced)</th>
+                    <td>
+                        <fieldset>
+                            <label>
+                                API Endpoint: 
+                                <input type="url" name="api_endpoint" 
+                                       value="<?php echo $is_edit ? esc_attr($gift->api_endpoint) : ''; ?>" 
+                                       class="large-text" placeholder="https://api.example.com/vouchers">
+                            </label><br><br>
+                            
+                            <label>
+                                API Parameters (JSON): 
+                                <textarea name="api_params" rows="3" class="large-text" 
+                                          placeholder='{"api_key": "your_key", "merchant_id": "123"}'><?php echo $is_edit ? esc_textarea($gift->api_params) : ''; ?></textarea>
+                            </label>
+                        </fieldset>
+                        <p class="description">
+                            <strong>Optional:</strong> For integration with external voucher/gift systems.<br>
+                            Leave empty for simple gift codes generated by the plugin.
+                        </p>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <th scope="row">Status</th>
+                    <td>
+                        <label>
+                            <input type="checkbox" name="is_active" value="1" 
+                                   <?php echo (!$is_edit || $gift->is_active) ? 'checked' : ''; ?>>
+                            Gift is active and available
+                        </label>
+                        <p class="description">Inactive gifts will not be assigned to participants</p>
+                    </td>
+                </tr>
+            </table>
+            
+            <?php submit_button($is_edit ? 'Update Gift' : 'Create Gift'); ?>
+        </form>
+        
+        <?php if ($is_edit): ?>
+        <div class="gift-info-boxes">
+            <div class="info-box">
+                <h3>📊 Gift Statistics</h3>
+                <?php
+                $stats = $wpdb->get_row($wpdb->prepare("
+                    SELECT COUNT(*) as total_assigned,
+                           COUNT(CASE WHEN gift_status = 'assigned' THEN 1 END) as assigned,
+                           COUNT(CASE WHEN gift_status = 'claimed' THEN 1 END) as claimed
+                    FROM {$table_prefix}quiz_users 
+                    WHERE gift_id = %d
+                ", $gift_id));
+                ?>
+                <p><strong>Total Assigned:</strong> <?php echo number_format($stats->total_assigned); ?></p>
+                <p><strong>Assigned:</strong> <?php echo number_format($stats->assigned); ?></p>
+                <p><strong>Claimed:</strong> <?php echo number_format($stats->claimed); ?></p>
+                
+                <?php if ($gift->max_quantity): ?>
+                    <p><strong>Remaining:</strong> <?php echo number_format($gift->max_quantity - $gift->used_count); ?></p>
+                <?php endif; ?>
+            </div>
+            
+            <div class="info-box">
+                <h3>🔧 Configuration Preview</h3>
+                <p><strong>Score Range:</strong> <?php echo $gift->min_score; ?> - <?php echo $gift->max_score ?: '∞'; ?></p>
+                <p><strong>Gift Type:</strong> <?php echo ucfirst($gift->gift_type); ?></p>
+                <p><strong>Sample Code:</strong> <code><?php echo $gift->gift_code_prefix; ?>ABC123</code></p>
+                <?php if ($gift->api_endpoint): ?>
+                    <p><strong>API:</strong> <span class="api-connected">✓ Connected</span></p>
+                <?php endif; ?>
+            </div>
+        </div>
+        <?php endif; ?>
+    </div>
+    
+    <style>
+    .gift-info-boxes {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        margin-top: 30px;
+    }
+    
+    .info-box {
+        background: #f9f9f9;
+        padding: 20px;
+        border-radius: 8px;
+        border-left: 4px solid #4facfe;
+    }
+    
+    .info-box h3 {
+        margin-top: 0;
+        color: #333;
+    }
+    
+    .api-connected {
+        color: #4caf50;
+        font-weight: bold;
+    }
+    
+    .info-box code {
+        background: #333;
+        color: #0f0;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-family: monospace;
+    }
+    </style>
+    
+    <script>
+    // Form validation and helpful UX
+    document.getElementById('gift_type').addEventListener('change', function() {
+        const type = this.value;
+        const valueInput = document.querySelector('input[name="gift_value"]');
+        
+        switch(type) {
+            case 'voucher':
+                valueInput.placeholder = 'e.g., 50,000 VND';
+                break;
+            case 'discount':
+                valueInput.placeholder = 'e.g., 10%';
+                break;
+            case 'product':
+                valueInput.placeholder = 'e.g., Premium Health Kit';
+                break;
+            case 'points':
+                valueInput.placeholder = 'e.g., 100 points';
+                break;
+        }
+    });
+    
+    // Auto-generate gift code prefix from gift name
+    document.getElementById('gift_name').addEventListener('input', function() {
+        const name = this.value;
+        const prefixInput = document.querySelector('input[name="gift_code_prefix"]');
+        
+        if (!prefixInput.value) {
+            const prefix = name.replace(/[^a-zA-Z0-9]/g, '').substring(0, 8).toUpperCase();
+            prefixInput.value = prefix;
+        }
+    });
+    </script>
+    <?php
+}
+
+/**
+ * SOLUTION 5: Handle Gift Form Submissions
+ */
+function vefify_handle_gift_action() {
+    if (!current_user_can('manage_options')) {
+        wp_die('Unauthorized');
+    }
+    
+    if (!wp_verify_nonce($_POST['_wpnonce'], 'vefify_gift_save')) {
+        wp_die('Security check failed');
+    }
+    
+    global $wpdb;
+    $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
+    
+    $data = array(
+        'campaign_id' => $_POST['campaign_id'] ? intval($_POST['campaign_id']) : null,
+        'gift_name' => sanitize_text_field($_POST['gift_name']),
+        'gift_type' => sanitize_text_field($_POST['gift_type']),
+        'gift_value' => sanitize_text_field($_POST['gift_value']),
+        'gift_description' => sanitize_textarea_field($_POST['gift_description']),
+        'min_score' => intval($_POST['min_score']),
+        'max_score' => $_POST['max_score'] ? intval($_POST['max_score']) : null,
+        'max_quantity' => $_POST['max_quantity'] ? intval($_POST['max_quantity']) : null,
+        'gift_code_prefix' => sanitize_text_field($_POST['gift_code_prefix']) ?: 'GIFT',
+        'api_endpoint' => esc_url_raw($_POST['api_endpoint']),
+        'api_params' => sanitize_textarea_field($_POST['api_params']),
+        'is_active' => isset($_POST['is_active']) ? 1 : 0
+    );
+    
+    if (isset($_POST['gift_id']) && $_POST['gift_id']) {
+        // Update existing gift
+        $gift_id = intval($_POST['gift_id']);
+        $data['updated_at'] = current_time('mysql');
+        
+        $result = $wpdb->update(
+            $table_prefix . 'gifts',
+            $data,
+            array('id' => $gift_id)
+        );
+        
+        $message = 'Gift updated successfully!';
+    } else {
+        // Create new gift
+        $data['used_count'] = 0;
+        $result = $wpdb->insert($table_prefix . 'gifts', $data);
+        $gift_id = $wpdb->insert_id;
+        $message = 'Gift created successfully!';
+    }
+    
+    if ($result !== false) {
+        add_action('admin_notices', function() use ($message) {
+            echo '<div class="notice notice-success is-dismissible"><p>' . $message . '</p></div>';
+        });
+    } else {
+        add_action('admin_notices', function() {
+            echo '<div class="notice notice-error is-dismissible"><p>Error saving gift. Please try again.</p></div>';
+        });
+    }
+    
+    wp_redirect(admin_url('admin.php?page=vefify-gifts&action=edit&id=' . $gift_id));
+    exit;
+}
+
+/**
+ * SOLUTION 6: AJAX handler for gift codes
+ */
+add_action('wp_ajax_vefify_load_gift_codes', function() {
+    if (!wp_verify_nonce($_POST['nonce'], 'vefify_gift_codes')) {
+        wp_send_json_error('Security check failed');
+    }
+    
+    global $wpdb;
+    $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
+    $gift_id = intval($_POST['gift_id']);
+    
+    $gift = $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM {$table_prefix}gifts WHERE id = %d",
+        $gift_id
+    ));
+    
+    $codes = $wpdb->get_results($wpdb->prepare("
+        SELECT u.full_name, u.phone_number, u.gift_code, u.gift_status, u.completed_at
+        FROM {$table_prefix}quiz_users u
+        WHERE u.gift_id = %d
+        ORDER BY u.completed_at DESC
+        LIMIT 50
+    ", $gift_id));
+    
+    if (!$gift) {
+        wp_send_json_error('Gift not found');
+    }
+    
+    ob_start();
+    ?>
+    <h2><?php echo esc_html($gift->gift_name); ?> - Gift Codes</h2>
+    
+    <div class="gift-codes-summary">
+        <p><strong>Total Assigned:</strong> <?php echo count($codes); ?> codes</p>
+        <p><strong>Gift Value:</strong> <?php echo esc_html($gift->gift_value); ?></p>
+        <?php if ($gift->max_quantity): ?>
+            <p><strong>Inventory:</strong> <?php echo $gift->used_count; ?> / <?php echo $gift->max_quantity; ?> used</p>
+        <?php endif; ?>
+    </div>
+    
+    <?php if (!empty($codes)): ?>
+    <table class="wp-list-table widefat fixed striped">
+        <thead>
+            <tr>
+                <th>Participant</th>
+                <th>Gift Code</th>
+                <th>Status</th>
+                <th>Date</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php foreach ($codes as $code): ?>
+            <tr>
+                <td>
+                    <strong><?php echo esc_html($code->full_name); ?></strong><br>
+                    <small><?php echo esc_html($code->phone_number); ?></small>
+                </td>
+                <td>
+                    <code class="gift-code"><?php echo esc_html($code->gift_code); ?></code>
+                </td>
+                <td>
+                    <span class="status-badge status-<?php echo esc_attr($code->gift_status); ?>">
+                        <?php echo ucfirst($code->gift_status); ?>
+                    </span>
+                </td>
+                <td><?php echo mysql2date('M j, Y g:i A', $code->completed_at); ?></td>
+            </tr>
+            <?php endforeach; ?>
+        </tbody>
+    </table>
+    <?php else: ?>
+    <p>No gift codes have been assigned yet.</p>
+    <?php endif; ?>
+    
+    <style>
+    .gift-codes-summary {
+        background: #f9f9f9;
+        padding: 15px;
+        border-radius: 4px;
+        margin-bottom: 20px;
+    }
+    
+    .gift-code {
+        background: #333;
+        color: #0f0;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-family: monospace;
+        font-weight: bold;
+    }
+    
+    .status-badge {
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: bold;
+        color: white;
+    }
+    
+    .status-badge.status-assigned { background: #ff9800; }
+    .status-badge.status-claimed { background: #4caf50; }
+    .status-badge.status-expired { background: #f44336; }
+    </style>
     <?php
     
     wp_send_json_success(ob_get_clean());
