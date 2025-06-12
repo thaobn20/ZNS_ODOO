@@ -3701,10 +3701,12 @@ function vefify_question_form($question_id = 0) {
             $question_id
         ));
         
-        $options = $wpdb->get_results($wpdb->prepare(
-            "SELECT * FROM {$table_prefix}question_options WHERE question_id = %d ORDER BY order_index",
-            $question_id
-        ));
+        if ($question) {
+            $options = $wpdb->get_results($wpdb->prepare(
+                "SELECT * FROM {$table_prefix}question_options WHERE question_id = %d ORDER BY order_index",
+                $question_id
+            ));
+        }
     }
     
     // Get campaigns for dropdown
@@ -3713,22 +3715,18 @@ function vefify_question_form($question_id = 0) {
     $is_edit = !empty($question);
     $title = $is_edit ? 'Edit Question' : 'New Question';
     
-    // Show admin notices
-    $notice = get_transient('vefify_admin_notice');
-    if ($notice) {
-        delete_transient('vefify_admin_notice');
-        echo '<div class="notice notice-' . $notice['type'] . ' is-dismissible"><p>' . esc_html($notice['message']) . '</p></div>';
-    }
+    // Show URL-based notices
+    vefify_show_url_based_notices();
     
     ?>
     <div class="wrap">
-        <h1><?php echo $title; ?></h1>
+        <h1><?php echo esc_html($title); ?></h1>
         
         <form method="post" action="" id="question-form">
             <?php wp_nonce_field('vefify_question_save'); ?>
             <input type="hidden" name="action" value="save_question">
             <?php if ($is_edit): ?>
-                <input type="hidden" name="question_id" value="<?php echo $question->id; ?>">
+                <input type="hidden" name="question_id" value="<?php echo esc_attr($question->id); ?>">
             <?php endif; ?>
             
             <table class="form-table">
@@ -3738,7 +3736,7 @@ function vefify_question_form($question_id = 0) {
                         <select id="campaign_id" name="campaign_id">
                             <option value="">Global (All Campaigns)</option>
                             <?php foreach ($campaigns as $campaign): ?>
-                                <option value="<?php echo $campaign->id; ?>" 
+                                <option value="<?php echo esc_attr($campaign->id); ?>" 
                                         <?php selected($is_edit ? $question->campaign_id : '', $campaign->id); ?>>
                                     <?php echo esc_html($campaign->name); ?>
                                 </option>
@@ -3799,7 +3797,7 @@ function vefify_question_form($question_id = 0) {
                             
                             <label>
                                 Points: 
-                                <input type="number" name="points" value="<?php echo $is_edit ? $question->points : 1; ?>" 
+                                <input type="number" name="points" value="<?php echo $is_edit ? esc_attr($question->points) : '1'; ?>" 
                                        min="1" max="10" class="small-text">
                             </label>
                         </fieldset>
@@ -3818,15 +3816,14 @@ function vefify_question_form($question_id = 0) {
             <h3>Answer Options</h3>
             <div id="answer-options">
                 <?php
-                if ($options) {
+                if ($options && count($options) > 0) {
                     foreach ($options as $index => $option) {
-                        // FIXED: Use correct property name 'option_text'
-                        echo vefify_render_option_row_fixed($index, $option->option_text, $option->is_correct, $option->explanation);
+                        echo vefify_render_option_row_debug($index, $option->option_text, $option->is_correct, $option->explanation);
                     }
                 } else {
                     // Default 4 options for new questions
                     for ($i = 0; $i < 4; $i++) {
-                        echo vefify_render_option_row_fixed($i, '', false, '');
+                        echo vefify_render_option_row_debug($i, '', false, '');
                     }
                 }
                 ?>
@@ -3836,6 +3833,14 @@ function vefify_question_form($question_id = 0) {
                 <button type="button" id="add-option" class="button">Add Another Option</button>
                 <span class="description">You need at least 2 options, and at least 1 must be marked as correct.</span>
             </p>
+            
+            <!-- DEBUG: Show current form data -->
+            <div style="background: #f0f8ff; padding: 15px; border: 1px solid #ccc; border-radius: 5px; margin: 20px 0;">
+                <h4>🔍 Debug Info:</h4>
+                <p><strong>Question ID:</strong> <?php echo $question_id ?: 'New Question'; ?></p>
+                <p><strong>Existing Options:</strong> <?php echo count($options); ?></p>
+                <button type="button" id="debug-form" class="button">Show Form Data</button>
+            </div>
             
             <?php submit_button($is_edit ? 'Update Question' : 'Save Question'); ?>
         </form>
@@ -3899,6 +3904,7 @@ function vefify_question_form($question_id = 0) {
         font-weight: bold;
         font-size: 18px;
         line-height: 1;
+        cursor: pointer;
     }
     
     .remove-option:hover {
@@ -3910,23 +3916,83 @@ function vefify_question_form($question_id = 0) {
     jQuery(document).ready(function($) {
         let optionCount = $('#answer-options .option-row').length;
         
+        console.log('Initial option count:', optionCount);
+        
+        // Debug form data button
+        $('#debug-form').click(function() {
+            const formData = new FormData(document.getElementById('question-form'));
+            console.log('=== FORM DEBUG ===');
+            for (let [key, value] of formData.entries()) {
+                console.log(key + ': ' + value);
+            }
+            
+            // Show options data specifically
+            const optionsData = {};
+            for (let [key, value] of formData.entries()) {
+                if (key.startsWith('options[')) {
+                    optionsData[key] = value;
+                }
+            }
+            console.log('Options data:', optionsData);
+            alert('Check browser console for form data');
+        });
+        
         // Add new option
         $('#add-option').click(function() {
-            const optionHtml = `<?php echo addslashes(vefify_render_option_row_fixed('__INDEX__', '', false, '')); ?>`
-                .replace(/__INDEX__/g, optionCount);
+            console.log('Adding new option, current count:', optionCount);
+            
+            const optionHtml = `
+                <div class="option-row">
+                    <a href="#" class="remove-option" title="Remove this option">×</a>
+                    
+                    <div class="option-header">
+                        <div class="option-number">${optionCount + 1}</div>
+                        <label class="option-correct">
+                            <input type="checkbox" name="options[${optionCount}][is_correct]" 
+                                   value="1" class="option-correct-checkbox">
+                            Correct Answer
+                        </label>
+                    </div>
+                    
+                    <input type="text" name="options[${optionCount}][text]" 
+                           value="" 
+                           placeholder="Enter answer option..." 
+                           class="option-text" required>
+                    
+                    <textarea name="options[${optionCount}][explanation]" 
+                              placeholder="Optional: Explain why this answer is correct/incorrect..."
+                              rows="2" class="option-explanation"></textarea>
+                </div>
+            `;
+            
             $('#answer-options').append(optionHtml);
             optionCount++;
+            updateOptionNumbers();
         });
         
         // Remove option
         $(document).on('click', '.remove-option', function(e) {
             e.preventDefault();
+            console.log('Removing option');
+            
             if ($('#answer-options .option-row').length > 2) {
                 $(this).closest('.option-row').remove();
+                updateOptionNumbers();
             } else {
                 alert('You need at least 2 options.');
             }
         });
+        
+        // Update option numbers after add/remove
+        function updateOptionNumbers() {
+            $('#answer-options .option-row').each(function(index) {
+                $(this).find('.option-number').text(index + 1);
+                $(this).find('input[type="checkbox"]').attr('name', `options[${index}][is_correct]`);
+                $(this).find('input[type="text"]').attr('name', `options[${index}][text]`);
+                $(this).find('textarea').attr('name', `options[${index}][explanation]`);
+            });
+            console.log('Updated option numbers, total options:', $('#answer-options .option-row').length);
+        }
         
         // Handle correct answer checkbox
         $(document).on('change', '.option-correct-checkbox', function() {
@@ -3934,12 +4000,10 @@ function vefify_question_form($question_id = 0) {
             const questionType = $('#question_type').val();
             
             if (questionType === 'multiple_choice' && this.checked) {
-                // For single choice, uncheck all other options
                 $('.option-correct-checkbox').not(this).prop('checked', false);
                 $('.option-row').removeClass('correct');
             }
             
-            // Update visual state
             row.toggleClass('correct', this.checked);
         });
         
@@ -3948,12 +4012,15 @@ function vefify_question_form($question_id = 0) {
             const type = $(this).val();
             
             if (type === 'true_false') {
-                // Limit to 2 options for true/false
-                $('#answer-options .option-row:gt(1)').remove();
+                while ($('#answer-options .option-row').length > 2) {
+                    $('#answer-options .option-row:last').remove();
+                }
                 $('#add-option').hide();
             } else {
                 $('#add-option').show();
             }
+            
+            updateOptionNumbers();
         });
         
         // Form validation
@@ -3963,8 +4030,14 @@ function vefify_question_form($question_id = 0) {
                 return $(this).val().trim() !== '';
             }).length;
             
+            console.log('Form submission validation:', {
+                checkedOptions: checkedOptions,
+                filledOptions: filledOptions,
+                totalOptions: $('.option-text').length
+            });
+            
             if (filledOptions < 2) {
-                alert('You need at least 2 answer options.');
+                alert('You need at least 2 answer options with text.');
                 e.preventDefault();
                 return false;
             }
@@ -3974,7 +4047,12 @@ function vefify_question_form($question_id = 0) {
                 e.preventDefault();
                 return false;
             }
+            
+            console.log('Form validation passed, submitting...');
+            return true;
         });
+        
+        updateOptionNumbers();
     });
     </script>
     <?php
@@ -4074,10 +4152,23 @@ function vefify_render_option_row($index, $text = '', $is_correct = false, $expl
  * QUESTION MANAGEMENT - Add/Edit/Update
  */
 function vefify_handle_question_action() {
+    // Debug: Enable error reporting
+    if (defined('WP_DEBUG') && WP_DEBUG) {
+        error_reporting(E_ALL);
+        ini_set('display_errors', 1);
+    }
+    
+    // Start output buffering to prevent header issues
+    if (!headers_sent()) {
+        ob_start();
+    }
+    
+    // Verify user permissions
     if (!current_user_can('manage_options')) {
         wp_die('Unauthorized');
     }
     
+    // Verify nonce
     if (!wp_verify_nonce($_POST['_wpnonce'], 'vefify_question_save')) {
         wp_die('Security check failed');
     }
@@ -4085,7 +4176,11 @@ function vefify_handle_question_action() {
     global $wpdb;
     $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
     
-    // Prepare question data
+    // DEBUG: Log all POST data
+    error_log('=== QUESTION FORM DEBUG ===');
+    error_log('POST Data: ' . print_r($_POST, true));
+    
+    // Collect and sanitize question data
     $question_data = array(
         'campaign_id' => !empty($_POST['campaign_id']) ? intval($_POST['campaign_id']) : null,
         'question_text' => sanitize_textarea_field($_POST['question_text']),
@@ -4093,116 +4188,214 @@ function vefify_handle_question_action() {
         'category' => sanitize_text_field($_POST['category']),
         'difficulty' => sanitize_text_field($_POST['difficulty']),
         'points' => intval($_POST['points']),
-        'explanation' => sanitize_textarea_field($_POST['explanation'])
+        'explanation' => sanitize_textarea_field($_POST['explanation']),
+        'is_active' => 1
     );
     
-    // Validate options - FIXED COLUMN NAMES
+    error_log('Question Data: ' . print_r($question_data, true));
+    
+    // Process and validate options - ENHANCED DEBUGGING
     $options = $_POST['options'] ?? array();
+    error_log('Raw Options Data: ' . print_r($options, true));
+    
     $valid_options = array();
     $has_correct = false;
     
-    foreach ($options as $index => $option) {
-        if (!empty($option['text'])) {
-            $is_correct = !empty($option['is_correct']);
-            $valid_options[] = array(
-                'option_text' => sanitize_textarea_field($option['text']), // FIXED: was 'text', now 'option_text'
-                'is_correct' => $is_correct ? 1 : 0,
-                'explanation' => sanitize_textarea_field($option['explanation'] ?? ''),
-                'order_index' => count($valid_options) + 1
-            );
+    if (is_array($options)) {
+        foreach ($options as $index => $option) {
+            error_log("Processing option {$index}: " . print_r($option, true));
             
-            if ($is_correct) {
-                $has_correct = true;
+            // Check different possible field names
+            $option_text = '';
+            if (isset($option['text'])) {
+                $option_text = trim($option['text']);
+            } elseif (isset($option['option_text'])) {
+                $option_text = trim($option['option_text']);
+            }
+            
+            error_log("Option {$index} text: '{$option_text}'");
+            
+            if (!empty($option_text)) {
+                $is_correct = !empty($option['is_correct']);
+                error_log("Option {$index} is_correct: " . ($is_correct ? 'TRUE' : 'FALSE'));
+                
+                $valid_options[] = array(
+                    'option_text' => sanitize_textarea_field($option_text),
+                    'is_correct' => $is_correct ? 1 : 0,
+                    'explanation' => sanitize_textarea_field($option['explanation'] ?? ''),
+                    'order_index' => count($valid_options) + 1
+                );
+                
+                if ($is_correct) {
+                    $has_correct = true;
+                }
             }
         }
     }
     
+    error_log('Valid Options: ' . print_r($valid_options, true));
+    error_log('Has Correct: ' . ($has_correct ? 'TRUE' : 'FALSE'));
+    error_log('Options Count: ' . count($valid_options));
+    
     // Validation
     if (count($valid_options) < 2) {
-        set_transient('vefify_admin_notice', array('type' => 'error', 'message' => 'You need at least 2 answer options.'), 30);
-        wp_redirect(admin_url('admin.php?page=vefify-questions&action=new'));
-        exit;
+        error_log('VALIDATION ERROR: Not enough options');
+        
+        // Clean any output buffer
+        if (ob_get_length()) ob_clean();
+        
+        $redirect_url = isset($_POST['question_id']) && $_POST['question_id'] 
+            ? admin_url('admin.php?page=vefify-questions&action=edit&id=' . intval($_POST['question_id']) . '&error=options')
+            : admin_url('admin.php?page=vefify-questions&action=new&error=options');
+        
+        // Use JavaScript redirect if headers already sent
+        if (headers_sent()) {
+            echo '<script>window.location.href = "' . esc_js($redirect_url) . '";</script>';
+            exit;
+        } else {
+            wp_redirect($redirect_url);
+            exit;
+        }
     }
     
     if (!$has_correct) {
-        set_transient('vefify_admin_notice', array('type' => 'error', 'message' => 'You need at least one correct answer.'), 30);
-        wp_redirect(admin_url('admin.php?page=vefify-questions&action=new'));
-        exit;
+        error_log('VALIDATION ERROR: No correct answers');
+        
+        // Clean any output buffer
+        if (ob_get_length()) ob_clean();
+        
+        $redirect_url = isset($_POST['question_id']) && $_POST['question_id'] 
+            ? admin_url('admin.php?page=vefify-questions&action=edit&id=' . intval($_POST['question_id']) . '&error=correct')
+            : admin_url('admin.php?page=vefify-questions&action=new&error=correct');
+        
+        // Use JavaScript redirect if headers already sent
+        if (headers_sent()) {
+            echo '<script>window.location.href = "' . esc_js($redirect_url) . '";</script>';
+            exit;
+        } else {
+            wp_redirect($redirect_url);
+            exit;
+        }
     }
     
-    // Start transaction
+    // Database transaction
     $wpdb->query('START TRANSACTION');
     
     try {
-        if (isset($_POST['question_id']) && $_POST['question_id']) {
-            // Update existing question
+        if (isset($_POST['question_id']) && !empty($_POST['question_id'])) {
+            // UPDATE existing question
             $question_id = intval($_POST['question_id']);
             $question_data['updated_at'] = current_time('mysql');
+            
+            error_log('UPDATING question ID: ' . $question_id);
             
             $result = $wpdb->update(
                 $table_prefix . 'questions',
                 $question_data,
                 array('id' => $question_id),
-                array('%d', '%s', '%s', '%s', '%s', '%d', '%s', '%s'),
+                array('%d', '%s', '%s', '%s', '%s', '%d', '%s', '%d', '%s'),
                 array('%d')
             );
             
-            // Delete existing options
-            $wpdb->delete($table_prefix . 'question_options', array('question_id' => $question_id));
+            if ($result === false) {
+                throw new Exception('Failed to update question: ' . $wpdb->last_error);
+            }
             
-            $message = 'Question updated successfully!';
+            error_log('Question updated successfully');
+            
+            // Delete existing options
+            $delete_result = $wpdb->delete(
+                $table_prefix . 'question_options', 
+                array('question_id' => $question_id),
+                array('%d')
+            );
+            
+            error_log('Deleted ' . $delete_result . ' existing options');
+            
+            $message_type = 'updated';
+            
         } else {
-            // Create new question
+            // CREATE new question
+            error_log('CREATING new question');
+            
             $result = $wpdb->insert(
                 $table_prefix . 'questions', 
                 $question_data,
-                array('%d', '%s', '%s', '%s', '%s', '%d', '%s')
+                array('%d', '%s', '%s', '%s', '%s', '%d', '%s', '%d')
             );
+            
+            if ($result === false) {
+                throw new Exception('Failed to create question: ' . $wpdb->last_error);
+            }
+            
             $question_id = $wpdb->insert_id;
-            $message = 'Question created successfully!';
+            error_log('Created question with ID: ' . $question_id);
+            
+            $message_type = 'created';
         }
         
-        if ($result === false) {
-            throw new Exception('Failed to save question: ' . $wpdb->last_error);
-        }
+        // Insert all options - ENHANCED LOGGING
+        error_log('Starting to insert ' . count($valid_options) . ' options');
         
-        // Insert options with CORRECT COLUMN NAMES
-        foreach ($valid_options as $option) {
-            $option['question_id'] = $question_id;
+        foreach ($valid_options as $option_index => $option_data) {
+            $option_data['question_id'] = $question_id;
+            
+            error_log("Inserting option {$option_index}: " . print_r($option_data, true));
             
             $option_result = $wpdb->insert(
-                $table_prefix . 'question_options', 
-                array(
-                    'question_id' => $option['question_id'],
-                    'option_text' => $option['option_text'], // FIXED: using correct column name
-                    'is_correct' => $option['is_correct'],
-                    'order_index' => $option['order_index'],
-                    'explanation' => $option['explanation']
-                ),
-                array('%d', '%s', '%d', '%d', '%s') // FIXED: proper format specifiers
+                $table_prefix . 'question_options',
+                $option_data,
+                array('%d', '%s', '%d', '%s', '%d')
             );
             
             if ($option_result === false) {
+                error_log('OPTION INSERT FAILED: ' . $wpdb->last_error);
                 throw new Exception('Failed to save option: ' . $wpdb->last_error);
+            } else {
+                $inserted_option_id = $wpdb->insert_id;
+                error_log("Option {$option_index} inserted with ID: {$inserted_option_id}");
             }
         }
         
+        // Commit transaction
         $wpdb->query('COMMIT');
+        error_log('Transaction committed successfully');
         
-        // Store success message
-        set_transient('vefify_admin_notice', array('type' => 'success', 'message' => $message), 30);
+        // Clean any output buffer before redirect
+        if (ob_get_length()) ob_clean();
         
-        wp_redirect(admin_url('admin.php?page=vefify-questions'));
-        exit;
+        // Success redirect with URL parameter
+        $redirect_url = admin_url('admin.php?page=vefify-questions&success=' . $message_type);
+        
+        // Use JavaScript redirect if headers already sent
+        if (headers_sent()) {
+            echo '<script>window.location.href = "' . esc_js($redirect_url) . '";</script>';
+            exit;
+        } else {
+            wp_redirect($redirect_url);
+            exit;
+        }
         
     } catch (Exception $e) {
+        // Rollback on error
         $wpdb->query('ROLLBACK');
+        error_log('TRANSACTION ROLLED BACK: ' . $e->getMessage());
         
-        // Store error message
-        set_transient('vefify_admin_notice', array('type' => 'error', 'message' => 'Error saving question: ' . $e->getMessage()), 30);
+        // Clean any output buffer
+        if (ob_get_length()) ob_clean();
         
-        wp_redirect(admin_url('admin.php?page=vefify-questions'));
-        exit;
+        $redirect_url = isset($_POST['question_id']) && $_POST['question_id'] 
+            ? admin_url('admin.php?page=vefify-questions&action=edit&id=' . intval($_POST['question_id']) . '&error=database')
+            : admin_url('admin.php?page=vefify-questions&action=new&error=database');
+        
+        // Use JavaScript redirect if headers already sent
+        if (headers_sent()) {
+            echo '<script>window.location.href = "' . esc_js($redirect_url) . '";</script>';
+            exit;
+        } else {
+            wp_redirect($redirect_url);
+            exit;
+        }
     }
 }
 
@@ -7205,4 +7398,80 @@ function vefify_debug_question_form() {
     exit;
 }
 add_action('admin_init', 'vefify_debug_question_form');
+/**
+ * DEBUG: Enhanced option row renderer
+ */
+function vefify_render_option_row_debug($index, $text = '', $is_correct = false, $explanation = '') {
+    ob_start();
+    ?>
+    <div class="option-row <?php echo $is_correct ? 'correct' : ''; ?>">
+        <a href="#" class="remove-option" title="Remove this option">×</a>
+        
+        <div class="option-header">
+            <div class="option-number"><?php echo $index + 1; ?></div>
+            <label class="option-correct">
+                <input type="checkbox" name="options[<?php echo $index; ?>][is_correct]" 
+                       value="1" class="option-correct-checkbox" <?php checked($is_correct); ?>>
+                Correct Answer
+            </label>
+        </div>
+        
+        <input type="text" name="options[<?php echo $index; ?>][text]" 
+               value="<?php echo esc_attr($text); ?>" 
+               placeholder="Enter answer option..." 
+               class="option-text" required>
+        
+        <textarea name="options[<?php echo $index; ?>][explanation]" 
+                  placeholder="Optional: Explain why this answer is correct/incorrect..."
+                  rows="2" class="option-explanation"><?php echo esc_textarea($explanation); ?></textarea>
+        
+        <!-- DEBUG: Show field info -->
+        <small style="color: #666; font-style: italic;">
+            Debug: Field name = options[<?php echo $index; ?>][text], Value = "<?php echo esc_attr($text); ?>"
+        </small>
+    </div>
+    <?php
+    return ob_get_clean();
+}
+/**
+ * Add URL-based notices function if it doesn't exist
+ */
+if (!function_exists('vefify_show_url_based_notices')) {
+    function vefify_show_url_based_notices() {
+        // Success messages
+        if (isset($_GET['success'])) {
+            $message = '';
+            switch ($_GET['success']) {
+                case 'created':
+                    $message = 'Question created successfully!';
+                    break;
+                case 'updated':
+                    $message = 'Question updated successfully!';
+                    break;
+            }
+            if ($message) {
+                echo '<div class="notice notice-success is-dismissible"><p>' . esc_html($message) . '</p></div>';
+            }
+        }
+        
+        // Error messages
+        if (isset($_GET['error'])) {
+            $message = '';
+            switch ($_GET['error']) {
+                case 'options':
+                    $message = 'You need at least 2 answer options with text.';
+                    break;
+                case 'correct':
+                    $message = 'You need to mark at least one answer as correct.';
+                    break;
+                case 'database':
+                    $message = 'Database error occurred while saving. Please try again.';
+                    break;
+            }
+            if ($message) {
+                echo '<div class="notice notice-error is-dismissible"><p>' . esc_html($message) . '</p></div>';
+            }
+        }
+    }
+}
 ?>
