@@ -2223,28 +2223,395 @@ add_action('admin_init', function() {
         exit;
     }
 });
-
-
+/**
+ * UPDATED: Question form with URL-based notices
+ * Replace the notice section in your vefify_question_form_fixed() function
+ */
+function vefify_question_form_fixed($question_id = 0) {
+    global $wpdb;
+    $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
+    
+    $question = null;
+    $options = array();
+    
+    if ($question_id) {
+        $question = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$table_prefix}questions WHERE id = %d",
+            $question_id
+        ));
+        
+        if ($question) {
+            $options = $wpdb->get_results($wpdb->prepare(
+                "SELECT * FROM {$table_prefix}question_options WHERE question_id = %d ORDER BY order_index",
+                $question_id
+            ));
+        }
+    }
+    
+    // Get campaigns for dropdown
+    $campaigns = $wpdb->get_results("SELECT id, name FROM {$table_prefix}campaigns ORDER BY name");
+    
+    $is_edit = !empty($question);
+    $title = $is_edit ? 'Edit Question' : 'New Question';
+    
+    ?>
+    <div class="wrap">
+        <h1><?php echo esc_html($title); ?></h1>
+        
+        <?php 
+        // Show URL-based notices instead of transients
+        vefify_show_url_based_notices(); 
+        ?>
+        
+        <form method="post" action="" id="question-form">
+            <?php wp_nonce_field('vefify_question_save'); ?>
+            <input type="hidden" name="action" value="save_question">
+            <?php if ($is_edit): ?>
+                <input type="hidden" name="question_id" value="<?php echo esc_attr($question->id); ?>">
+            <?php endif; ?>
+            
+            <!-- Rest of your form HTML stays the same -->
+            <table class="form-table">
+                <tr>
+                    <th scope="row"><label for="campaign_id">Campaign</label></th>
+                    <td>
+                        <select id="campaign_id" name="campaign_id">
+                            <option value="">Global (All Campaigns)</option>
+                            <?php foreach ($campaigns as $campaign): ?>
+                                <option value="<?php echo esc_attr($campaign->id); ?>" 
+                                        <?php selected($is_edit ? $question->campaign_id : '', $campaign->id); ?>>
+                                    <?php echo esc_html($campaign->name); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <p class="description">Leave empty to make this question available for all campaigns</p>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <th scope="row"><label for="question_text">Question Text *</label></th>
+                    <td>
+                        <textarea id="question_text" name="question_text" rows="3" class="large-text" required><?php echo $is_edit ? esc_textarea($question->question_text) : ''; ?></textarea>
+                        <p class="description">Enter the question that participants will see</p>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <th scope="row">Question Settings</th>
+                    <td>
+                        <fieldset>
+                            <label>
+                                Type: 
+                                <select name="question_type" id="question_type">
+                                    <option value="multiple_choice" <?php selected($is_edit ? $question->question_type : 'multiple_choice', 'multiple_choice'); ?>>
+                                        Single Choice (one correct answer)
+                                    </option>
+                                    <option value="multiple_select" <?php selected($is_edit ? $question->question_type : '', 'multiple_select'); ?>>
+                                        Multiple Choice (multiple correct answers)
+                                    </option>
+                                    <option value="true_false" <?php selected($is_edit ? $question->question_type : '', 'true_false'); ?>>
+                                        True/False
+                                    </option>
+                                </select>
+                            </label><br><br>
+                            
+                            <label>
+                                Category: 
+                                <select name="category">
+                                    <option value="">Select Category</option>
+                                    <option value="medication" <?php selected($is_edit ? $question->category : '', 'medication'); ?>>Medication</option>
+                                    <option value="nutrition" <?php selected($is_edit ? $question->category : '', 'nutrition'); ?>>Nutrition</option>
+                                    <option value="safety" <?php selected($is_edit ? $question->category : '', 'safety'); ?>>Safety</option>
+                                    <option value="hygiene" <?php selected($is_edit ? $question->category : '', 'hygiene'); ?>>Hygiene</option>
+                                    <option value="wellness" <?php selected($is_edit ? $question->category : '', 'wellness'); ?>>Wellness</option>
+                                    <option value="pharmacy" <?php selected($is_edit ? $question->category : '', 'pharmacy'); ?>>Pharmacy</option>
+                                </select>
+                            </label><br><br>
+                            
+                            <label>
+                                Difficulty: 
+                                <select name="difficulty">
+                                    <option value="easy" <?php selected($is_edit ? $question->difficulty : 'medium', 'easy'); ?>>Easy</option>
+                                    <option value="medium" <?php selected($is_edit ? $question->difficulty : 'medium', 'medium'); ?>>Medium</option>
+                                    <option value="hard" <?php selected($is_edit ? $question->difficulty : 'medium', 'hard'); ?>>Hard</option>
+                                </select>
+                            </label><br><br>
+                            
+                            <label>
+                                Points: 
+                                <input type="number" name="points" value="<?php echo $is_edit ? esc_attr($question->points) : '1'; ?>" 
+                                       min="1" max="10" class="small-text">
+                            </label>
+                        </fieldset>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <th scope="row">Explanation (Optional)</th>
+                    <td>
+                        <textarea name="explanation" rows="2" class="large-text"><?php echo $is_edit ? esc_textarea($question->explanation) : ''; ?></textarea>
+                        <p class="description">Explain why certain answers are correct (shown after completion)</p>
+                    </td>
+                </tr>
+            </table>
+            
+            <h3>Answer Options</h3>
+            <div id="answer-options">
+                <?php
+                if ($options) {
+                    foreach ($options as $index => $option) {
+                        echo vefify_render_option_row_working($index, $option->option_text, $option->is_correct, $option->explanation);
+                    }
+                } else {
+                    // Default 4 options for new questions
+                    for ($i = 0; $i < 4; $i++) {
+                        echo vefify_render_option_row_working($i, '', false, '');
+                    }
+                }
+                ?>
+            </div>
+            
+            <p>
+                <button type="button" id="add-option" class="button">Add Another Option</button>
+                <span class="description">You need at least 2 options, and at least 1 must be marked as correct.</span>
+            </p>
+            
+            <?php submit_button($is_edit ? 'Update Question' : 'Save Question'); ?>
+        </form>
+    </div>
+    
+    <!-- Keep all your existing CSS and JavaScript from the previous version -->
+    <style>
+    .option-row {
+        background: #f9f9f9;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 15px;
+        margin-bottom: 10px;
+        position: relative;
+    }
+    
+    .option-row.correct {
+        border-left: 4px solid #00a32a;
+        background: #f0f8f0;
+    }
+    
+    .option-header {
+        display: flex;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+    
+    .option-number {
+        background: #666;
+        color: white;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: bold;
+        margin-right: 10px;
+    }
+    
+    .option-correct {
+        margin-left: auto;
+    }
+    
+    .option-text {
+        width: 100%;
+        margin-bottom: 10px;
+    }
+    
+    .option-explanation {
+        width: 100%;
+        font-size: 13px;
+    }
+    
+    .remove-option {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        color: #dc3232;
+        text-decoration: none;
+        font-weight: bold;
+        font-size: 18px;
+        line-height: 1;
+        cursor: pointer;
+    }
+    
+    .remove-option:hover {
+        color: #a00;
+    }
+    </style>
+    
+    <script>
+    jQuery(document).ready(function($) {
+        let optionCount = $('#answer-options .option-row').length;
+        
+        // Add new option
+        $('#add-option').click(function() {
+            const optionHtml = `
+                <div class="option-row">
+                    <a href="#" class="remove-option" title="Remove this option">×</a>
+                    
+                    <div class="option-header">
+                        <div class="option-number">${optionCount + 1}</div>
+                        <label class="option-correct">
+                            <input type="checkbox" name="options[${optionCount}][is_correct]" 
+                                   value="1" class="option-correct-checkbox">
+                            Correct Answer
+                        </label>
+                    </div>
+                    
+                    <input type="text" name="options[${optionCount}][text]" 
+                           value="" 
+                           placeholder="Enter answer option..." 
+                           class="option-text" required>
+                    
+                    <textarea name="options[${optionCount}][explanation]" 
+                              placeholder="Optional: Explain why this answer is correct/incorrect..."
+                              rows="2" class="option-explanation"></textarea>
+                </div>
+            `;
+            
+            $('#answer-options').append(optionHtml);
+            optionCount++;
+            updateOptionNumbers();
+        });
+        
+        // Remove option
+        $(document).on('click', '.remove-option', function(e) {
+            e.preventDefault();
+            
+            if ($('#answer-options .option-row').length > 2) {
+                $(this).closest('.option-row').remove();
+                updateOptionNumbers();
+            } else {
+                alert('You need at least 2 options.');
+            }
+        });
+        
+        // Update option numbers after add/remove
+        function updateOptionNumbers() {
+            $('#answer-options .option-row').each(function(index) {
+                $(this).find('.option-number').text(index + 1);
+                $(this).find('input[type="checkbox"]').attr('name', `options[${index}][is_correct]`);
+                $(this).find('input[type="text"]').attr('name', `options[${index}][text]`);
+                $(this).find('textarea').attr('name', `options[${index}][explanation]`);
+            });
+        }
+        
+        // Handle correct answer checkbox
+        $(document).on('change', '.option-correct-checkbox', function() {
+            const row = $(this).closest('.option-row');
+            const questionType = $('#question_type').val();
+            
+            if (questionType === 'multiple_choice' && this.checked) {
+                $('.option-correct-checkbox').not(this).prop('checked', false);
+                $('.option-row').removeClass('correct');
+            }
+            
+            row.toggleClass('correct', this.checked);
+        });
+        
+        // Question type change
+        $('#question_type').change(function() {
+            const type = $(this).val();
+            
+            if (type === 'true_false') {
+                while ($('#answer-options .option-row').length > 2) {
+                    $('#answer-options .option-row:last').remove();
+                }
+                $('#add-option').hide();
+            } else {
+                $('#add-option').show();
+            }
+            
+            updateOptionNumbers();
+        });
+        
+        // Form validation
+        $('#question-form').submit(function(e) {
+            const checkedOptions = $('.option-correct-checkbox:checked').length;
+            const filledOptions = $('.option-text').filter(function() {
+                return $(this).val().trim() !== '';
+            }).length;
+            
+            if (filledOptions < 2) {
+                alert('You need at least 2 answer options with text.');
+                e.preventDefault();
+                return false;
+            }
+            
+            if (checkedOptions === 0) {
+                alert('You need to mark at least one correct answer.');
+                e.preventDefault();
+                return false;
+            }
+            
+            return true;
+        });
+        
+        updateOptionNumbers();
+    });
+    </script>
+    <?php
+}
+/**
+ * WORKING: Render option row HTML
+ */
+function vefify_render_option_row_working($index, $text = '', $is_correct = false, $explanation = '') {
+    ob_start();
+    ?>
+    <div class="option-row <?php echo $is_correct ? 'correct' : ''; ?>">
+        <a href="#" class="remove-option" title="Remove this option">×</a>
+        
+        <div class="option-header">
+            <div class="option-number"><?php echo $index + 1; ?></div>
+            <label class="option-correct">
+                <input type="checkbox" name="options[<?php echo $index; ?>][is_correct]" 
+                       value="1" class="option-correct-checkbox" <?php checked($is_correct); ?>>
+                Correct Answer
+            </label>
+        </div>
+        
+        <input type="text" name="options[<?php echo $index; ?>][text]" 
+               value="<?php echo esc_attr($text); ?>" 
+               placeholder="Enter answer option..." 
+               class="option-text" required>
+        
+        <textarea name="options[<?php echo $index; ?>][explanation]" 
+                  placeholder="Optional: Explain why this answer is correct/incorrect..."
+                  rows="2" class="option-explanation"><?php echo esc_textarea($explanation); ?></textarea>
+    </div>
+    <?php
+    return ob_get_clean();
+}
 /**
  * Question Bank Management Interface
  *
+**/
 function vefify_admin_questions() {
     global $wpdb;
     $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
     
     // Handle form submissions
-    if (isset($_POST['action'])) {
-        vefify_handle_question_action();
+    if (isset($_POST['action']) && $_POST['action'] === 'save_question') {
+        vefify_handle_question_action_fixed();
+        return; // Important: return after handling to prevent double processing
     }
     
     $action = $_GET['action'] ?? 'list';
     
     switch ($action) {
         case 'new':
-            vefify_question_form();
+            vefify_question_form_fixed();
             break;
         case 'edit':
-            vefify_question_form($_GET['id'] ?? 0);
+            vefify_question_form_fixed($_GET['id'] ?? 0);
             break;
         case 'delete':
             vefify_delete_question($_GET['id'] ?? 0);
@@ -2257,60 +2624,239 @@ function vefify_admin_questions() {
             break;
     }
 }
-**/
-function vefify_admin_questions() {
+/**
+ * FIXED: Question Form Handler
+ */
+
+function vefify_handle_question_action_fixed() {
+    // Start output buffering to prevent header issues
+    if (!headers_sent()) {
+        ob_start();
+    }
+    
+    // Verify user permissions
+    if (!current_user_can('manage_options')) {
+        wp_die('Unauthorized');
+    }
+    
+    // Verify nonce
+    if (!wp_verify_nonce($_POST['_wpnonce'], 'vefify_question_save')) {
+        wp_die('Security check failed');
+    }
+    
     global $wpdb;
     $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
     
-    // Show database fix notice if needed
-    if (isset($_GET['fixed'])) {
-        echo '<div class="notice notice-success is-dismissible"><p>Database schema fixed successfully!</p></div>';
-    }
+    // Collect and sanitize question data
+    $question_data = array(
+        'campaign_id' => !empty($_POST['campaign_id']) ? intval($_POST['campaign_id']) : null,
+        'question_text' => sanitize_textarea_field($_POST['question_text']),
+        'question_type' => sanitize_text_field($_POST['question_type']),
+        'category' => sanitize_text_field($_POST['category']),
+        'difficulty' => sanitize_text_field($_POST['difficulty']),
+        'points' => intval($_POST['points']),
+        'explanation' => sanitize_textarea_field($_POST['explanation']),
+        'is_active' => 1
+    );
     
-    // Check for database issues
-    $table_name = $wpdb->prefix . 'vefify_question_options';
-    $columns = $wpdb->get_results("SHOW COLUMNS FROM $table_name");
-    $has_option_text = false;
-    foreach ($columns as $column) {
-        if ($column->Field === 'option_text') {
-            $has_option_text = true;
-            break;
+    // Process and validate options
+    $options = $_POST['options'] ?? array();
+    $valid_options = array();
+    $has_correct = false;
+    
+    foreach ($options as $index => $option) {
+        $option_text = trim($option['text'] ?? '');
+        if (!empty($option_text)) {
+            $is_correct = !empty($option['is_correct']);
+            
+            $valid_options[] = array(
+                'option_text' => sanitize_textarea_field($option_text),
+                'is_correct' => $is_correct ? 1 : 0,
+                'explanation' => sanitize_textarea_field($option['explanation'] ?? ''),
+                'order_index' => count($valid_options) + 1
+            );
+            
+            if ($is_correct) {
+                $has_correct = true;
+            }
         }
     }
     
-    if (!$has_option_text) {
-        echo '<div class="notice notice-error"><p>';
-        echo '<strong>Database Issue Detected:</strong> Missing option_text column. ';
-        echo '<a href="' . admin_url('admin.php?page=vefify-questions&vefify_fix_db=1') . '" class="button">Fix Database Now</a>';
-        echo '</p></div>';
+    // Validation with URL parameters instead of redirect
+    if (count($valid_options) < 2) {
+        // Clean any output buffer
+        if (ob_get_length()) ob_clean();
+        
+        $redirect_url = isset($_POST['question_id']) && $_POST['question_id'] 
+            ? admin_url('admin.php?page=vefify-questions&action=edit&id=' . intval($_POST['question_id']) . '&error=options')
+            : admin_url('admin.php?page=vefify-questions&action=new&error=options');
+        
+        // Use JavaScript redirect if headers already sent
+        if (headers_sent()) {
+            echo '<script>window.location.href = "' . esc_js($redirect_url) . '";</script>';
+            exit;
+        } else {
+            wp_redirect($redirect_url);
+            exit;
+        }
     }
     
-    // Handle form submissions
-    if (isset($_POST['action'])) {
-        vefify_handle_question_action();
+    if (!$has_correct) {
+        // Clean any output buffer
+        if (ob_get_length()) ob_clean();
+        
+        $redirect_url = isset($_POST['question_id']) && $_POST['question_id'] 
+            ? admin_url('admin.php?page=vefify-questions&action=edit&id=' . intval($_POST['question_id']) . '&error=correct')
+            : admin_url('admin.php?page=vefify-questions&action=new&error=correct');
+        
+        // Use JavaScript redirect if headers already sent
+        if (headers_sent()) {
+            echo '<script>window.location.href = "' . esc_js($redirect_url) . '";</script>';
+            exit;
+        } else {
+            wp_redirect($redirect_url);
+            exit;
+        }
     }
     
-    $action = $_GET['action'] ?? 'list';
+    // Database transaction
+    $wpdb->query('START TRANSACTION');
     
-    switch ($action) {
-        case 'new':
-            vefify_question_form();
-            break;
-        case 'edit':
-            vefify_question_form($_GET['id'] ?? 0);
-            break;
-        case 'delete':
-            vefify_delete_question($_GET['id'] ?? 0);
-            break;
-        case 'import':
-            vefify_question_import();
-            break;
-        case 'categories':
-            vefify_question_categories();
-            break;
-        default:
-            vefify_questions_list();
-            break;
+    try {
+        if (isset($_POST['question_id']) && !empty($_POST['question_id'])) {
+            // UPDATE existing question
+            $question_id = intval($_POST['question_id']);
+            $question_data['updated_at'] = current_time('mysql');
+            
+            $result = $wpdb->update(
+                $table_prefix . 'questions',
+                $question_data,
+                array('id' => $question_id),
+                array('%d', '%s', '%s', '%s', '%s', '%d', '%s', '%d', '%s'),
+                array('%d')
+            );
+            
+            if ($result === false) {
+                throw new Exception('Failed to update question: ' . $wpdb->last_error);
+            }
+            
+            // Delete existing options
+            $delete_result = $wpdb->delete(
+                $table_prefix . 'question_options', 
+                array('question_id' => $question_id),
+                array('%d')
+            );
+            
+            $message_type = 'updated';
+            
+        } else {
+            // CREATE new question
+            $result = $wpdb->insert(
+                $table_prefix . 'questions', 
+                $question_data,
+                array('%d', '%s', '%s', '%s', '%s', '%d', '%s', '%d')
+            );
+            
+            if ($result === false) {
+                throw new Exception('Failed to create question: ' . $wpdb->last_error);
+            }
+            
+            $question_id = $wpdb->insert_id;
+            $message_type = 'created';
+        }
+        
+        // Insert all options
+        foreach ($valid_options as $option_data) {
+            $option_data['question_id'] = $question_id;
+            
+            $option_result = $wpdb->insert(
+                $table_prefix . 'question_options',
+                $option_data,
+                array('%d', '%s', '%d', '%s', '%d')
+            );
+            
+            if ($option_result === false) {
+                throw new Exception('Failed to save option: ' . $wpdb->last_error);
+            }
+        }
+        
+        // Commit transaction
+        $wpdb->query('COMMIT');
+        
+        // Clean any output buffer before redirect
+        if (ob_get_length()) ob_clean();
+        
+        // Success redirect with URL parameter
+        $redirect_url = admin_url('admin.php?page=vefify-questions&success=' . $message_type);
+        
+        // Use JavaScript redirect if headers already sent
+        if (headers_sent()) {
+            echo '<script>window.location.href = "' . esc_js($redirect_url) . '";</script>';
+            exit;
+        } else {
+            wp_redirect($redirect_url);
+            exit;
+        }
+        
+    } catch (Exception $e) {
+        // Rollback on error
+        $wpdb->query('ROLLBACK');
+        
+        // Clean any output buffer
+        if (ob_get_length()) ob_clean();
+        
+        $redirect_url = isset($_POST['question_id']) && $_POST['question_id'] 
+            ? admin_url('admin.php?page=vefify-questions&action=edit&id=' . intval($_POST['question_id']) . '&error=database')
+            : admin_url('admin.php?page=vefify-questions&action=new&error=database');
+        
+        // Use JavaScript redirect if headers already sent
+        if (headers_sent()) {
+            echo '<script>window.location.href = "' . esc_js($redirect_url) . '";</script>';
+            exit;
+        } else {
+            wp_redirect($redirect_url);
+            exit;
+        }
+    }
+}
+/**
+ * UPDATED: Show messages based on URL parameters instead of transients
+ * Update your vefify_question_form_fixed() function to include this at the top
+ */
+function vefify_show_url_based_notices() {
+    // Success messages
+    if (isset($_GET['success'])) {
+        $message = '';
+        switch ($_GET['success']) {
+            case 'created':
+                $message = 'Question created successfully!';
+                break;
+            case 'updated':
+                $message = 'Question updated successfully!';
+                break;
+        }
+        if ($message) {
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html($message) . '</p></div>';
+        }
+    }
+    
+    // Error messages
+    if (isset($_GET['error'])) {
+        $message = '';
+        switch ($_GET['error']) {
+            case 'options':
+                $message = 'You need at least 2 answer options with text.';
+                break;
+            case 'correct':
+                $message = 'You need to mark at least one answer as correct.';
+                break;
+            case 'database':
+                $message = 'Database error occurred while saving. Please try again.';
+                break;
+        }
+        if ($message) {
+            echo '<div class="notice notice-error is-dismissible"><p>' . esc_html($message) . '</p></div>';
+        }
     }
 }
 /**
@@ -3167,6 +3713,13 @@ function vefify_question_form($question_id = 0) {
     $is_edit = !empty($question);
     $title = $is_edit ? 'Edit Question' : 'New Question';
     
+    // Show admin notices
+    $notice = get_transient('vefify_admin_notice');
+    if ($notice) {
+        delete_transient('vefify_admin_notice');
+        echo '<div class="notice notice-' . $notice['type'] . ' is-dismissible"><p>' . esc_html($notice['message']) . '</p></div>';
+    }
+    
     ?>
     <div class="wrap">
         <h1><?php echo $title; ?></h1>
@@ -3267,12 +3820,13 @@ function vefify_question_form($question_id = 0) {
                 <?php
                 if ($options) {
                     foreach ($options as $index => $option) {
-                        echo vefify_render_option_row($index, $option->option_text, $option->is_correct, $option->explanation);
+                        // FIXED: Use correct property name 'option_text'
+                        echo vefify_render_option_row_fixed($index, $option->option_text, $option->is_correct, $option->explanation);
                     }
                 } else {
                     // Default 4 options for new questions
                     for ($i = 0; $i < 4; $i++) {
-                        echo vefify_render_option_row($i, '', false, '');
+                        echo vefify_render_option_row_fixed($i, '', false, '');
                     }
                 }
                 ?>
@@ -3358,7 +3912,7 @@ function vefify_question_form($question_id = 0) {
         
         // Add new option
         $('#add-option').click(function() {
-            const optionHtml = `<?php echo addslashes(vefify_render_option_row('__INDEX__', '', false, '')); ?>`
+            const optionHtml = `<?php echo addslashes(vefify_render_option_row_fixed('__INDEX__', '', false, '')); ?>`
                 .replace(/__INDEX__/g, optionCount);
             $('#answer-options').append(optionHtml);
             optionCount++;
@@ -3392,11 +3946,6 @@ function vefify_question_form($question_id = 0) {
         // Question type change
         $('#question_type').change(function() {
             const type = $(this).val();
-            const helpText = type === 'multiple_choice' 
-                ? 'Mark ONE correct answer' 
-                : 'Mark ALL correct answers';
-            
-            $('.option-help').text(helpText);
             
             if (type === 'true_false') {
                 // Limit to 2 options for true/false
@@ -3429,6 +3978,65 @@ function vefify_question_form($question_id = 0) {
     });
     </script>
     <?php
+}
+function vefify_render_option_row_fixed($index, $text = '', $is_correct = false, $explanation = '') {
+    ob_start();
+    ?>
+    <div class="option-row <?php echo $is_correct ? 'correct' : ''; ?>">
+        <a href="#" class="remove-option" title="Remove this option">×</a>
+        
+        <div class="option-header">
+            <div class="option-number"><?php echo $index + 1; ?></div>
+            <label class="option-correct">
+                <input type="checkbox" name="options[<?php echo $index; ?>][is_correct]" 
+                       value="1" class="option-correct-checkbox" <?php checked($is_correct); ?>>
+                Correct Answer
+            </label>
+        </div>
+        
+        <input type="text" name="options[<?php echo $index; ?>][text]" 
+               value="<?php echo esc_attr($text); ?>" 
+               placeholder="Enter answer option..." 
+               class="option-text" required>
+        
+        <textarea name="options[<?php echo $index; ?>][explanation]" 
+                  placeholder="Optional: Explain why this answer is correct/incorrect..."
+                  rows="2" class="option-explanation"><?php echo esc_textarea($explanation); ?></textarea>
+    </div>
+    <?php
+    return ob_get_clean();
+}
+/**
+ * Helper function - Render option row HTML (if it doesn't exist)
+ */
+if (!function_exists('vefify_render_option_row')) {
+    function vefify_render_option_row($index, $text = '', $is_correct = false, $explanation = '') {
+        ob_start();
+        ?>
+        <div class="option-row <?php echo $is_correct ? 'correct' : ''; ?>">
+            <a href="#" class="remove-option" title="Remove this option">×</a>
+            
+            <div class="option-header">
+                <div class="option-number"><?php echo $index + 1; ?></div>
+                <label class="option-correct">
+                    <input type="checkbox" name="options[<?php echo $index; ?>][is_correct]" 
+                           value="1" class="option-correct-checkbox" <?php checked($is_correct); ?>>
+                    Correct Answer
+                </label>
+            </div>
+            
+            <input type="text" name="options[<?php echo $index; ?>][text]" 
+                   value="<?php echo esc_attr($text); ?>" 
+                   placeholder="Enter answer option..." 
+                   class="option-text" required>
+            
+            <textarea name="options[<?php echo $index; ?>][explanation]" 
+                      placeholder="Optional: Explain why this answer is correct/incorrect..."
+                      rows="2" class="option-explanation"><?php echo esc_textarea($explanation); ?></textarea>
+        </div>
+        <?php
+        return ob_get_clean();
+    }
 }
 
 /**
@@ -3463,116 +4071,7 @@ function vefify_render_option_row($index, $text = '', $is_correct = false, $expl
 }
 
 /**
- * Handle question form submissions
- *
-function vefify_handle_question_action() {
-    if (!current_user_can('manage_options')) {
-        wp_die('Unauthorized');
-    }
-    
-    if (!wp_verify_nonce($_POST['_wpnonce'], 'vefify_question_save')) {
-        wp_die('Security check failed');
-    }
-    
-    global $wpdb;
-    $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
-    
-    // Prepare question data
-    $question_data = array(
-        'campaign_id' => $_POST['campaign_id'] ? intval($_POST['campaign_id']) : null,
-        'question_text' => sanitize_textarea_field($_POST['question_text']),
-        'question_type' => sanitize_text_field($_POST['question_type']),
-        'category' => sanitize_text_field($_POST['category']),
-        'difficulty' => sanitize_text_field($_POST['difficulty']),
-        'points' => intval($_POST['points']),
-        'explanation' => sanitize_textarea_field($_POST['explanation'])
-    );
-    
-    // Validate options
-    $options = $_POST['options'] ?? array();
-    $valid_options = array();
-    $has_correct = false;
-    
-    foreach ($options as $index => $option) {
-        if (!empty($option['text'])) {
-            $valid_options[] = array(
-                'text' => sanitize_textarea_field($option['text']),
-                'is_correct' => !empty($option['is_correct']),
-                'explanation' => sanitize_textarea_field($option['explanation'] ?? ''),
-                'order_index' => count($valid_options) + 1
-            );
-            
-            if (!empty($option['is_correct'])) {
-                $has_correct = true;
-            }
-        }
-    }
-    
-    // Validation
-    if (count($valid_options) < 2) {
-        wp_die('You need at least 2 answer options.');
-    }
-    
-    if (!$has_correct) {
-        wp_die('You need at least one correct answer.');
-    }
-    
-    // Start transaction
-    $wpdb->query('START TRANSACTION');
-    
-    try {
-        if (isset($_POST['question_id']) && $_POST['question_id']) {
-            // Update existing question
-            $question_id = intval($_POST['question_id']);
-            $question_data['updated_at'] = current_time('mysql');
-            
-            $result = $wpdb->update(
-                $table_prefix . 'questions',
-                $question_data,
-                array('id' => $question_id)
-            );
-            
-            // Delete existing options
-            $wpdb->delete($table_prefix . 'question_options', array('question_id' => $question_id));
-            
-            $message = 'Question updated successfully!';
-        } else {
-            // Create new question
-            $result = $wpdb->insert($table_prefix . 'questions', $question_data);
-            $question_id = $wpdb->insert_id;
-            $message = 'Question created successfully!';
-        }
-        
-        if ($result === false) {
-            throw new Exception('Failed to save question');
-        }
-        
-        // Insert options
-        foreach ($valid_options as $option) {
-            $option['question_id'] = $question_id;
-            $result = $wpdb->insert($table_prefix . 'question_options', $option);
-            
-            if ($result === false) {
-                throw new Exception('Failed to save option');
-            }
-        }
-        
-        $wpdb->query('COMMIT');
-        
-        add_action('admin_notices', function() use ($message) {
-            echo '<div class="notice notice-success is-dismissible"><p>' . $message . '</p></div>';
-        });
-        
-        wp_redirect(admin_url('admin.php?page=vefify-questions'));
-        exit;
-        
-    } catch (Exception $e) {
-        $wpdb->query('ROLLBACK');
-        wp_die('Error saving question: ' . $e->getMessage());
-    }
-}**/
-/**
- * SOLUTION 11: Enhanced Question Form with Better Error Handling
+ * QUESTION MANAGEMENT - Add/Edit/Update
  */
 function vefify_handle_question_action() {
     if (!current_user_can('manage_options')) {
@@ -3588,7 +4087,7 @@ function vefify_handle_question_action() {
     
     // Prepare question data
     $question_data = array(
-        'campaign_id' => $_POST['campaign_id'] ? intval($_POST['campaign_id']) : null,
+        'campaign_id' => !empty($_POST['campaign_id']) ? intval($_POST['campaign_id']) : null,
         'question_text' => sanitize_textarea_field($_POST['question_text']),
         'question_type' => sanitize_text_field($_POST['question_type']),
         'category' => sanitize_text_field($_POST['category']),
@@ -3597,21 +4096,22 @@ function vefify_handle_question_action() {
         'explanation' => sanitize_textarea_field($_POST['explanation'])
     );
     
-    // Validate options
+    // Validate options - FIXED COLUMN NAMES
     $options = $_POST['options'] ?? array();
     $valid_options = array();
     $has_correct = false;
     
     foreach ($options as $index => $option) {
         if (!empty($option['text'])) {
+            $is_correct = !empty($option['is_correct']);
             $valid_options[] = array(
-                'option_text' => sanitize_textarea_field($option['text']), // Fixed: use 'option_text' not 'text'
-                'is_correct' => !empty($option['is_correct']),
+                'option_text' => sanitize_textarea_field($option['text']), // FIXED: was 'text', now 'option_text'
+                'is_correct' => $is_correct ? 1 : 0,
                 'explanation' => sanitize_textarea_field($option['explanation'] ?? ''),
                 'order_index' => count($valid_options) + 1
             );
             
-            if (!empty($option['is_correct'])) {
+            if ($is_correct) {
                 $has_correct = true;
             }
         }
@@ -3619,17 +4119,15 @@ function vefify_handle_question_action() {
     
     // Validation
     if (count($valid_options) < 2) {
-        add_action('admin_notices', function() {
-            echo '<div class="notice notice-error is-dismissible"><p>Error: You need at least 2 answer options.</p></div>';
-        });
-        return;
+        set_transient('vefify_admin_notice', array('type' => 'error', 'message' => 'You need at least 2 answer options.'), 30);
+        wp_redirect(admin_url('admin.php?page=vefify-questions&action=new'));
+        exit;
     }
     
     if (!$has_correct) {
-        add_action('admin_notices', function() {
-            echo '<div class="notice notice-error is-dismissible"><p>Error: You need at least one correct answer.</p></div>';
-        });
-        return;
+        set_transient('vefify_admin_notice', array('type' => 'error', 'message' => 'You need at least one correct answer.'), 30);
+        wp_redirect(admin_url('admin.php?page=vefify-questions&action=new'));
+        exit;
     }
     
     // Start transaction
@@ -3644,7 +4142,9 @@ function vefify_handle_question_action() {
             $result = $wpdb->update(
                 $table_prefix . 'questions',
                 $question_data,
-                array('id' => $question_id)
+                array('id' => $question_id),
+                array('%d', '%s', '%s', '%s', '%s', '%d', '%s', '%s'),
+                array('%d')
             );
             
             // Delete existing options
@@ -3653,7 +4153,11 @@ function vefify_handle_question_action() {
             $message = 'Question updated successfully!';
         } else {
             // Create new question
-            $result = $wpdb->insert($table_prefix . 'questions', $question_data);
+            $result = $wpdb->insert(
+                $table_prefix . 'questions', 
+                $question_data,
+                array('%d', '%s', '%s', '%s', '%s', '%d', '%s')
+            );
             $question_id = $wpdb->insert_id;
             $message = 'Question created successfully!';
         }
@@ -3662,35 +4166,47 @@ function vefify_handle_question_action() {
             throw new Exception('Failed to save question: ' . $wpdb->last_error);
         }
         
-        // Insert options with corrected column name
+        // Insert options with CORRECT COLUMN NAMES
         foreach ($valid_options as $option) {
             $option['question_id'] = $question_id;
-            $result = $wpdb->insert($table_prefix . 'question_options', $option);
             
-            if ($result === false) {
+            $option_result = $wpdb->insert(
+                $table_prefix . 'question_options', 
+                array(
+                    'question_id' => $option['question_id'],
+                    'option_text' => $option['option_text'], // FIXED: using correct column name
+                    'is_correct' => $option['is_correct'],
+                    'order_index' => $option['order_index'],
+                    'explanation' => $option['explanation']
+                ),
+                array('%d', '%s', '%d', '%d', '%s') // FIXED: proper format specifiers
+            );
+            
+            if ($option_result === false) {
                 throw new Exception('Failed to save option: ' . $wpdb->last_error);
             }
         }
         
         $wpdb->query('COMMIT');
         
-        add_action('admin_notices', function() use ($message) {
-            echo '<div class="notice notice-success is-dismissible"><p>' . $message . '</p></div>';
-        });
+        // Store success message
+        set_transient('vefify_admin_notice', array('type' => 'success', 'message' => $message), 30);
         
-        wp_redirect(admin_url('admin.php?page=vefify-questions&action=edit&id=' . $question_id));
+        wp_redirect(admin_url('admin.php?page=vefify-questions'));
         exit;
         
     } catch (Exception $e) {
         $wpdb->query('ROLLBACK');
         
-        add_action('admin_notices', function() use ($e) {
-            echo '<div class="notice notice-error is-dismissible"><p>Error saving question: ' . esc_html($e->getMessage()) . '</p></div>';
-        });
+        // Store error message
+        set_transient('vefify_admin_notice', array('type' => 'error', 'message' => 'Error saving question: ' . $e->getMessage()), 30);
         
-        error_log('Vefify Quiz Error: ' . $e->getMessage());
+        wp_redirect(admin_url('admin.php?page=vefify-questions'));
+        exit;
     }
 }
+
+
 /**
  * AJAX handler for question preview
  */
@@ -4089,13 +4605,13 @@ function vefify_admin_participants() {
     $date_filter = $_GET['date_range'] ?? '';
     $status_filter = $_GET['status'] ?? '';
     
-    // Build query
+    // Build query - FIXED VERSION
     $where_conditions = array('1=1');
     $params = array();
     
     if ($campaign_filter) {
         $where_conditions[] = 'u.campaign_id = %d';
-        $params[] = $campaign_filter;
+        $params[] = intval($campaign_filter);
     }
     
     if ($province_filter) {
@@ -4147,18 +4663,25 @@ function vefify_admin_participants() {
     
     $where_clause = implode(' AND ', $where_conditions);
     
-    // Get participants with pagination
+    // Get participants with pagination - FIXED QUERY
     $per_page = 50;
-    $page = $_GET['paged'] ?? 1;
+    $page = isset($_GET['paged']) ? max(1, intval($_GET['paged'])) : 1;
     $offset = ($page - 1) * $per_page;
     
+    // Total count query - FIXED
     $total_query = "
         SELECT COUNT(*) 
         FROM {$table_prefix}quiz_users u
         WHERE {$where_clause}
     ";
-    $total = $wpdb->get_var($wpdb->prepare($total_query, $params));
     
+    if (!empty($params)) {
+        $total = $wpdb->get_var($wpdb->prepare($total_query, $params));
+    } else {
+        $total = $wpdb->get_var($total_query);
+    }
+    
+    // Participants query - FIXED
     $participants_query = "
         SELECT u.*, c.name as campaign_name, g.gift_name, g.gift_value
         FROM {$table_prefix}quiz_users u
@@ -4169,7 +4692,11 @@ function vefify_admin_participants() {
         LIMIT %d OFFSET %d
     ";
     
-    $participants = $wpdb->get_results($wpdb->prepare($participants_query, array_merge($params, [$per_page, $offset])));
+    if (!empty($params)) {
+        $participants = $wpdb->get_results($wpdb->prepare($participants_query, array_merge($params, [$per_page, $offset])));
+    } else {
+        $participants = $wpdb->get_results($wpdb->prepare($participants_query, [$per_page, $offset]));
+    }
     
     // Get filter options
     $campaigns = $wpdb->get_results("SELECT id, name FROM {$table_prefix}campaigns ORDER BY name");
@@ -4179,12 +4706,11 @@ function vefify_admin_participants() {
     <div class="wrap">
         <h1 class="wp-heading-inline">Participants</h1>
         <a href="<?php echo admin_url('admin.php?page=vefify-participants&export=csv'); ?>" class="page-title-action">Export CSV</a>
-        <a href="<?php echo admin_url('admin.php?page=vefify-participants&export=excel'); ?>" class="page-title-action">Export Excel</a>
         
-        <!-- Summary Stats -->
+        <!-- Summary Stats - FIXED -->
         <div class="participants-summary">
             <?php
-            $summary = $wpdb->get_row("
+            $summary_query = "
                 SELECT 
                     COUNT(*) as total,
                     COUNT(CASE WHEN completed_at IS NOT NULL THEN 1 END) as completed,
@@ -4193,7 +4719,13 @@ function vefify_admin_participants() {
                     COUNT(CASE WHEN DATE(created_at) = CURDATE() THEN 1 END) as today
                 FROM {$table_prefix}quiz_users u
                 WHERE {$where_clause}
-            ", $params);
+            ";
+            
+            if (!empty($params)) {
+                $summary = $wpdb->get_row($wpdb->prepare($summary_query, $params));
+            } else {
+                $summary = $wpdb->get_row($summary_query);
+            }
             ?>
             <div class="summary-stats">
                 <div class="stat-box">
@@ -4280,62 +4812,65 @@ function vefify_admin_participants() {
                     <th>Gift</th>
                     <th>Completion Time</th>
                     <th>Date</th>
-                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
-                <?php foreach ($participants as $participant): ?>
+                <?php if (empty($participants)): ?>
                 <tr>
-                    <td>
-                        <strong><?php echo esc_html($participant->full_name); ?></strong><br>
-                        <small><?php echo esc_html($participant->phone_number); ?></small>
-                        <?php if ($participant->pharmacy_code): ?>
-                            <br><small>Pharmacy: <?php echo esc_html($participant->pharmacy_code); ?></small>
-                        <?php endif; ?>
-                    </td>
-                    <td><?php echo esc_html($participant->campaign_name); ?></td>
-                    <td><?php echo esc_html(ucfirst($participant->province)); ?></td>
-                    <td>
-                        <?php if ($participant->completed_at): ?>
-                            <span class="score-badge score-<?php echo $participant->score; ?>">
-                                <?php echo $participant->score; ?>/<?php echo $participant->total_questions; ?>
-                            </span>
-                            <br><small><?php echo round(($participant->score / $participant->total_questions) * 100); ?>%</small>
-                        <?php else: ?>
-                            <span class="incomplete-badge">Incomplete</span>
-                        <?php endif; ?>
-                    </td>
-                    <td>
-                        <?php if ($participant->gift_name): ?>
-                            <div class="gift-info">
-                                <strong><?php echo esc_html($participant->gift_name); ?></strong><br>
-                                <small><?php echo esc_html($participant->gift_value); ?></small><br>
-                                <code><?php echo esc_html($participant->gift_code); ?></code>
-                            </div>
-                        <?php else: ?>
-                            <span class="no-gift">No gift</span>
-                        <?php endif; ?>
-                    </td>
-                    <td>
-                        <?php if ($participant->completion_time): ?>
-                            <?php echo gmdate('i:s', $participant->completion_time); ?>
-                        <?php else: ?>
-                            -
-                        <?php endif; ?>
-                    </td>
-                    <td>
-                        <?php echo mysql2date('M j, Y g:i A', $participant->created_at); ?>
-                        <?php if ($participant->completed_at): ?>
-                            <br><small>Completed: <?php echo mysql2date('M j, g:i A', $participant->completed_at); ?></small>
-                        <?php endif; ?>
-                    </td>
-                    <td>
-                        <button class="button button-small view-details" data-participant-id="<?php echo $participant->id; ?>">
-                            View Details
-                        </button>
+                    <td colspan="7" style="text-align: center; padding: 40px;">
+                        <h3>No participants found</h3>
+                        <p>No participants match your current filters.</p>
                     </td>
                 </tr>
-                <?php endforeach; ?>
+                <?php else: ?>
+                    <?php foreach ($participants as $participant): ?>
+                    <tr>
+                        <td>
+                            <strong><?php echo esc_html($participant->full_name); ?></strong><br>
+                            <small><?php echo esc_html($participant->phone_number); ?></small>
+                            <?php if ($participant->pharmacy_code): ?>
+                                <br><small>Pharmacy: <?php echo esc_html($participant->pharmacy_code); ?></small>
+                            <?php endif; ?>
+                        </td>
+                        <td><?php echo esc_html($participant->campaign_name); ?></td>
+                        <td><?php echo esc_html(ucfirst($participant->province)); ?></td>
+                        <td>
+                            <?php if ($participant->completed_at): ?>
+                                <span class="score-badge score-<?php echo $participant->score; ?>">
+                                    <?php echo $participant->score; ?>/<?php echo $participant->total_questions; ?>
+                                </span>
+                                <br><small><?php echo round(($participant->score / $participant->total_questions) * 100); ?>%</small>
+                            <?php else: ?>
+                                <span class="incomplete-badge">Incomplete</span>
+                            <?php endif; ?>
+                        </td>
+                        <td>
+                            <?php if ($participant->gift_name): ?>
+                                <div class="gift-info">
+                                    <strong><?php echo esc_html($participant->gift_name); ?></strong><br>
+                                    <small><?php echo esc_html($participant->gift_value); ?></small><br>
+                                    <code><?php echo esc_html($participant->gift_code); ?></code>
+                                </div>
+                            <?php else: ?>
+                                <span class="no-gift">No gift</span>
+                            <?php endif; ?>
+                        </td>
+                        <td>
+                            <?php if ($participant->completion_time): ?>
+                                <?php echo gmdate('i:s', $participant->completion_time); ?>
+                            <?php else: ?>
+                                -
+                            <?php endif; ?>
+                        </td>
+                        <td>
+                            <?php echo mysql2date('M j, Y g:i A', $participant->created_at); ?>
+                            <?php if ($participant->completed_at): ?>
+                                <br><small>Completed: <?php echo mysql2date('M j, g:i A', $participant->completed_at); ?></small>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
             </tbody>
         </table>
         
@@ -4355,14 +4890,6 @@ function vefify_admin_participants() {
             echo '</div></div>';
         }
         ?>
-    </div>
-    
-    <!-- Participant Details Modal -->
-    <div id="participant-modal" class="participant-modal" style="display: none;">
-        <div class="modal-content">
-            <span class="close">&times;</span>
-            <div id="participant-details">Loading...</div>
-        </div>
     </div>
     
     <style>
@@ -4452,42 +4979,6 @@ function vefify_admin_participants() {
     .no-gift {
         color: #999;
         font-style: italic;
-    }
-    
-    .participant-modal {
-        position: fixed;
-        z-index: 1000;
-        left: 0;
-        top: 0;
-        width: 100%;
-        height: 100%;
-        background-color: rgba(0,0,0,0.5);
-    }
-    
-    .modal-content {
-        background-color: #fefefe;
-        margin: 5% auto;
-        padding: 20px;
-        border-radius: 8px;
-        width: 80%;
-        max-width: 600px;
-        max-height: 80vh;
-        overflow-y: auto;
-        position: relative;
-    }
-    
-    .close {
-        position: absolute;
-        right: 15px;
-        top: 15px;
-        color: #aaa;
-        font-size: 28px;
-        font-weight: bold;
-        cursor: pointer;
-    }
-    
-    .close:hover {
-        color: #000;
     }
     </style>
     
@@ -6159,3 +6650,559 @@ add_action('wp_ajax_vefify_load_gift_codes', function() {
     
     wp_send_json_success(ob_get_clean());
 });
+
+/**
+ * FIX 3: SIMPLIFIED GIFT MANAGEMENT
+ * Add these functions to manage gifts (one per campaign)
+ */
+
+/**
+ * Add Gift Management to Campaign Form
+ * Update your vefify_campaign_form() function to include gift settings
+ */
+function vefify_campaign_form_with_gift($campaign_id = 0) {
+    global $wpdb;
+    $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
+    
+    $campaign = null;
+    $gift = null;
+    
+    if ($campaign_id) {
+        $campaign = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$table_prefix}campaigns WHERE id = %d",
+            $campaign_id
+        ));
+        
+        // Get the gift for this campaign
+        $gift = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$table_prefix}gifts WHERE campaign_id = %d LIMIT 1",
+            $campaign_id
+        ));
+    }
+    
+    $is_edit = !empty($campaign);
+    $title = $is_edit ? 'Edit Campaign' : 'New Campaign';
+    
+    // Show admin notices
+    $notice = get_transient('vefify_admin_notice');
+    if ($notice) {
+        delete_transient('vefify_admin_notice');
+        echo '<div class="notice notice-' . $notice['type'] . ' is-dismissible"><p>' . esc_html($notice['message']) . '</p></div>';
+    }
+    
+    ?>
+    <div class="wrap">
+        <h1><?php echo $title; ?></h1>
+        
+        <form method="post" action="">
+            <?php wp_nonce_field('vefify_campaign_save'); ?>
+            <input type="hidden" name="action" value="save_campaign">
+            <?php if ($is_edit): ?>
+                <input type="hidden" name="campaign_id" value="<?php echo $campaign->id; ?>">
+            <?php endif; ?>
+            
+            <h2>📋 Campaign Information</h2>
+            <table class="form-table">
+                <tr>
+                    <th scope="row"><label for="campaign_name">Campaign Name *</label></th>
+                    <td>
+                        <input type="text" id="campaign_name" name="campaign_name" 
+                               value="<?php echo $is_edit ? esc_attr($campaign->name) : ''; ?>" 
+                               class="regular-text" required>
+                        <p class="description">Enter a descriptive name for this campaign</p>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <th scope="row"><label for="campaign_slug">Campaign Slug *</label></th>
+                    <td>
+                        <input type="text" id="campaign_slug" name="campaign_slug" 
+                               value="<?php echo $is_edit ? esc_attr($campaign->slug) : ''; ?>" 
+                               class="regular-text" required>
+                        <p class="description">URL-friendly version (auto-generated if left empty)</p>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <th scope="row"><label for="campaign_description">Description</label></th>
+                    <td>
+                        <textarea id="campaign_description" name="campaign_description" 
+                                  rows="3" class="large-text"><?php echo $is_edit ? esc_textarea($campaign->description) : ''; ?></textarea>
+                        <p class="description">Brief description shown to participants</p>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <th scope="row">Campaign Period *</th>
+                    <td>
+                        <input type="datetime-local" name="start_date" 
+                               value="<?php echo $is_edit ? date('Y-m-d\TH:i', strtotime($campaign->start_date)) : ''; ?>" 
+                               required>
+                        <span style="margin: 0 10px;">to</span>
+                        <input type="datetime-local" name="end_date" 
+                               value="<?php echo $is_edit ? date('Y-m-d\TH:i', strtotime($campaign->end_date)) : ''; ?>" 
+                               required>
+                        <p class="description">Campaign will only be active during this period</p>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <th scope="row">Quiz Settings</th>
+                    <td>
+                        <fieldset>
+                            <label>
+                                Questions per quiz: 
+                                <input type="number" name="questions_per_quiz" 
+                                       value="<?php echo $is_edit ? $campaign->questions_per_quiz : 5; ?>" 
+                                       min="1" max="50" class="small-text">
+                            </label><br><br>
+                            
+                            <label>
+                                Pass score: 
+                                <input type="number" name="pass_score" 
+                                       value="<?php echo $is_edit ? $campaign->pass_score : 3; ?>" 
+                                       min="1" class="small-text">
+                                correct answers needed
+                            </label><br><br>
+                            
+                            <label>
+                                Time limit: 
+                                <input type="number" name="time_limit" 
+                                       value="<?php echo $is_edit ? ($campaign->time_limit ? $campaign->time_limit / 60 : '') : ''; ?>" 
+                                       class="small-text" placeholder="10">
+                                minutes (leave empty for no limit)
+                            </label><br><br>
+                            
+                            <label>
+                                Max participants: 
+                                <input type="number" name="max_participants" 
+                                       value="<?php echo $is_edit ? $campaign->max_participants : ''; ?>" 
+                                       class="regular-text" placeholder="1000">
+                                (leave empty for unlimited)
+                            </label>
+                        </fieldset>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <th scope="row">Status</th>
+                    <td>
+                        <label>
+                            <input type="checkbox" name="is_active" value="1" 
+                                   <?php echo (!$is_edit || $campaign->is_active) ? 'checked' : ''; ?>>
+                            Campaign is active
+                        </label>
+                        <p class="description">Inactive campaigns cannot be accessed by participants</p>
+                    </td>
+                </tr>
+            </table>
+            
+            <h2>🎁 Gift Settings (One Gift Per Campaign)</h2>
+            <table class="form-table">
+                <tr>
+                    <th scope="row">Enable Gift Rewards</th>
+                    <td>
+                        <label>
+                            <input type="checkbox" name="enable_gift" value="1" id="enable_gift"
+                                   <?php echo ($gift) ? 'checked' : ''; ?>>
+                            Enable gift rewards for this campaign
+                        </label>
+                        <p class="description">Check to offer rewards to participants who meet the score requirements</p>
+                    </td>
+                </tr>
+            </table>
+            
+            <div id="gift-settings" style="<?php echo $gift ? '' : 'display: none;'; ?>">
+                <table class="form-table">
+                    <tr>
+                        <th scope="row"><label for="gift_name">Gift Name *</label></th>
+                        <td>
+                            <input type="text" id="gift_name" name="gift_name" 
+                                   value="<?php echo $gift ? esc_attr($gift->gift_name) : ''; ?>" 
+                                   class="regular-text">
+                            <p class="description">e.g., "10,000 VND Mobile Topup" or "Discount Voucher"</p>
+                        </td>
+                    </tr>
+                    
+                    <tr>
+                        <th scope="row"><label for="gift_type">Gift Type</label></th>
+                        <td>
+                            <select id="gift_type" name="gift_type">
+                                <option value="voucher" <?php selected($gift ? $gift->gift_type : '', 'voucher'); ?>>Voucher</option>
+                                <option value="topup" <?php selected($gift ? $gift->gift_type : '', 'topup'); ?>>Mobile Topup</option>
+                                <option value="discount" <?php selected($gift ? $gift->gift_type : '', 'discount'); ?>>Discount Code</option>
+                                <option value="product" <?php selected($gift ? $gift->gift_type : '', 'product'); ?>>Product/Service</option>
+                            </select>
+                            <p class="description">Type of reward to offer</p>
+                        </td>
+                    </tr>
+                    
+                    <tr>
+                        <th scope="row"><label for="gift_value">Gift Value *</label></th>
+                        <td>
+                            <input type="text" id="gift_value" name="gift_value" 
+                                   value="<?php echo $gift ? esc_attr($gift->gift_value) : ''; ?>" 
+                                   class="regular-text">
+                            <p class="description">e.g., "10,000 VND", "20%", "Free Product". This will be shown to users.</p>
+                        </td>
+                    </tr>
+                    
+                    <tr>
+                        <th scope="row"><label for="gift_description">Description</label></th>
+                        <td>
+                            <textarea id="gift_description" name="gift_description" 
+                                      rows="2" class="large-text"><?php echo $gift ? esc_textarea($gift->gift_description) : ''; ?></textarea>
+                            <p class="description">Detailed description of the gift</p>
+                        </td>
+                    </tr>
+                    
+                    <tr>
+                        <th scope="row">Score Requirements</th>
+                        <td>
+                            <fieldset>
+                                <label>
+                                    Minimum score to earn gift: 
+                                    <input type="number" name="min_score" 
+                                           value="<?php echo $gift ? $gift->min_score : 3; ?>" 
+                                           min="1" max="5" class="small-text">
+                                    out of 5
+                                </label><br><br>
+                                
+                                <label>
+                                    Maximum gifts available: 
+                                    <input type="number" name="max_quantity" 
+                                           value="<?php echo $gift ? $gift->max_quantity : ''; ?>" 
+                                           class="small-text" placeholder="100">
+                                    (leave empty for unlimited)
+                                </label>
+                            </fieldset>
+                            <p class="description">Set score requirements and quantity limits</p>
+                        </td>
+                    </tr>
+                    
+                    <tr>
+                        <th scope="row"><label for="gift_code_prefix">Gift Code Prefix</label></th>
+                        <td>
+                            <input type="text" id="gift_code_prefix" name="gift_code_prefix" 
+                                   value="<?php echo $gift ? esc_attr($gift->gift_code_prefix) : 'GIFT'; ?>" 
+                                   class="small-text" maxlength="10">
+                            <p class="description">Prefix for generated gift codes (e.g., GIFT becomes GIFT123ABC)</p>
+                        </td>
+                    </tr>
+                    
+                    <tr class="topup-settings" style="<?php echo ($gift && $gift->gift_type === 'topup') ? '' : 'display: none;'; ?>">
+                        <th scope="row">Topup API Settings</th>
+                        <td>
+                            <fieldset>
+                                <label>
+                                    API Endpoint: 
+                                    <input type="url" name="api_endpoint" 
+                                           value="<?php echo $gift ? esc_attr($gift->api_endpoint) : ''; ?>" 
+                                           class="regular-text" placeholder="https://api.topup-provider.com/v1/topup">
+                                </label><br><br>
+                                
+                                <label>
+                                    API Key: 
+                                    <input type="text" name="api_key" 
+                                           value="<?php echo $gift ? esc_attr($gift->api_params) : ''; ?>" 
+                                           class="regular-text" placeholder="Your API key">
+                                </label>
+                            </fieldset>
+                            <p class="description">API settings for mobile topup integration (will be implemented later)</p>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+            
+            <?php submit_button($is_edit ? 'Update Campaign & Gift' : 'Create Campaign & Gift'); ?>
+        </form>
+        
+        <?php if ($is_edit && $gift): ?>
+        <div class="campaign-info-boxes">
+            <div class="info-box">
+                <h3>📊 Campaign Statistics</h3>
+                <?php
+                $stats = $wpdb->get_row($wpdb->prepare("
+                    SELECT COUNT(*) as total_participants,
+                           COUNT(CASE WHEN completed_at IS NOT NULL THEN 1 END) as completed,
+                           COUNT(CASE WHEN gift_id IS NOT NULL THEN 1 END) as gifts_awarded,
+                           AVG(score) as avg_score
+                    FROM {$table_prefix}quiz_users 
+                    WHERE campaign_id = %d
+                ", $campaign_id));
+                ?>
+                <p><strong>Participants:</strong> <?php echo number_format($stats->total_participants); ?></p>
+                <p><strong>Completed:</strong> <?php echo number_format($stats->completed); ?></p>
+                <p><strong>Gifts Awarded:</strong> <?php echo number_format($stats->gifts_awarded); ?> / <?php echo $gift->max_quantity ?: '∞'; ?></p>
+                <p><strong>Average Score:</strong> <?php echo $stats->avg_score ? number_format($stats->avg_score, 1) : '0'; ?>/5</p>
+            </div>
+            
+            <div class="info-box">
+                <h3>🎁 Current Gift</h3>
+                <p><strong>Type:</strong> <?php echo ucfirst($gift->gift_type); ?></p>
+                <p><strong>Value:</strong> <?php echo esc_html($gift->gift_value); ?></p>
+                <p><strong>Min Score:</strong> <?php echo $gift->min_score; ?>/5</p>
+                <p><strong>Used:</strong> <?php echo $gift->used_count; ?> / <?php echo $gift->max_quantity ?: '∞'; ?></p>
+            </div>
+            
+            <div class="info-box">
+                <h3>🔗 Shortcode</h3>
+                <p>Use this shortcode to display the campaign:</p>
+                <code>[vefify_quiz campaign_id="<?php echo $campaign->id; ?>"]</code>
+            </div>
+        </div>
+        <?php endif; ?>
+    </div>
+    
+    <style>
+    .campaign-info-boxes {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 20px;
+        margin-top: 30px;
+    }
+    
+    .info-box {
+        background: #f9f9f9;
+        padding: 20px;
+        border-radius: 8px;
+        border-left: 4px solid #4facfe;
+    }
+    
+    .info-box h3 {
+        margin-top: 0;
+        color: #333;
+    }
+    
+    .info-box code {
+        background: #333;
+        color: #0f0;
+        padding: 8px 12px;
+        border-radius: 4px;
+        font-family: monospace;
+        display: inline-block;
+    }
+    
+    #gift-settings {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 8px;
+        border: 1px solid #dee2e6;
+        margin-top: 10px;
+    }
+    </style>
+    
+    <script>
+    jQuery(document).ready(function($) {
+        // Auto-generate slug from name
+        $('#campaign_name').on('input', function() {
+            const name = $(this).val();
+            const slug = name.toLowerCase()
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/^-+|-+$/g, '');
+            $('#campaign_slug').val(slug);
+        });
+        
+        // Toggle gift settings
+        $('#enable_gift').change(function() {
+            $('#gift-settings').toggle(this.checked);
+        });
+        
+        // Show/hide topup settings based on gift type
+        $('#gift_type').change(function() {
+            $('.topup-settings').toggle($(this).val() === 'topup');
+        });
+    });
+    </script>
+    <?php
+}
+
+/**
+ * Updated Campaign Save Handler - includes gift management
+ */
+function vefify_handle_campaign_action_with_gift() {
+    if (!current_user_can('manage_options')) {
+        wp_die('Unauthorized');
+    }
+    
+    if (!wp_verify_nonce($_POST['_wpnonce'], 'vefify_campaign_save')) {
+        wp_die('Security check failed');
+    }
+    
+    global $wpdb;
+    $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
+    
+    // Prepare campaign data
+    $campaign_data = array(
+        'name' => sanitize_text_field($_POST['campaign_name']),
+        'slug' => sanitize_title($_POST['campaign_slug']),
+        'description' => sanitize_textarea_field($_POST['campaign_description']),
+        'start_date' => sanitize_text_field($_POST['start_date']),
+        'end_date' => sanitize_text_field($_POST['end_date']),
+        'questions_per_quiz' => intval($_POST['questions_per_quiz']),
+        'pass_score' => intval($_POST['pass_score']),
+        'time_limit' => $_POST['time_limit'] ? intval($_POST['time_limit']) * 60 : null,
+        'max_participants' => $_POST['max_participants'] ? intval($_POST['max_participants']) : null,
+        'is_active' => isset($_POST['is_active']) ? 1 : 0
+    );
+    
+    if (empty($campaign_data['slug'])) {
+        $campaign_data['slug'] = sanitize_title($campaign_data['name']);
+    }
+    
+    // Start transaction
+    $wpdb->query('START TRANSACTION');
+    
+    try {
+        if (isset($_POST['campaign_id']) && $_POST['campaign_id']) {
+            // Update existing campaign
+            $campaign_id = intval($_POST['campaign_id']);
+            $campaign_data['updated_at'] = current_time('mysql');
+            
+            $result = $wpdb->update(
+                $table_prefix . 'campaigns',
+                $campaign_data,
+                array('id' => $campaign_id)
+            );
+            
+            $message = 'Campaign updated successfully!';
+        } else {
+            // Create new campaign
+            $result = $wpdb->insert($table_prefix . 'campaigns', $campaign_data);
+            $campaign_id = $wpdb->insert_id;
+            $message = 'Campaign created successfully!';
+        }
+        
+        if ($result === false) {
+            throw new Exception('Failed to save campaign: ' . $wpdb->last_error);
+        }
+        
+        // Handle gift settings
+        if (isset($_POST['enable_gift']) && $_POST['enable_gift']) {
+            $gift_data = array(
+                'campaign_id' => $campaign_id,
+                'gift_name' => sanitize_text_field($_POST['gift_name']),
+                'gift_type' => sanitize_text_field($_POST['gift_type']),
+                'gift_value' => sanitize_text_field($_POST['gift_value']),
+                'gift_description' => sanitize_textarea_field($_POST['gift_description']),
+                'min_score' => intval($_POST['min_score']),
+                'max_score' => null, // No max score limit
+                'max_quantity' => $_POST['max_quantity'] ? intval($_POST['max_quantity']) : null,
+                'gift_code_prefix' => sanitize_text_field($_POST['gift_code_prefix']) ?: 'GIFT',
+                'api_endpoint' => sanitize_url($_POST['api_endpoint']),
+                'api_params' => sanitize_text_field($_POST['api_key']), // Store API key temporarily
+                'is_active' => 1
+            );
+            
+            // Check if gift already exists for this campaign
+            $existing_gift = $wpdb->get_var($wpdb->prepare(
+                "SELECT id FROM {$table_prefix}gifts WHERE campaign_id = %d",
+                $campaign_id
+            ));
+            
+            if ($existing_gift) {
+                // Update existing gift
+                $wpdb->update(
+                    $table_prefix . 'gifts',
+                    $gift_data,
+                    array('id' => $existing_gift)
+                );
+            } else {
+                // Create new gift
+                $wpdb->insert($table_prefix . 'gifts', $gift_data);
+            }
+        } else {
+            // Remove gift if disabled
+            $wpdb->delete($table_prefix . 'gifts', array('campaign_id' => $campaign_id));
+        }
+        
+        $wpdb->query('COMMIT');
+        
+        set_transient('vefify_admin_notice', array('type' => 'success', 'message' => $message), 30);
+        
+        wp_redirect(admin_url('admin.php?page=vefify-campaigns&action=edit&id=' . $campaign_id));
+        exit;
+        
+    } catch (Exception $e) {
+        $wpdb->query('ROLLBACK');
+        
+        set_transient('vefify_admin_notice', array('type' => 'error', 'message' => 'Error saving campaign: ' . $e->getMessage()), 30);
+        
+        wp_redirect(admin_url('admin.php?page=vefify-campaigns'));
+        exit;
+    }
+}
+/**
+ * DEBUGGING: Check your database table structure
+ * Add this temporary function to verify the column names
+ */
+function vefify_debug_question_options_table() {
+    if (!current_user_can('manage_options') || !isset($_GET['debug_table'])) {
+        return;
+    }
+    
+    global $wpdb;
+    $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
+    $table_name = $table_prefix . 'question_options';
+    
+    echo "<h2>🔍 Debugging Table Structure: {$table_name}</h2>";
+    
+    $columns = $wpdb->get_results("DESCRIBE {$table_name}");
+    
+    echo "<h3>Table Columns:</h3>";
+    echo "<ul>";
+    foreach ($columns as $column) {
+        echo "<li><strong>{$column->Field}</strong> - {$column->Type}</li>";
+    }
+    echo "</ul>";
+    
+    // Check if we have the right column
+    $has_option_text = false;
+    $has_text = false;
+    foreach ($columns as $column) {
+        if ($column->Field === 'option_text') $has_option_text = true;
+        if ($column->Field === 'text') $has_text = true;
+    }
+    
+    echo "<h3>Column Check:</h3>";
+    echo "<p>✅ Has 'option_text' column: " . ($has_option_text ? 'YES' : 'NO') . "</p>";
+    echo "<p>❌ Has 'text' column: " . ($has_text ? 'YES' : 'NO') . "</p>";
+    
+    if ($has_option_text) {
+        echo "<div style='background: #d4edda; padding: 15px; margin: 20px 0; border-radius: 5px;'>";
+        echo "<h3 style='color: #155724; margin-top: 0;'>✅ Table Structure is Correct!</h3>";
+        echo "<p style='color: #155724; margin-bottom: 0;'>Your table has the correct 'option_text' column. The fix above should work.</p>";
+        echo "</div>";
+    } else {
+        echo "<div style='background: #f8d7da; padding: 15px; margin: 20px 0; border-radius: 5px;'>";
+        echo "<h3 style='color: #721c24; margin-top: 0;'>❌ Table Structure Issue!</h3>";
+        echo "<p style='color: #721c24; margin-bottom: 0;'>Your table is missing the 'option_text' column. You may need to re-run the plugin activation.</p>";
+        echo "</div>";
+    }
+    
+    exit;
+}
+add_action('admin_init', 'vefify_debug_question_options_table');
+/**
+ * Debug function to test form submission
+ */
+function vefify_debug_question_form() {
+    if (!current_user_can('manage_options') || !isset($_GET['debug_form'])) {
+        return;
+    }
+    
+    echo "<h2>🧪 Debug Question Form Submission</h2>";
+    
+    if ($_POST) {
+        echo "<h3>POST Data Received:</h3>";
+        echo "<pre>";
+        print_r($_POST);
+        echo "</pre>";
+    } else {
+        echo "<p>No POST data received. Try submitting the form.</p>";
+    }
+    
+    exit;
+}
+add_action('admin_init', 'vefify_debug_question_form');
+?>
