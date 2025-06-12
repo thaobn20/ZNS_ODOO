@@ -4524,9 +4524,8 @@ function vefify_admin_participants() {
     <?php
 }
 
-
 /**
- * Enhanced Analytics Dashboard - Replace your existing vefify_admin_analytics() function
+ * Analytics & Reports Interface
  */
 function vefify_admin_analytics() {
     global $wpdb;
@@ -4563,40 +4562,26 @@ function vefify_admin_analytics() {
     
     $where_clause = implode(' AND ', $where_conditions);
     
-    // Get REAL analytics data (no more RAND()!)
+    // Get analytics data
     $analytics = array(
         'overview' => vefify_get_analytics_overview($where_clause, $params),
         'daily_trend' => vefify_get_daily_trend($where_clause, $params),
         'score_distribution' => vefify_get_score_distribution($where_clause, $params),
-        'province_stats' => vefify_get_enhanced_province_stats($where_clause, $params),
-        'question_performance' => vefify_get_real_question_performance($where_clause, $params),
-        'engagement_metrics' => vefify_get_real_engagement_metrics($campaign_id),
-        'difficulty_analysis' => vefify_analyze_question_difficulty_accuracy()
+        'province_stats' => vefify_get_province_stats($where_clause, $params),
+        'question_performance' => vefify_get_question_performance($where_clause, $params),
+        'completion_times' => vefify_get_completion_times($where_clause, $params)
     );
     
     $campaigns = $wpdb->get_results("SELECT id, name FROM {$table_prefix}campaigns ORDER BY name");
     
     ?>
     <div class="wrap">
-        <h1 class="wp-heading-inline">📊 Real Analytics & Reports</h1>
+        <h1 class="wp-heading-inline">Analytics & Reports</h1>
         <a href="<?php echo admin_url('admin.php?page=vefify-analytics&export=detailed_csv'); ?>" class="page-title-action">Export Detailed Report</a>
-        
-        <!-- Real-time Analytics Status -->
-        <div class="analytics-status-banner">
-            <div class="status-indicator">
-                <span class="status-dot active"></span>
-                <strong>Real Analytics Active</strong> - Analyzing actual user responses
-            </div>
-            <div class="data-freshness">
-                Last updated: <?php echo current_time('g:i A'); ?> | 
-                Questions analyzed: <?php echo count($analytics['question_performance']); ?> |
-                <a href="#" onclick="refreshAnalytics()" class="refresh-link">🔄 Refresh</a>
-            </div>
-        </div>
         
         <!-- Filters -->
         <div class="analytics-filters">
-            <form method="get" action="" id="analytics-filter-form">
+            <form method="get" action="">
                 <input type="hidden" name="page" value="vefify-analytics">
                 
                 <select name="campaign_id" onchange="this.form.submit()">
@@ -4620,92 +4605,107 @@ function vefify_admin_analytics() {
             </form>
         </div>
         
-        <!-- Enhanced Overview Stats -->
+        <!-- Overview Stats -->
         <div class="analytics-overview">
             <div class="overview-stats">
-                <div class="stat-card primary">
+                <div class="stat-card">
                     <h3>📊 Total Completions</h3>
                     <div class="stat-number"><?php echo number_format($analytics['overview']['total_completions']); ?></div>
                     <div class="stat-change">+<?php echo number_format($analytics['overview']['completions_change']); ?>% vs previous period</div>
                 </div>
                 
-                <div class="stat-card success">
+                <div class="stat-card">
                     <h3>🎯 Average Score</h3>
                     <div class="stat-number"><?php echo number_format($analytics['overview']['avg_score'], 1); ?></div>
                     <div class="stat-subtitle">out of <?php echo $analytics['overview']['max_score']; ?></div>
                 </div>
                 
-                <div class="stat-card info">
+                <div class="stat-card">
                     <h3>⏱️ Avg Completion Time</h3>
                     <div class="stat-number"><?php echo gmdate('i:s', $analytics['overview']['avg_completion_time']); ?></div>
                     <div class="stat-subtitle">minutes:seconds</div>
                 </div>
                 
-                <div class="stat-card warning">
+                <div class="stat-card">
                     <h3>🎁 Gift Rate</h3>
                     <div class="stat-number"><?php echo number_format($analytics['overview']['gift_rate'], 1); ?>%</div>
                     <div class="stat-subtitle"><?php echo $analytics['overview']['total_gifts']; ?> gifts awarded</div>
                 </div>
-                
-                <!-- New engagement metrics -->
-                <div class="stat-card engagement">
-                    <h3>📈 Completion Rate</h3>
-                    <div class="stat-number"><?php echo number_format($analytics['engagement_metrics']->completion_rate, 1); ?>%</div>
-                    <div class="stat-subtitle"><?php echo number_format($analytics['engagement_metrics']->abandonment_rate, 1); ?>% abandonment</div>
-                </div>
-                
-                <div class="stat-card peak">
-                    <h3>🕐 Peak Hour</h3>
-                    <div class="stat-number"><?php echo $analytics['engagement_metrics']->peak_activity_hour; ?>:00</div>
-                    <div class="stat-subtitle">Most active time</div>
-                </div>
             </div>
         </div>
         
-        <!-- Real Question Performance Analysis -->
-        <div class="analytics-section question-analysis">
-            <div class="section-header">
-                <h2>🎯 Real Question Performance Analysis</h2>
-                <span class="analysis-note">Based on actual user responses - No more placeholder data!</span>
+        <!-- Charts Section -->
+        <div class="analytics-charts">
+            <!-- Daily Trend Chart -->
+            <div class="chart-section">
+                <h3>📈 Daily Participation Trend</h3>
+                <canvas id="dailyTrendChart" width="400" height="200"></canvas>
             </div>
             
-            <?php if (!empty($analytics['question_performance'])): ?>
-                <div class="performance-summary">
-                    <div class="summary-stats">
-                        <div class="summary-item">
-                            <strong><?php echo count($analytics['question_performance']); ?></strong>
-                            <span>Questions Analyzed</span>
-                        </div>
-                        <div class="summary-item">
-                            <strong><?php echo number_format(array_sum(array_column($analytics['question_performance'], 'total_attempts'))); ?></strong>
-                            <span>Total Responses</span>
-                        </div>
-                        <div class="summary-item">
-                            <strong><?php echo number_format(array_sum(array_column($analytics['question_performance'], 'actual_correct_rate')) / count($analytics['question_performance']), 1); ?>%</strong>
-                            <span>Avg Correct Rate</span>
-                        </div>
-                    </div>
-                </div>
-                
-                <table class="wp-list-table widefat fixed striped performance-table">
+            <!-- Score Distribution -->
+            <div class="chart-section">
+                <h3>📊 Score Distribution</h3>
+                <canvas id="scoreDistributionChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+        
+        <!-- Detailed Tables -->
+        <div class="analytics-tables">
+            <!-- Province Performance -->
+            <div class="table-section">
+                <h3>📍 Performance by Province</h3>
+                <table class="wp-list-table widefat fixed striped">
                     <thead>
                         <tr>
-                            <th width="40%">Question</th>
-                            <th>Difficulty</th>
-                            <th>Attempts</th>
-                            <th>Success Rate</th>
-                            <th>Rating Accuracy</th>
-                            <th>Action Needed</th>
+                            <th>Province</th>
+                            <th>Participants</th>
+                            <th>Avg Score</th>
+                            <th>Gift Rate</th>
+                            <th>Avg Time</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <?php foreach ($analytics['question_performance'] as $question): ?>
-                        <tr class="question-row">
+                        <?php foreach ($analytics['province_stats'] as $province): ?>
+                        <tr>
+                            <td><?php echo esc_html(ucfirst($province->province)); ?></td>
+                            <td><?php echo number_format($province->participants); ?></td>
                             <td>
-                                <div class="question-text"><?php echo esc_html(wp_trim_words($question->question_text, 15)); ?></div>
-                                <div class="question-meta">
-                                    <span class="category-tag"><?php echo esc_html(ucfirst($question->category)); ?></span>
-                                    <span class="type-tag"><?php echo esc_html($question->question_type); ?></span>
+                                <span class="score-display"><?php echo number_format($province->avg_score, 1); ?></span>
+                                <div class="score-bar">
+                                    <div class="score-fill" style="width: <?php echo ($province->avg_score / 5) * 100; ?>%"></div>
+                                </div>
+                            </td>
+                            <td><?php echo number_format($province->gift_rate, 1); ?>%</td>
+                            <td><?php echo gmdate('i:s', $province->avg_time); ?></td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Question Performance -->
+            <div class="table-section">
+                <h3>❓ Question Performance</h3>
+                <table class="wp-list-table widefat fixed striped">
+                    <thead>
+                        <tr>
+                            <th width="50%">Question</th>
+                            <th>Attempts</th>
+                            <th>Correct Rate</th>
+                            <th>Difficulty</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach (array_slice($analytics['question_performance'], 0, 10) as $question): ?>
+                        <tr>
+                            <td><?php echo esc_html(wp_trim_words($question->question_text, 15)); ?></td>
+                            <td><?php echo number_format($question->attempts); ?></td>
+                            <td>
+                                <span class="correct-rate <?php echo $question->correct_rate < 50 ? 'low' : ($question->correct_rate < 80 ? 'medium' : 'high'); ?>">
+                                    <?php echo number_format($question->correct_rate, 1); ?>%
+                                </span>
+                                <div class="rate-bar">
+                                    <div class="rate-fill" style="width: <?php echo $question->correct_rate; ?>%"></div>
                                 </div>
                             </td>
                             <td>
@@ -4713,447 +4713,273 @@ function vefify_admin_analytics() {
                                     <?php echo ucfirst($question->difficulty); ?>
                                 </span>
                             </td>
-                            <td class="text-center">
-                                <strong><?php echo number_format($question->total_attempts); ?></strong>
-                                <div class="attempts-breakdown">
-                                    Correct: <?php echo number_format($question->correct_attempts); ?>
-                                </div>
-                            </td>
-                            <td class="text-center">
-                                <div class="success-rate <?php echo $question->actual_correct_rate < 30 ? 'low' : ($question->actual_correct_rate > 80 ? 'high' : 'medium'); ?>">
-                                    <span class="rate-number"><?php echo number_format($question->actual_correct_rate, 1); ?>%</span>
-                                    <div class="rate-bar">
-                                        <div class="rate-fill" style="width: <?php echo $question->actual_correct_rate; ?>%"></div>
-                                    </div>
-                                </div>
-                            </td>
-                            <td class="text-center">
-                                <span class="rating-badge <?php echo $question->rating_accuracy === 'Correctly Rated' ? 'correct' : 'needs-review'; ?>">
-                                    <?php echo $question->rating_accuracy; ?>
-                                </span>
-                            </td>
-                            <td class="text-center">
-                                <?php
-                                $action = '';
-                                $action_class = '';
-                                if ($question->actual_correct_rate < 20) {
-                                    $action = 'Review/Rewrite';
-                                    $action_class = 'critical';
-                                } elseif ($question->actual_correct_rate > 90) {
-                                    $action = 'Make Harder';
-                                    $action_class = 'warning';
-                                } elseif ($question->rating_accuracy !== 'Correctly Rated') {
-                                    $action = 'Adjust Difficulty';
-                                    $action_class = 'info';
-                                } else {
-                                    $action = 'Good';
-                                    $action_class = 'success';
-                                }
-                                ?>
-                                <span class="action-badge <?php echo $action_class; ?>"><?php echo $action; ?></span>
-                            </td>
                         </tr>
                         <?php endforeach; ?>
                     </tbody>
                 </table>
-            <?php else: ?>
-                <div class="no-data-message">
-                    <h3>📊 No Question Performance Data Available</h3>
-                    <p>You need at least 3 completed quiz responses per question to generate meaningful analytics.</p>
-                    <p><strong>Current Status:</strong> Waiting for more user data...</p>
-                </div>
-            <?php endif; ?>
+            </div>
         </div>
         
-        <!-- Difficulty Analysis Dashboard -->
-        <div class="analytics-section difficulty-analysis">
-            <h2>🎚️ Question Difficulty Analysis</h2>
-            
-            <?php if (!empty($analytics['difficulty_analysis'])): ?>
-                <div class="difficulty-grid">
-                    <?php foreach ($analytics['difficulty_analysis'] as $diff_data): ?>
-                    <div class="difficulty-card">
-                        <h3><?php echo ucfirst($diff_data->assigned_difficulty); ?> Questions</h3>
-                        <div class="difficulty-stats">
-                            <div class="stat-row">
-                                <span>Total Questions:</span>
-                                <strong><?php echo $diff_data->question_count; ?></strong>
-                            </div>
-                            <div class="stat-row">
-                                <span>Avg Success Rate:</span>
-                                <strong><?php echo number_format($diff_data->avg_actual_difficulty, 1); ?>%</strong>
-                            </div>
-                            <div class="stat-row">
-                                <span>Expected Range:</span>
-                                <em><?php echo $diff_data->expected_range; ?></em>
-                            </div>
-                            <div class="stat-row">
-                                <span>Correctly Rated:</span>
-                                <strong class="<?php echo $diff_data->correctly_rated == $diff_data->question_count ? 'success' : 'warning'; ?>">
-                                    <?php echo $diff_data->correctly_rated; ?>/<?php echo $diff_data->question_count; ?>
-                                </strong>
-                            </div>
-                            <?php if ($diff_data->needs_review > 0): ?>
-                            <div class="stat-row needs-attention">
-                                <span>⚠️ Needs Review:</span>
-                                <strong><?php echo $diff_data->needs_review; ?> questions</strong>
-                            </div>
-                            <?php endif; ?>
-                        </div>
+        <!-- Leaderboard Section -->
+        <div class="leaderboard-section">
+            <h3>🏆 Anonymous Leaderboard (Top 10)</h3>
+            <?php
+            $leaderboard = $wpdb->get_results($wpdb->prepare("
+                SELECT score, total_questions, province, completion_time, completed_at
+                FROM {$table_prefix}quiz_users u
+                WHERE {$where_clause}
+                ORDER BY score DESC, completion_time ASC
+                LIMIT 10
+            ", $params));
+            ?>
+            <div class="leaderboard">
+                <?php foreach ($leaderboard as $index => $entry): ?>
+                <div class="leaderboard-item rank-<?php echo $index + 1; ?>">
+                    <div class="rank">
+                        <?php 
+                        if ($index === 0) echo '🥇';
+                        elseif ($index === 1) echo '🥈'; 
+                        elseif ($index === 2) echo '🥉';
+                        else echo '#' . ($index + 1);
+                        ?>
                     </div>
-                    <?php endforeach; ?>
+                    <div class="participant-info">
+                        <strong>Anonymous User</strong>
+                        <small><?php echo esc_html(ucfirst($entry->province)); ?></small>
+                    </div>
+                    <div class="score-info">
+                        <div class="score"><?php echo $entry->score; ?>/<?php echo $entry->total_questions; ?></div>
+                        <div class="percentage"><?php echo round(($entry->score / $entry->total_questions) * 100); ?>%</div>
+                    </div>
+                    <div class="time-info">
+                        <?php echo gmdate('i:s', $entry->completion_time); ?>
+                    </div>
                 </div>
-            <?php endif; ?>
-        </div>
-        
-        <!-- Enhanced Province Performance -->
-        <div class="analytics-section province-performance">
-            <h2>📍 Enhanced Province Performance</h2>
-            
-            <table class="wp-list-table widefat fixed striped">
-                <thead>
-                    <tr>
-                        <th>Province</th>
-                        <th>Participants</th>
-                        <th>Avg Score</th>
-                        <th>Consistency</th>
-                        <th>Gift Rate</th>
-                        <th>Weekly Trend</th>
-                        <th>High Performers</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($analytics['province_stats'] as $province): ?>
-                    <tr>
-                        <td><strong><?php echo esc_html(ucfirst($province->province)); ?></strong></td>
-                        <td class="text-center"><?php echo number_format($province->participants); ?></td>
-                        <td class="text-center">
-                            <span class="score-display"><?php echo number_format($province->avg_score, 1); ?></span>
-                            <div class="score-bar">
-                                <div class="score-fill" style="width: <?php echo ($province->avg_score / 5) * 100; ?>%"></div>
-                            </div>
-                        </td>
-                        <td class="text-center">
-                            <span class="consistency-score">±<?php echo number_format($province->score_consistency, 1); ?></span>
-                        </td>
-                        <td class="text-center">
-                            <span class="gift-rate"><?php echo number_format($province->gift_rate, 1); ?>%</span>
-                        </td>
-                        <td class="text-center">
-                            <span class="trend <?php echo $province->week_over_week_change > 0 ? 'up' : ($province->week_over_week_change < 0 ? 'down' : 'stable'); ?>">
-                                <?php 
-                                if ($province->week_over_week_change > 0) echo '📈 +';
-                                elseif ($province->week_over_week_change < 0) echo '📉 ';
-                                else echo '➡️ ';
-                                echo number_format(abs($province->week_over_week_change), 1) . '%';
-                                ?>
-                            </span>
-                        </td>
-                        <td class="text-center">
-                            <span class="high-performer-rate"><?php echo number_format($province->high_performer_rate, 1); ?>%</span>
-                            <div class="high-performer-count">(<?php echo $province->high_performers; ?> users)</div>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-        
-        <!-- Performance Insights -->
-        <div class="analytics-section insights">
-            <h2>💡 Analytics Insights</h2>
-            <div class="insights-grid">
-                <div class="insight-card">
-                    <h4>🎯 Question Quality</h4>
-                    <?php 
-                    $needs_review = array_filter($analytics['question_performance'], function($q) { 
-                        return $q->rating_accuracy === 'Needs Review'; 
-                    });
-                    $review_count = count($needs_review);
-                    ?>
-                    <p><?php echo $review_count; ?> questions need difficulty review out of <?php echo count($analytics['question_performance']); ?> analyzed.</p>
-                    <?php if ($review_count > 0): ?>
-                        <p class="action-needed">⚠️ <a href="#question-analysis">Review questions</a> with mismatched difficulty ratings.</p>
-                    <?php else: ?>
-                        <p class="all-good">✅ All questions are appropriately rated!</p>
-                    <?php endif; ?>
-                </div>
-                
-                <div class="insight-card">
-                    <h4>📈 Engagement</h4>
-                    <p>Completion rate: <strong><?php echo number_format($analytics['engagement_metrics']->completion_rate, 1); ?>%</strong></p>
-                    <p>Peak activity: <strong><?php echo $analytics['engagement_metrics']->peak_activity_hour; ?>:00</strong></p>
-                    <?php if ($analytics['engagement_metrics']->completion_rate < 70): ?>
-                        <p class="action-needed">⚠️ Consider reducing quiz length or improving question clarity.</p>
-                    <?php else: ?>
-                        <p class="all-good">✅ Good engagement levels!</p>
-                    <?php endif; ?>
-                </div>
-                
-                <div class="insight-card">
-                    <h4>🎁 Rewards</h4>
-                    <p>Gift conversion: <strong><?php echo number_format($analytics['engagement_metrics']->gift_conversion_rate, 1); ?>%</strong></p>
-                    <p>Perfect scores: <strong><?php echo number_format($analytics['engagement_metrics']->perfect_scores); ?></strong></p>
-                    <?php if ($analytics['engagement_metrics']->gift_conversion_rate < 20): ?>
-                        <p class="action-needed">⚠️ Consider adjusting gift thresholds to improve motivation.</p>
-                    <?php else: ?>
-                        <p class="all-good">✅ Healthy reward distribution!</p>
-                    <?php endif; ?>
-                </div>
+                <?php endforeach; ?>
             </div>
         </div>
     </div>
     
-    <!-- Enhanced CSS for new analytics -->
     <style>
-    .analytics-status-banner {
-        background: linear-gradient(135deg, #e8f5e8 0%, #d4edda 100%);
-        border-left: 4px solid #28a745;
-        padding: 15px 20px;
-        margin: 20px 0;
-        border-radius: 6px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
+    .analytics-filters {
+        background: #f9f9f9;
+        padding: 15px;
+        border-radius: 4px;
+        margin-bottom: 20px;
     }
     
-    .status-indicator {
+    .analytics-filters form {
         display: flex;
-        align-items: center;
         gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
     }
     
-    .status-dot {
-        width: 12px;
-        height: 12px;
-        border-radius: 50%;
-        background: #ccc;
+    .analytics-overview {
+        margin-bottom: 30px;
     }
     
-    .status-dot.active {
-        background: #28a745;
-        animation: pulse 2s infinite;
+    .overview-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 20px;
     }
     
-    @keyframes pulse {
-        0% { opacity: 1; }
-        50% { opacity: 0.5; }
-        100% { opacity: 1; }
+    .stat-card {
+        background: #fff;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        text-align: center;
+        border-left: 4px solid #4facfe;
     }
     
-    .data-freshness {
+    .stat-card h3 {
+        margin: 0 0 10px 0;
+        color: #666;
+        font-size: 14px;
+        font-weight: 600;
+    }
+    
+    .stat-number {
+        font-size: 32px;
+        font-weight: bold;
+        color: #2271b1;
+        margin-bottom: 5px;
+    }
+    
+    .stat-subtitle, .stat-change {
         font-size: 12px;
         color: #666;
     }
     
-    .refresh-link {
-        color: #007cba;
-        text-decoration: none;
+    .stat-change {
+        color: #00a32a;
+        font-weight: 600;
     }
     
-    .stat-card.primary { border-left-color: #4facfe; }
-    .stat-card.success { border-left-color: #28a745; }
-    .stat-card.info { border-left-color: #17a2b8; }
-    .stat-card.warning { border-left-color: #ffc107; }
-    .stat-card.engagement { border-left-color: #6f42c1; }
-    .stat-card.peak { border-left-color: #fd7e14; }
-    
-    .question-analysis .analysis-note {
-        background: #fff3cd;
-        color: #856404;
-        padding: 4px 8px;
-        border-radius: 4px;
-        font-size: 12px;
-        font-weight: bold;
+    .analytics-charts {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 30px;
+        margin-bottom: 30px;
     }
     
-    .performance-summary {
-        background: #f8f9fa;
+    .chart-section {
+        background: #fff;
         padding: 20px;
         border-radius: 8px;
-        margin-bottom: 20px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
     
-    .summary-stats {
+    .chart-section h3 {
+        margin: 0 0 15px 0;
+        color: #333;
+    }
+    
+    .analytics-tables {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-        gap: 20px;
+        grid-template-columns: 1fr 1fr;
+        gap: 30px;
+        margin-bottom: 30px;
     }
     
-    .summary-item {
-        text-align: center;
+    .table-section {
+        background: #fff;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
     
-    .summary-item strong {
-        display: block;
-        font-size: 24px;
-        color: #4facfe;
-        margin-bottom: 5px;
+    .table-section h3 {
+        margin: 0 0 15px 0;
+        color: #333;
     }
     
-    .performance-table .question-meta {
+    .score-display {
+        font-weight: bold;
+        color: #2271b1;
+    }
+    
+    .score-bar, .rate-bar {
+        height: 4px;
+        background: #e0e0e0;
+        border-radius: 2px;
         margin-top: 5px;
+        overflow: hidden;
     }
     
-    .category-tag, .type-tag {
-        background: #e9ecef;
-        color: #495057;
+    .score-fill, .rate-fill {
+        height: 100%;
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    }
+    
+    .correct-rate.low { color: #f44336; }
+    .correct-rate.medium { color: #ff9800; }
+    .correct-rate.high { color: #4caf50; }
+    
+    .difficulty-badge {
         padding: 2px 6px;
         border-radius: 3px;
         font-size: 11px;
-        margin-right: 5px;
-    }
-    
-    .success-rate.low .rate-number { color: #dc3545; }
-    .success-rate.medium .rate-number { color: #ffc107; }
-    .success-rate.high .rate-number { color: #28a745; }
-    
-    .rating-badge.correct {
-        background: #d4edda;
-        color: #155724;
-        padding: 4px 8px;
-        border-radius: 4px;
-        font-size: 12px;
-    }
-    
-    .rating-badge.needs-review {
-        background: #f8d7da;
-        color: #721c24;
-        padding: 4px 8px;
-        border-radius: 4px;
-        font-size: 12px;
-    }
-    
-    .action-badge {
-        padding: 4px 8px;
-        border-radius: 4px;
-        font-size: 12px;
+        color: white;
         font-weight: bold;
     }
     
-    .action-badge.critical { background: #f8d7da; color: #721c24; }
-    .action-badge.warning { background: #fff3cd; color: #856404; }
-    .action-badge.info { background: #d1ecf1; color: #0c5460; }
-    .action-badge.success { background: #d4edda; color: #155724; }
+    .difficulty-badge.difficulty-easy { background: #4caf50; }
+    .difficulty-badge.difficulty-medium { background: #ff9800; }
+    .difficulty-badge.difficulty-hard { background: #f44336; }
     
-    .difficulty-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-        gap: 20px;
-        margin: 20px 0;
-    }
-    
-    .difficulty-card {
-        background: white;
-        border: 1px solid #dee2e6;
-        border-radius: 8px;
+    .leaderboard-section {
+        background: #fff;
         padding: 20px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    
-    .difficulty-card h3 {
-        margin: 0 0 15px 0;
-        color: #495057;
-        border-bottom: 2px solid #e9ecef;
-        padding-bottom: 10px;
-    }
-    
-    .stat-row {
-        display: flex;
-        justify-content: space-between;
-        padding: 8px 0;
-        border-bottom: 1px solid #f8f9fa;
-    }
-    
-    .stat-row:last-child {
-        border-bottom: none;
-    }
-    
-    .stat-row.needs-attention {
-        background: #fff3cd;
-        margin: 8px -10px;
-        padding: 8px 10px;
-        border-radius: 4px;
-    }
-    
-    .consistency-score {
-        font-size: 14px;
-        color: #6c757d;
-    }
-    
-    .trend.up { color: #28a745; }
-    .trend.down { color: #dc3545; }
-    .trend.stable { color: #6c757d; }
-    
-    .high-performer-count {
-        font-size: 11px;
-        color: #6c757d;
-        margin-top: 2px;
-    }
-    
-    .insights-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-        gap: 20px;
-        margin-top: 20px;
-    }
-    
-    .insight-card {
-        background: white;
-        border: 1px solid #dee2e6;
         border-radius: 8px;
-        padding: 20px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        margin-bottom: 30px;
     }
     
-    .insight-card h4 {
-        margin: 0 0 15px 0;
-        color: #495057;
+    .leaderboard-section h3 {
+        margin: 0 0 20px 0;
+        color: #333;
     }
     
-    .action-needed {
-        color: #856404;
-        background: #fff3cd;
-        padding: 8px;
-        border-radius: 4px;
-        margin-top: 10px;
+    .leaderboard {
+        display: grid;
+        gap: 10px;
     }
     
-    .all-good {
-        color: #155724;
-        background: #d4edda;
-        padding: 8px;
-        border-radius: 4px;
-        margin-top: 10px;
+    .leaderboard-item {
+        display: grid;
+        grid-template-columns: 60px 1fr auto auto;
+        gap: 15px;
+        align-items: center;
+        padding: 15px;
+        background: #f9f9f9;
+        border-radius: 8px;
+        border-left: 4px solid #ddd;
     }
     
-    .no-data-message {
+    .leaderboard-item.rank-1 { border-left-color: #ffd700; background: #fffef7; }
+    .leaderboard-item.rank-2 { border-left-color: #c0c0c0; background: #fafafa; }
+    .leaderboard-item.rank-3 { border-left-color: #cd7f32; background: #fefcf7; }
+    
+    .rank {
+        font-size: 20px;
+        font-weight: bold;
         text-align: center;
-        padding: 60px 20px;
-        background: #f8f9fa;
-        border-radius: 8px;
-        color: #6c757d;
     }
     
-    .no-data-message h3 {
-        color: #495057;
-        margin-bottom: 15px;
+    .participant-info strong {
+        display: block;
+        color: #333;
+    }
+    
+    .participant-info small {
+        color: #666;
+    }
+    
+    .score-info {
+        text-align: center;
+    }
+    
+    .score-info .score {
+        font-size: 18px;
+        font-weight: bold;
+        color: #2271b1;
+    }
+    
+    .score-info .percentage {
+        font-size: 12px;
+        color: #666;
+    }
+    
+    .time-info {
+        font-family: monospace;
+        font-weight: bold;
+        color: #666;
+    }
+    
+    @media (max-width: 768px) {
+        .analytics-charts,
+        .analytics-tables {
+            grid-template-columns: 1fr;
+        }
+        
+        .leaderboard-item {
+            grid-template-columns: 1fr;
+            text-align: center;
+        }
     }
     </style>
     
     <script>
-    function refreshAnalytics() {
-        // Add loading indicator
-        document.querySelector('.data-freshness').innerHTML = '🔄 Refreshing...';
-        
-        // Reload the page to get fresh data
-        window.location.reload();
-    }
+    // Add Chart.js charts here if you want visual charts
+    // For now, using CSS-based visualizations
     
-    // Auto-refresh every 5 minutes
-    setTimeout(function() {
-        refreshAnalytics();
-    }, 300000);
+    document.addEventListener('DOMContentLoaded', function() {
+        // Add any interactive features here
+        console.log('Analytics loaded');
+    });
     </script>
     <?php
 }
@@ -6333,395 +6159,3 @@ add_action('wp_ajax_vefify_load_gift_codes', function() {
     
     wp_send_json_success(ob_get_clean());
 });
-
-/**
- * REAL ANALYTICS ENGINE - Phase 1
- * Replace the placeholder analytics with real data analysis
- * Add these functions to your main vefify-quiz-plugin.php file
- */
-
-/**
- * Get REAL question performance data (replaces the RAND() version)
- */
-function vefify_get_real_question_performance($where_clause, $params) {
-    global $wpdb;
-    $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
-    
-    // Get all questions with their performance metrics
-    $questions = $wpdb->get_results($wpdb->prepare("
-        SELECT 
-            q.id,
-            q.question_text,
-            q.difficulty,
-            q.category,
-            q.question_type,
-            COUNT(DISTINCT u.id) as total_attempts,
-            -- Calculate correct answers based on actual user data
-            COUNT(DISTINCT CASE 
-                WHEN vefify_is_answer_correct(u.id, q.id, s.answers_data) = 1 
-                THEN u.id 
-            END) as correct_attempts,
-            -- Performance metrics
-            ROUND(
-                (COUNT(DISTINCT CASE 
-                    WHEN vefify_is_answer_correct(u.id, q.id, s.answers_data) = 1 
-                    THEN u.id 
-                END) / COUNT(DISTINCT u.id)) * 100, 1
-            ) as actual_correct_rate,
-            AVG(u.completion_time) as avg_time_per_question,
-            -- Difficulty validation
-            CASE 
-                WHEN q.difficulty = 'easy' AND 
-                     (COUNT(DISTINCT CASE WHEN vefify_is_answer_correct(u.id, q.id, s.answers_data) = 1 THEN u.id END) / COUNT(DISTINCT u.id)) >= 0.7 
-                THEN 'Correctly Rated'
-                WHEN q.difficulty = 'medium' AND 
-                     (COUNT(DISTINCT CASE WHEN vefify_is_answer_correct(u.id, q.id, s.answers_data) = 1 THEN u.id END) / COUNT(DISTINCT u.id)) BETWEEN 0.4 AND 0.7 
-                THEN 'Correctly Rated'
-                WHEN q.difficulty = 'hard' AND 
-                     (COUNT(DISTINCT CASE WHEN vefify_is_answer_correct(u.id, q.id, s.answers_data) = 1 THEN u.id END) / COUNT(DISTINCT u.id)) <= 0.4 
-                THEN 'Correctly Rated'
-                ELSE 'Needs Review'
-            END as rating_accuracy
-        FROM {$table_prefix}questions q
-        JOIN {$table_prefix}quiz_sessions s ON JSON_CONTAINS(s.questions_data, CAST(q.id as JSON))
-        JOIN {$table_prefix}quiz_users u ON s.user_id = u.id
-        WHERE {$where_clause} 
-        AND q.is_active = 1 
-        AND u.completed_at IS NOT NULL
-        AND s.answers_data IS NOT NULL 
-        AND s.answers_data != ''
-        GROUP BY q.id
-        HAVING total_attempts >= 3  -- Minimum sample size for meaningful statistics
-        ORDER BY actual_correct_rate ASC, total_attempts DESC
-        LIMIT 20
-    ", $params));
-    
-    return $questions;
-}
-
-/**
- * Helper function to determine if a user answered a question correctly
- * This is the core logic that replaces the RAND() placeholder
- */
-function vefify_is_answer_correct($user_id, $question_id, $answers_data_json) {
-    global $wpdb;
-    $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
-    
-    // Parse the JSON answers
-    $user_answers = json_decode($answers_data_json, true);
-    if (!$user_answers || !isset($user_answers[$question_id])) {
-        return 0; // No answer provided
-    }
-    
-    $user_selected = (array) $user_answers[$question_id];
-    
-    // Get the correct answers for this question
-    $correct_options = $wpdb->get_col($wpdb->prepare(
-        "SELECT id FROM {$table_prefix}question_options WHERE question_id = %d AND is_correct = 1",
-        $question_id
-    ));
-    
-    if (empty($correct_options)) {
-        return 0; // No correct answers defined
-    }
-    
-    // Convert to integers for comparison
-    $user_selected = array_map('intval', array_filter($user_selected));
-    $correct_options = array_map('intval', $correct_options);
-    
-    // Sort both arrays for comparison
-    sort($user_selected);
-    sort($correct_options);
-    
-    // Check if arrays match exactly
-    return ($user_selected === $correct_options) ? 1 : 0;
-}
-
-/**
- * Get enhanced province statistics with real trends
- */
-function vefify_get_enhanced_province_stats($where_clause, $params) {
-    global $wpdb;
-    $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
-    
-    return $wpdb->get_results($wpdb->prepare("
-        SELECT 
-            u.province,
-            COUNT(*) as participants,
-            ROUND(AVG(u.score), 2) as avg_score,
-            ROUND(STDDEV(u.score), 2) as score_consistency,
-            MIN(u.score) as min_score,
-            MAX(u.score) as max_score,
-            COUNT(CASE WHEN u.gift_id IS NOT NULL THEN 1 END) as gifts_won,
-            ROUND((COUNT(CASE WHEN u.gift_id IS NOT NULL THEN 1 END) / COUNT(*)) * 100, 1) as gift_rate,
-            ROUND(AVG(u.completion_time), 0) as avg_completion_time,
-            COUNT(CASE WHEN u.score >= 4 THEN 1 END) as high_performers,
-            ROUND((COUNT(CASE WHEN u.score >= 4 THEN 1 END) / COUNT(*)) * 100, 1) as high_performer_rate,
-            -- Weekly trend analysis
-            COUNT(CASE WHEN u.completed_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 END) as this_week,
-            COUNT(CASE WHEN u.completed_at BETWEEN DATE_SUB(NOW(), INTERVAL 14 DAY) AND DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 END) as last_week,
-            -- Calculate trend percentage
-            CASE 
-                WHEN COUNT(CASE WHEN u.completed_at BETWEEN DATE_SUB(NOW(), INTERVAL 14 DAY) AND DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 END) > 0 THEN
-                    ROUND(((COUNT(CASE WHEN u.completed_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 END) - 
-                           COUNT(CASE WHEN u.completed_at BETWEEN DATE_SUB(NOW(), INTERVAL 14 DAY) AND DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 END)) / 
-                           COUNT(CASE WHEN u.completed_at BETWEEN DATE_SUB(NOW(), INTERVAL 14 DAY) AND DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 END)) * 100, 1)
-                ELSE 0
-            END as week_over_week_change
-        FROM {$table_prefix}quiz_users u
-        WHERE {$where_clause} 
-        AND u.province IS NOT NULL 
-        AND u.completed_at IS NOT NULL
-        GROUP BY u.province
-        HAVING participants >= 2  -- Minimum sample size
-        ORDER BY avg_score DESC, participants DESC
-        LIMIT 15
-    ", $params));
-}
-
-/**
- * Analyze question difficulty accuracy
- */
-function vefify_analyze_question_difficulty_accuracy() {
-    global $wpdb;
-    $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
-    
-    return $wpdb->get_results("
-        SELECT 
-            q.difficulty as assigned_difficulty,
-            COUNT(*) as question_count,
-            ROUND(AVG(perf.correct_rate), 1) as avg_actual_difficulty,
-            COUNT(CASE WHEN perf.rating_accuracy = 'Correctly Rated' THEN 1 END) as correctly_rated,
-            COUNT(CASE WHEN perf.rating_accuracy = 'Needs Review' THEN 1 END) as needs_review,
-            -- Expected ranges for each difficulty
-            CASE q.difficulty 
-                WHEN 'easy' THEN '70%+ correct'
-                WHEN 'medium' THEN '40-70% correct'  
-                WHEN 'hard' THEN 'Under 40% correct'
-            END as expected_range
-        FROM {$table_prefix}questions q
-        LEFT JOIN (
-            SELECT 
-                q2.id,
-                q2.difficulty,
-                ROUND((COUNT(CASE WHEN vefify_is_answer_correct(u.id, q2.id, s.answers_data) = 1 THEN 1 END) / COUNT(*)) * 100, 1) as correct_rate,
-                CASE 
-                    WHEN q2.difficulty = 'easy' AND (COUNT(CASE WHEN vefify_is_answer_correct(u.id, q2.id, s.answers_data) = 1 THEN 1 END) / COUNT(*)) >= 0.7 THEN 'Correctly Rated'
-                    WHEN q2.difficulty = 'medium' AND (COUNT(CASE WHEN vefify_is_answer_correct(u.id, q2.id, s.answers_data) = 1 THEN 1 END) / COUNT(*)) BETWEEN 0.4 AND 0.7 THEN 'Correctly Rated'
-                    WHEN q2.difficulty = 'hard' AND (COUNT(CASE WHEN vefify_is_answer_correct(u.id, q2.id, s.answers_data) = 1 THEN 1 END) / COUNT(*)) <= 0.4 THEN 'Correctly Rated'
-                    ELSE 'Needs Review'
-                END as rating_accuracy
-            FROM {$table_prefix}questions q2
-            JOIN {$table_prefix}quiz_sessions s ON JSON_CONTAINS(s.questions_data, CAST(q2.id as JSON))
-            JOIN {$table_prefix}quiz_users u ON s.user_id = u.id
-            WHERE u.completed_at IS NOT NULL AND s.answers_data IS NOT NULL
-            GROUP BY q2.id
-            HAVING COUNT(*) >= 3
-        ) perf ON perf.id = q.id
-        WHERE q.is_active = 1
-        GROUP BY q.difficulty
-        ORDER BY 
-            CASE q.difficulty 
-                WHEN 'easy' THEN 1 
-                WHEN 'medium' THEN 2 
-                WHEN 'hard' THEN 3 
-            END
-    ");
-}
-
-/**
- * Get real engagement metrics with drop-off analysis
- */
-function vefify_get_real_engagement_metrics($campaign_id = null) {
-    global $wpdb;
-    $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
-    
-    $where_campaign = $campaign_id ? "AND u.campaign_id = " . intval($campaign_id) : "";
-    
-    return $wpdb->get_row("
-        SELECT 
-            -- Basic metrics
-            COUNT(DISTINCT u.id) as total_participants,
-            COUNT(DISTINCT CASE WHEN u.completed_at IS NOT NULL THEN u.id END) as completions,
-            ROUND((COUNT(DISTINCT CASE WHEN u.completed_at IS NOT NULL THEN u.id END) / COUNT(DISTINCT u.id)) * 100, 1) as completion_rate,
-            
-            -- Time-based metrics
-            ROUND(AVG(CASE WHEN u.completed_at IS NOT NULL THEN u.completion_time END), 0) as avg_completion_time,
-            COUNT(DISTINCT CASE WHEN DATE(u.created_at) = CURDATE() THEN u.id END) as today_participants,
-            COUNT(DISTINCT CASE WHEN u.created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR) THEN u.id END) as last_hour,
-            
-            -- Drop-off analysis
-            COUNT(DISTINCT CASE WHEN u.completed_at IS NULL AND u.created_at <= DATE_SUB(NOW(), INTERVAL 1 HOUR) THEN u.id END) as abandoned_sessions,
-            ROUND((COUNT(CASE WHEN u.completed_at IS NULL AND u.created_at <= DATE_SUB(NOW(), INTERVAL 1 HOUR) THEN 1 END) / COUNT(*)) * 100, 1) as abandonment_rate,
-            
-            -- Peak activity analysis
-            (SELECT HOUR(created_at) as peak_hour 
-             FROM {$table_prefix}quiz_users 
-             WHERE 1=1 {$where_campaign}
-             GROUP BY HOUR(created_at) 
-             ORDER BY COUNT(*) DESC 
-             LIMIT 1) as peak_activity_hour,
-            
-            -- Performance distribution
-            COUNT(CASE WHEN u.score = 5 THEN 1 END) as perfect_scores,
-            COUNT(CASE WHEN u.score >= 4 THEN 1 END) as high_scores,
-            COUNT(CASE WHEN u.score BETWEEN 2 AND 3 THEN 1 END) as medium_scores,
-            COUNT(CASE WHEN u.score <= 1 THEN 1 END) as low_scores,
-            
-            -- Gift metrics
-            COUNT(CASE WHEN u.gift_id IS NOT NULL THEN 1 END) as gifts_awarded,
-            ROUND((COUNT(CASE WHEN u.gift_id IS NOT NULL THEN 1 END) / COUNT(CASE WHEN u.completed_at IS NOT NULL THEN 1 END)) * 100, 1) as gift_conversion_rate
-            
-        FROM {$table_prefix}quiz_users u
-        WHERE 1=1 {$where_campaign}
-    ");
-}
-
-/**
- * Get learning path recommendations for users
- */
-function vefify_get_learning_recommendations($user_id) {
-    global $wpdb;
-    $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
-    
-    // Get user's performance by category
-    $user_performance = $wpdb->get_results($wpdb->prepare("
-        SELECT 
-            q.category,
-            COUNT(*) as questions_attempted,
-            COUNT(CASE WHEN vefify_is_answer_correct(u.id, q.id, s.answers_data) = 1 THEN 1 END) as correct_answers,
-            ROUND((COUNT(CASE WHEN vefify_is_answer_correct(u.id, q.id, s.answers_data) = 1 THEN 1 END) / COUNT(*)) * 100, 1) as category_score,
-            -- Recommend improvement areas
-            CASE 
-                WHEN (COUNT(CASE WHEN vefify_is_answer_correct(u.id, q.id, s.answers_data) = 1 THEN 1 END) / COUNT(*)) < 0.5 THEN 'Needs Improvement'
-                WHEN (COUNT(CASE WHEN vefify_is_answer_correct(u.id, q.id, s.answers_data) = 1 THEN 1 END) / COUNT(*)) < 0.8 THEN 'Room for Growth'
-                ELSE 'Strong Performance'
-            END as recommendation
-        FROM {$table_prefix}quiz_users u
-        JOIN {$table_prefix}quiz_sessions s ON s.user_id = u.id
-        JOIN {$table_prefix}questions q ON JSON_CONTAINS(s.questions_data, CAST(q.id as JSON))
-        WHERE u.id = %d AND u.completed_at IS NOT NULL
-        GROUP BY q.category
-        ORDER BY category_score ASC
-    ", $user_id));
-    
-    return $user_performance;
-}
-
-/**
- * Replace the old function in your analytics page
- * Update vefify_admin_analytics() to use these new functions
- */
-function vefify_update_analytics_with_real_data($where_clause, $params) {
-    // Get real analytics data
-    $analytics = array(
-        'overview' => vefify_get_analytics_overview($where_clause, $params),
-        'daily_trend' => vefify_get_daily_trend($where_clause, $params),
-        'score_distribution' => vefify_get_score_distribution($where_clause, $params),
-        'province_stats' => vefify_get_enhanced_province_stats($where_clause, $params), // Enhanced version
-        'question_performance' => vefify_get_real_question_performance($where_clause, $params), // Real data now!
-        'engagement_metrics' => vefify_get_real_engagement_metrics(),
-        'difficulty_analysis' => vefify_analyze_question_difficulty_accuracy()
-    );
-    
-    return $analytics;
-}
-
-/**
- * Add new AJAX endpoint for real-time analytics updates
- */
-add_action('wp_ajax_vefify_get_realtime_analytics', function() {
-    if (!current_user_can('manage_options')) {
-        wp_send_json_error('Unauthorized');
-    }
-    
-    $campaign_id = $_POST['campaign_id'] ?? '';
-    $date_from = $_POST['date_from'] ?? date('Y-m-d', strtotime('-30 days'));
-    $date_to = $_POST['date_to'] ?? date('Y-m-d');
-    
-    $where_conditions = array("u.completed_at IS NOT NULL");
-    $params = array();
-    
-    if ($campaign_id) {
-        $where_conditions[] = "u.campaign_id = %d";
-        $params[] = $campaign_id;
-    }
-    
-    if ($date_from) {
-        $where_conditions[] = "DATE(u.completed_at) >= %s";
-        $params[] = $date_from;
-    }
-    
-    if ($date_to) {
-        $where_conditions[] = "DATE(u.completed_at) <= %s";
-        $params[] = $date_to;
-    }
-    
-    $where_clause = implode(' AND ', $where_conditions);
-    
-    $analytics = vefify_update_analytics_with_real_data($where_clause, $params);
-    
-    wp_send_json_success($analytics);
-});
-
-/**
- * Test function to validate the analytics engine
- */
-function vefify_test_analytics_engine() {
-    // Only for debugging - remove in production
-    if (!current_user_can('manage_options') || !isset($_GET['test_analytics'])) {
-        return;
-    }
-    
-    echo "<h2>🧪 Testing Real Analytics Engine</h2>";
-    
-    // Test question performance
-    $questions = vefify_get_real_question_performance("u.completed_at IS NOT NULL", array());
-    echo "<h3>Question Performance (" . count($questions) . " questions analyzed):</h3>";
-    echo "<pre>";
-    foreach ($questions as $q) {
-        echo "Q: " . substr($q->question_text, 0, 50) . "...\n";
-        echo "   Attempts: {$q->total_attempts} | Correct Rate: {$q->actual_correct_rate}% | Rating: {$q->rating_accuracy}\n\n";
-    }
-    echo "</pre>";
-    
-    // Test difficulty analysis
-    $difficulty = vefify_analyze_question_difficulty_accuracy();
-    echo "<h3>Difficulty Analysis:</h3>";
-    echo "<pre>";
-    print_r($difficulty);
-    echo "</pre>";
-    
-    exit;
-}
-add_action('admin_init', 'vefify_test_analytics_engine');
-
-/**
- * Add analytics performance indicators to admin dashboard
- */
-add_action('admin_notices', function() {
-    $screen = get_current_screen();
-    if ($screen && $screen->id === 'toplevel_page_vefify-quiz') {
-        $question_count = wp_cache_get('vefify_analytics_questions');
-        if ($question_count === false) {
-            global $wpdb;
-            $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
-            $question_count = $wpdb->get_var("
-                SELECT COUNT(DISTINCT q.id) 
-                FROM {$table_prefix}questions q
-                JOIN {$table_prefix}quiz_sessions s ON JSON_CONTAINS(s.questions_data, CAST(q.id as JSON))
-                JOIN {$table_prefix}quiz_users u ON s.user_id = u.id
-                WHERE u.completed_at IS NOT NULL
-            ");
-            wp_cache_set('vefify_analytics_questions', $question_count, '', 300); // 5 min cache
-        }
-        
-        if ($question_count > 0) {
-            echo '<div class="notice notice-success is-dismissible">';
-            echo '<p><strong>🎯 Real Analytics Active!</strong> Analyzing performance data from ' . number_format($question_count) . ' questions with real user responses.</p>';
-            echo '<p><a href="' . admin_url('admin.php?page=vefify-analytics') . '">View Detailed Analytics</a></p>';
-            echo '</div>';
-        }
-    }
-});
-?>
