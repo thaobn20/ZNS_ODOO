@@ -1,625 +1,511 @@
 <?php
 /**
- * Question Module Loader
- * File: modules/questions/class-question-module.php
+ * Question Model Class
+ * File: modules/questions/class-question-model.php
  * 
- * Main class that loads and initializes all question-related functionality
+ * Handles all database operations for questions and question options
  */
 
 if (!defined('ABSPATH')) {
     exit;
 }
 
-class Vefify_Question_Module {
+class Vefify_Question_Model {
     
-    private $model;
-    private $bank;
-    private $endpoints;
-    private static $instance = null;
-    
-    /**
-     * Singleton instance
-     */
-    public static function get_instance() {
-        if (self::$instance === null) {
-            self::$instance = new self();
-        }
-        return self::$instance;
-    }
+    private $db;
+    private $table_prefix;
+    private $questions_table;
+    private $options_table;
+    private $campaigns_table;
     
     /**
      * Constructor
      */
-    private function __construct() {
-        $this->load_dependencies();
-        $this->init_components();
+    public function __construct() {
+        global $wpdb;
+        $this->db = $wpdb;
+        $this->table_prefix = $wpdb->prefix . 'vefify_';
+        $this->questions_table = $this->table_prefix . 'questions';
+        $this->options_table = $this->table_prefix . 'question_options';
+        $this->campaigns_table = $this->table_prefix . 'campaigns';
     }
     
     /**
-     * Load required files
+     * Get single question with options
      */
-    private function load_dependencies() {
-        $module_path = plugin_dir_path(__FILE__);
+    public function get_question($question_id) {
+        if (!$question_id) {
+            return null;
+        }
         
-        // Load core components
-        require_once $module_path . 'class-question-model.php';
-        require_once $module_path . 'class-question-bank.php';
-        require_once $module_path . 'question-endpoints.php';
+        // Get question
+        $question = $this->db->get_row($this->db->prepare(
+            "SELECT q.*, c.name as campaign_name 
+             FROM {$this->questions_table} q
+             LEFT JOIN {$this->campaigns_table} c ON q.campaign_id = c.id
+             WHERE q.id = %d",
+            $question_id
+        ));
+        
+        if (!$question) {
+            return null;
+        }
+        
+        // Get options
+        $question->options = $this->get_question_options($question_id);
+        
+        return $question;
     }
     
     /**
-     * Initialize components
+     * Get question options
      */
-    private function init_components() {
-        // Initialize model (data handling)
-        $this->model = new Vefify_Question_Model();
-        
-        // Initialize admin interface (only in admin)
-        if (is_admin()) {
-            $this->bank = new Vefify_Question_Bank();
-        }
-        
-        // Initialize REST API endpoints
-        $this->endpoints = new Vefify_Question_Endpoints();
-        
-        // Hook into WordPress
-        $this->init_hooks();
+    public function get_question_options($question_id) {
+        return $this->db->get_results($this->db->prepare(
+            "SELECT * FROM {$this->options_table} 
+             WHERE question_id = %d 
+             ORDER BY order_index",
+            $question_id
+        ));
     }
     
     /**
-     * Initialize WordPress hooks
+     * Get questions with filters and pagination
      */
-    private function init_hooks() {
-        // Legacy function compatibility
-        add_action('init', array($this, 'register_legacy_functions'));
+    public function get_questions($args = array()) {
+        $defaults = array(
+            'campaign_id' => null,
+            'category' => null,
+            'difficulty' => null,
+            'is_active' => 1,
+            'per_page' => 20,
+            'page' => 1,
+            'search' => null,
+            'orderby' => 'created_at',
+            'order' => 'DESC'
+        );
         
-        // Shortcode support
-        add_shortcode('vefify_quiz_question', array($this, 'render_single_question_shortcode'));
+        $args = array_merge($defaults, $args);
         
-        // AJAX handlers for public-facing functionality
-        add_action('wp_ajax_vefify_get_quiz_questions', array($this, 'ajax_get_quiz_questions'));
-        add_action('wp_ajax_nopriv_vefify_get_quiz_questions', array($this, 'ajax_get_quiz_questions'));
+        // Build WHERE clause
+        $where_conditions = array('1=1');
+        $params = array();
         
-        add_action('wp_ajax_vefify_validate_quiz_answers', array($this, 'ajax_validate_quiz_answers'));
-        add_action('wp_ajax_nopriv_vefify_validate_quiz_answers', array($this, 'ajax_validate_quiz_answers'));
+        if ($args['campaign_id']) {
+            $where_conditions[] = 'q.campaign_id = %d';
+            $params[] = $args['campaign_id'];
+        }
         
-        // Enqueue frontend scripts
-        add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_scripts'));
+        if ($args['category']) {
+            $where_conditions[] = 'q.category = %s';
+            $params[] = $args['category'];
+        }
+        
+        if ($args['difficulty']) {
+            $where_conditions[] = 'q.difficulty = %s';
+            $params[] = $args['difficulty'];
+        }
+        
+        if ($args['is_active'] !== null) {
+            $where_conditions[] = 'q.is_active = %d';
+            $params[] = $args['is_active'];
+        }
+        
+        if ($args['search']) {
+            $where_conditions[] = 'q.question_text LIKE %s';
+            $params[] = '%' . $this->db->esc_like($args['search']) . '%';
+        }
+        
+        $where_clause = 'WHERE ' . implode(' AND ', $where_conditions);
+        
+        // Get total count
+        $total_query = "SELECT COUNT(*) FROM {$this->questions_table} q {$where_clause}";
+        $total = $this->db->get_var($this->db->prepare($total_query, $params));
+        
+        // Get questions with pagination
+        $offset = ($args['page'] - 1) * $args['per_page'];
+        $orderby = sanitize_sql_orderby($args['orderby']);
+        $order = strtoupper($args['order']) === 'ASC' ? 'ASC' : 'DESC';
+        
+        $limit_clause = "ORDER BY q.{$orderby} {$order} LIMIT %d OFFSET %d";
+        $params[] = $args['per_page'];
+        $params[] = $offset;
+        
+        $questions_query = "
+            SELECT q.*, c.name as campaign_name
+            FROM {$this->questions_table} q
+            LEFT JOIN {$this->campaigns_table} c ON q.campaign_id = c.id
+            {$where_clause}
+            {$limit_clause}
+        ";
+        
+        $questions = $this->db->get_results($this->db->prepare($questions_query, $params));
+        
+        // Get options for each question
+        foreach ($questions as &$question) {
+            $question->options = $this->get_question_options($question->id);
+        }
+        
+        return array(
+            'questions' => $questions,
+            'total' => intval($total),
+            'pages' => ceil($total / $args['per_page']),
+            'current_page' => $args['page']
+        );
     }
     
     /**
-     * Register legacy functions for backward compatibility
+     * Create new question
      */
-    public function register_legacy_functions() {
-        // These functions maintain compatibility with existing code
-        if (!function_exists('vefify_get_question')) {
-            function vefify_get_question($question_id) {
-                $module = Vefify_Question_Module::get_instance();
-                return $module->get_model()->get_question($question_id);
-            }
+    public function create_question($data) {
+        // Validate required fields
+        if (empty($data['question_text'])) {
+            return new WP_Error('missing_question_text', 'Question text is required');
         }
         
-        if (!function_exists('vefify_create_question')) {
-            function vefify_create_question($data) {
-                $module = Vefify_Question_Module::get_instance();
-                return $module->get_model()->create_question($data);
-            }
+        if (empty($data['options']) || !is_array($data['options'])) {
+            return new WP_Error('missing_options', 'Question options are required');
         }
         
-        if (!function_exists('vefify_update_question')) {
-            function vefify_update_question($question_id, $data) {
-                $module = Vefify_Question_Module::get_instance();
-                return $module->get_model()->update_question($question_id, $data);
-            }
-        }
-        
-        if (!function_exists('vefify_delete_question')) {
-            function vefify_delete_question($question_id) {
-                $module = Vefify_Question_Module::get_instance();
-                return $module->get_model()->delete_question($question_id);
-            }
-        }
-        
-        if (!function_exists('vefify_get_questions')) {
-            function vefify_get_questions($args = array()) {
-                $module = Vefify_Question_Module::get_instance();
-                return $module->get_model()->get_questions($args);
-            }
-        }
-        
-        if (!function_exists('vefify_validate_question_data')) {
-            function vefify_validate_question_data($data) {
-                $module = Vefify_Question_Module::get_instance();
-                return $module->get_model()->validate_question_data($data);
-            }
-        }
-    }
-    
-    /**
-     * Enqueue frontend scripts for quiz functionality
-     */
-    public function enqueue_frontend_scripts() {
-        // Only enqueue on pages that might have quiz shortcodes
-        global $post;
-        
-        if (is_a($post, 'WP_Post') && (
-            has_shortcode($post->post_content, 'vefify_quiz') || 
-            has_shortcode($post->post_content, 'vefify_quiz_question')
-        )) {
-            wp_enqueue_script(
-                'vefify-question-frontend',
-                plugin_dir_url(__FILE__) . 'assets/question-frontend.js',
-                array('jquery'),
-                VEFIFY_QUIZ_VERSION,
-                true
-            );
-            
-            wp_enqueue_style(
-                'vefify-question-frontend',
-                plugin_dir_url(__FILE__) . 'assets/question-frontend.css',
-                array(),
-                VEFIFY_QUIZ_VERSION
-            );
-            
-            // Localize script with API endpoints
-            wp_localize_script('vefify-question-frontend', 'vefifyQuestions', array(
-                'restUrl' => rest_url('vefify/v1/'),
-                'nonce' => wp_create_nonce('wp_rest'),
-                'ajaxUrl' => admin_url('admin-ajax.php'),
-                'strings' => array(
-                    'loading' => __('Loading questions...', 'vefify-quiz'),
-                    'error' => __('An error occurred. Please try again.', 'vefify-quiz'),
-                    'submit' => __('Submit Answer', 'vefify-quiz'),
-                    'next' => __('Next Question', 'vefify-quiz'),
-                    'previous' => __('Previous Question', 'vefify-quiz'),
-                    'finish' => __('Finish Quiz', 'vefify-quiz')
-                )
-            ));
-        }
-    }
-    
-    /**
-     * AJAX handler to get quiz questions
-     */
-    public function ajax_get_quiz_questions() {
-        // Verify nonce
-        if (!wp_verify_nonce($_POST['nonce'] ?? '', 'wp_rest')) {
-            wp_send_json_error('Security check failed');
-        }
-        
-        $campaign_id = intval($_POST['campaign_id'] ?? 0);
-        $count = intval($_POST['count'] ?? 5);
-        $difficulty = sanitize_text_field($_POST['difficulty'] ?? '');
-        $category = sanitize_text_field($_POST['category'] ?? '');
-        
-        if (!$campaign_id) {
-            wp_send_json_error('Campaign ID is required');
-        }
-        
-        try {
-            // Use the model to get questions
-            $args = array(
-                'campaign_id' => $campaign_id,
-                'is_active' => 1,
-                'per_page' => $count * 2, // Get more for randomization
-                'page' => 1
-            );
-            
-            if ($difficulty) {
-                $args['difficulty'] = $difficulty;
-            }
-            
-            if ($category) {
-                $args['category'] = $category;
-            }
-            
-            $result = $this->model->get_questions($args);
-            $questions = $result['questions'];
-            
-            // Randomize and limit
-            shuffle($questions);
-            $questions = array_slice($questions, 0, $count);
-            
-            // Format for frontend (remove sensitive data)
-            $formatted_questions = array();
-            foreach ($questions as $question) {
-                $formatted_question = array(
-                    'id' => $question->id,
-                    'question_text' => $question->question_text,
-                    'question_type' => $question->question_type,
-                    'category' => $question->category,
-                    'difficulty' => $question->difficulty,
-                    'points' => $question->points,
-                    'options' => array()
-                );
-                
-                // Get options without correct answers
-                global $wpdb;
-                $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
-                $options = $wpdb->get_results($wpdb->prepare(
-                    "SELECT id, option_text, order_index 
-                     FROM {$table_prefix}question_options 
-                     WHERE question_id = %d 
-                     ORDER BY order_index",
-                    $question->id
-                ));
-                
-                foreach ($options as $option) {
-                    $formatted_question['options'][] = array(
-                        'id' => $option->id,
-                        'text' => $option->option_text,
-                        'order_index' => $option->order_index
-                    );
+        // Validate at least one correct answer
+        $has_correct = false;
+        foreach ($data['options'] as $option) {
+            if (!empty($option['is_correct']) || !empty($option['option_text'])) {
+                if (!empty($option['is_correct'])) {
+                    $has_correct = true;
                 }
-                
-                $formatted_questions[] = $formatted_question;
             }
-            
-            wp_send_json_success(array(
-                'questions' => $formatted_questions,
-                'total_available' => $result['total']
-            ));
-            
-        } catch (Exception $e) {
-            wp_send_json_error('Failed to load questions: ' . $e->getMessage());
-        }
-    }
-    
-    /**
-     * AJAX handler to validate quiz answers
-     */
-    public function ajax_validate_quiz_answers() {
-        // Verify nonce
-        if (!wp_verify_nonce($_POST['nonce'] ?? '', 'wp_rest')) {
-            wp_send_json_error('Security check failed');
         }
         
-        $answers = $_POST['answers'] ?? array();
-        $session_id = sanitize_text_field($_POST['session_id'] ?? '');
-        
-        if (!is_array($answers) || empty($answers)) {
-            wp_send_json_error('Invalid answers format');
+        if (!$has_correct) {
+            return new WP_Error('no_correct_answer', 'At least one correct answer is required');
         }
+        
+        // Start transaction
+        $this->db->query('START TRANSACTION');
         
         try {
-            $results = array();
-            $total_score = 0;
-            $total_questions = count($answers);
+            // Prepare question data
+            $question_data = array(
+                'campaign_id' => !empty($data['campaign_id']) ? intval($data['campaign_id']) : null,
+                'question_text' => sanitize_textarea_field($data['question_text']),
+                'question_type' => sanitize_text_field($data['question_type'] ?? 'multiple_choice'),
+                'category' => sanitize_text_field($data['category'] ?? 'general'),
+                'difficulty' => sanitize_text_field($data['difficulty'] ?? 'medium'),
+                'points' => intval($data['points'] ?? 1),
+                'explanation' => sanitize_textarea_field($data['explanation'] ?? ''),
+                'order_index' => intval($data['order_index'] ?? 0),
+                'is_active' => 1,
+                'created_at' => current_time('mysql'),
+                'updated_at' => current_time('mysql')
+            );
             
-            foreach ($answers as $question_id => $user_answers) {
-                $question_id = intval($question_id);
-                $question = $this->model->get_question($question_id);
-                
-                if (!$question) {
+            // Insert question
+            $result = $this->db->insert($this->questions_table, $question_data);
+            
+            if ($result === false) {
+                throw new Exception('Failed to create question: ' . $this->db->last_error);
+            }
+            
+            $question_id = $this->db->insert_id;
+            
+            // Insert options
+            foreach ($data['options'] as $index => $option) {
+                // Skip empty options
+                if (empty($option['option_text']) && empty($option['text'])) {
                     continue;
                 }
                 
-                // Get correct answers
-                $correct_answers = array();
-                foreach ($question->options as $option) {
-                    if ($option->is_correct) {
-                        $correct_answers[] = $option->id;
-                    }
-                }
+                $option_text = !empty($option['option_text']) ? $option['option_text'] : $option['text'];
                 
-                // Normalize user answers
-                if (!is_array($user_answers)) {
-                    $user_answers = array($user_answers);
-                }
-                $user_answers = array_map('intval', $user_answers);
-                
-                // Check if correct
-                $is_correct = (
-                    count($correct_answers) === count($user_answers) &&
-                    empty(array_diff($correct_answers, $user_answers))
-                );
-                
-                if ($is_correct) {
-                    $total_score += $question->points;
-                }
-                
-                $results[$question_id] = array(
+                $option_data = array(
                     'question_id' => $question_id,
-                    'user_answers' => $user_answers,
-                    'correct_answers' => $correct_answers,
-                    'is_correct' => $is_correct,
-                    'points_earned' => $is_correct ? $question->points : 0,
-                    'max_points' => $question->points,
-                    'explanation' => $question->explanation
+                    'option_text' => sanitize_textarea_field($option_text),
+                    'is_correct' => !empty($option['is_correct']) ? 1 : 0,
+                    'order_index' => intval($index),
+                    'explanation' => sanitize_textarea_field($option['explanation'] ?? ''),
+                    'created_at' => current_time('mysql'),
+                    'updated_at' => current_time('mysql')
                 );
+                
+                $option_result = $this->db->insert($this->options_table, $option_data);
+                
+                if ($option_result === false) {
+                    throw new Exception('Failed to create option: ' . $this->db->last_error);
+                }
             }
             
-            // Calculate percentage
-            $max_possible_score = array_sum(array_column($results, 'max_points'));
-            $percentage = $max_possible_score > 0 ? round(($total_score / $max_possible_score) * 100, 2) : 0;
-            
-            wp_send_json_success(array(
-                'results' => $results,
-                'summary' => array(
-                    'total_questions' => $total_questions,
-                    'correct_answers' => count(array_filter($results, function($r) { return $r['is_correct']; })),
-                    'total_score' => $total_score,
-                    'max_possible_score' => $max_possible_score,
-                    'percentage' => $percentage
-                )
-            ));
+            $this->db->query('COMMIT');
+            return $question_id;
             
         } catch (Exception $e) {
-            wp_send_json_error('Failed to validate answers: ' . $e->getMessage());
+            $this->db->query('ROLLBACK');
+            return new WP_Error('db_error', $e->getMessage());
         }
     }
     
     /**
-     * Shortcode to render a single question
+     * Update question
      */
-    public function render_single_question_shortcode($atts) {
-        $atts = shortcode_atts(array(
-            'id' => 0,
-            'show_explanation' => false,
-            'show_correct' => false,
-            'interactive' => true
-        ), $atts);
-        
-        $question_id = intval($atts['id']);
+    public function update_question($question_id, $data) {
         if (!$question_id) {
-            return '<div class="vefify-error">Question ID is required</div>';
+            return new WP_Error('invalid_id', 'Invalid question ID');
         }
         
-        $question = $this->model->get_question($question_id);
+        // Check if question exists
+        $existing = $this->get_question($question_id);
+        if (!$existing) {
+            return new WP_Error('question_not_found', 'Question not found');
+        }
+        
+        // Start transaction
+        $this->db->query('START TRANSACTION');
+        
+        try {
+            // Update question
+            $question_data = array(
+                'question_text' => sanitize_textarea_field($data['question_text']),
+                'question_type' => sanitize_text_field($data['question_type'] ?? 'multiple_choice'),
+                'category' => sanitize_text_field($data['category'] ?? 'general'),
+                'difficulty' => sanitize_text_field($data['difficulty'] ?? 'medium'),
+                'points' => intval($data['points'] ?? 1),
+                'explanation' => sanitize_textarea_field($data['explanation'] ?? ''),
+                'order_index' => intval($data['order_index'] ?? 0),
+                'updated_at' => current_time('mysql')
+            );
+            
+            if (isset($data['campaign_id'])) {
+                $question_data['campaign_id'] = !empty($data['campaign_id']) ? intval($data['campaign_id']) : null;
+            }
+            
+            $result = $this->db->update(
+                $this->questions_table,
+                $question_data,
+                array('id' => $question_id)
+            );
+            
+            if ($result === false) {
+                throw new Exception('Failed to update question: ' . $this->db->last_error);
+            }
+            
+            // Delete existing options
+            $delete_result = $this->db->delete(
+                $this->options_table,
+                array('question_id' => $question_id)
+            );
+            
+            if ($delete_result === false) {
+                throw new Exception('Failed to delete existing options: ' . $this->db->last_error);
+            }
+            
+            // Insert new options
+            if (!empty($data['options']) && is_array($data['options'])) {
+                foreach ($data['options'] as $index => $option) {
+                    // Skip empty options
+                    if (empty($option['option_text']) && empty($option['text'])) {
+                        continue;
+                    }
+                    
+                    $option_text = !empty($option['option_text']) ? $option['option_text'] : $option['text'];
+                    
+                    $option_data = array(
+                        'question_id' => $question_id,
+                        'option_text' => sanitize_textarea_field($option_text),
+                        'is_correct' => !empty($option['is_correct']) ? 1 : 0,
+                        'order_index' => intval($index),
+                        'explanation' => sanitize_textarea_field($option['explanation'] ?? ''),
+                        'created_at' => current_time('mysql'),
+                        'updated_at' => current_time('mysql')
+                    );
+                    
+                    $option_result = $this->db->insert($this->options_table, $option_data);
+                    
+                    if ($option_result === false) {
+                        throw new Exception('Failed to create option: ' . $this->db->last_error);
+                    }
+                }
+            }
+            
+            $this->db->query('COMMIT');
+            return true;
+            
+        } catch (Exception $e) {
+            $this->db->query('ROLLBACK');
+            return new WP_Error('db_error', $e->getMessage());
+        }
+    }
+    
+    /**
+     * Delete question (soft delete)
+     */
+    public function delete_question($question_id) {
+        if (!$question_id) {
+            return new WP_Error('invalid_id', 'Invalid question ID');
+        }
+        
+        // Check if question exists
+        $question = $this->get_question($question_id);
         if (!$question) {
-            return '<div class="vefify-error">Question not found</div>';
+            return new WP_Error('question_not_found', 'Question not found');
         }
         
-        ob_start();
-        ?>
-        <div class="vefify-single-question" data-question-id="<?php echo $question->id; ?>">
-            <div class="question-header">
-                <h3 class="question-text"><?php echo esc_html($question->question_text); ?></h3>
-                <div class="question-meta">
-                    <span class="category"><?php echo esc_html(ucfirst($question->category ?: 'General')); ?></span>
-                    <span class="difficulty difficulty-<?php echo esc_attr($question->difficulty); ?>">
-                        <?php echo esc_html(ucfirst($question->difficulty)); ?>
-                    </span>
-                    <span class="points"><?php echo $question->points; ?> point<?php echo $question->points !== 1 ? 's' : ''; ?></span>
-                </div>
-            </div>
-            
-            <div class="question-options">
-                <?php foreach ($question->options as $index => $option): ?>
-                    <div class="option-item <?php echo $atts['show_correct'] && $option->is_correct ? 'correct' : ''; ?>">
-                        <?php if ($atts['interactive']): ?>
-                            <label>
-                                <input type="<?php echo $question->question_type === 'multiple_select' ? 'checkbox' : 'radio'; ?>" 
-                                       name="question_<?php echo $question->id; ?>" 
-                                       value="<?php echo $option->id; ?>"
-                                       <?php echo $atts['show_correct'] && $option->is_correct ? 'checked' : ''; ?>>
-                                <span class="option-text"><?php echo esc_html($option->option_text); ?></span>
-                            </label>
-                        <?php else: ?>
-                            <span class="option-marker"><?php echo chr(65 + $index); ?>.</span>
-                            <span class="option-text"><?php echo esc_html($option->option_text); ?></span>
-                        <?php endif; ?>
-                        
-                        <?php if ($atts['show_correct'] && $option->explanation): ?>
-                            <div class="option-explanation"><?php echo esc_html($option->explanation); ?></div>
-                        <?php endif; ?>
-                    </div>
-                <?php endforeach; ?>
-            </div>
-            
-            <?php if ($atts['show_explanation'] && $question->explanation): ?>
-                <div class="question-explanation">
-                    <h4>Explanation:</h4>
-                    <p><?php echo esc_html($question->explanation); ?></p>
-                </div>
-            <?php endif; ?>
-            
-            <?php if ($atts['interactive']): ?>
-                <div class="question-actions">
-                    <button type="button" class="vefify-submit-answer button button-primary">
-                        Submit Answer
-                    </button>
-                </div>
-            <?php endif; ?>
-        </div>
-        <?php
-        
-        return ob_get_clean();
-    }
-    
-    /**
-     * Get model instance
-     */
-    public function get_model() {
-        return $this->model;
-    }
-    
-    /**
-     * Get bank instance (admin only)
-     */
-    public function get_bank() {
-        return $this->bank;
-    }
-    
-    /**
-     * Get endpoints instance
-     */
-    public function get_endpoints() {
-        return $this->endpoints;
-    }
-    
-    /**
-     * Utility method to get questions for a campaign
-     */
-    public function get_campaign_questions($campaign_id, $count = 5, $options = array()) {
-        $defaults = array(
-            'difficulty' => '',
-            'category' => '',
-            'randomize' => true,
-            'include_correct' => false
+        // Soft delete by setting is_active = 0
+        $result = $this->db->update(
+            $this->questions_table,
+            array(
+                'is_active' => 0,
+                'updated_at' => current_time('mysql')
+            ),
+            array('id' => $question_id)
         );
         
-        $options = wp_parse_args($options, $defaults);
+        if ($result === false) {
+            return new WP_Error('db_error', 'Failed to delete question: ' . $this->db->last_error);
+        }
         
-        $args = array(
-            'campaign_id' => $campaign_id,
-            'is_active' => 1,
-            'per_page' => $options['randomize'] ? $count * 2 : $count,
-            'page' => 1
+        return true;
+    }
+    
+    /**
+     * Duplicate question
+     */
+    public function duplicate_question($question_id) {
+        $question = $this->get_question($question_id);
+        
+        if (!$question) {
+            return new WP_Error('question_not_found', 'Question not found');
+        }
+        
+        // Prepare data for new question
+        $data = array(
+            'campaign_id' => $question->campaign_id,
+            'question_text' => $question->question_text . ' (Copy)',
+            'question_type' => $question->question_type,
+            'category' => $question->category,
+            'difficulty' => $question->difficulty,
+            'points' => $question->points,
+            'explanation' => $question->explanation,
+            'options' => array()
         );
         
-        if ($options['difficulty']) {
-            $args['difficulty'] = $options['difficulty'];
-        }
-        
-        if ($options['category']) {
-            $args['category'] = $options['category'];
-        }
-        
-        $result = $this->model->get_questions($args);
-        $questions = $result['questions'];
-        
-        // Randomize if requested
-        if ($options['randomize']) {
-            shuffle($questions);
-            $questions = array_slice($questions, 0, $count);
-        }
-        
-        // Format questions
-        $formatted_questions = array();
-        foreach ($questions as $question) {
-            $formatted_question = array(
-                'id' => $question->id,
-                'question_text' => $question->question_text,
-                'question_type' => $question->question_type,
-                'category' => $question->category,
-                'difficulty' => $question->difficulty,
-                'points' => $question->points,
-                'explanation' => $question->explanation,
-                'options' => array()
+        // Copy options
+        foreach ($question->options as $option) {
+            $data['options'][] = array(
+                'option_text' => $option->option_text,
+                'is_correct' => $option->is_correct,
+                'explanation' => $option->explanation
             );
-            
-            // Get options
-            global $wpdb;
-            $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
-            $options_query = "
-                SELECT id, option_text, order_index" . 
-                ($options['include_correct'] ? ", is_correct" : "") . "
-                FROM {$table_prefix}question_options 
-                WHERE question_id = %d 
-                ORDER BY order_index
-            ";
-            
-            $question_options = $wpdb->get_results($wpdb->prepare($options_query, $question->id));
-            
-            foreach ($question_options as $option) {
-                $option_data = array(
-                    'id' => $option->id,
-                    'text' => $option->option_text,
-                    'order_index' => $option->order_index
-                );
-                
-                if ($options['include_correct'] && isset($option->is_correct)) {
-                    $option_data['is_correct'] = (bool) $option->is_correct;
-                }
-                
-                $formatted_question['options'][] = $option_data;
-            }
-            
-            $formatted_questions[] = $formatted_question;
         }
         
-        return $formatted_questions;
+        return $this->create_question($data);
     }
     
     /**
-     * Validate answers and return detailed results
+     * Get question categories
      */
-    public function validate_answers($answers, $include_explanations = true) {
-        if (!is_array($answers) || empty($answers)) {
-            return new WP_Error('invalid_answers', 'Invalid answers format');
+    public function get_categories() {
+        $categories = $this->db->get_col(
+            "SELECT DISTINCT category 
+             FROM {$this->questions_table} 
+             WHERE category IS NOT NULL AND category != '' AND is_active = 1
+             ORDER BY category"
+        );
+        
+        return array_filter($categories);
+    }
+    
+    /**
+     * Get question statistics
+     */
+    public function get_statistics($campaign_id = null) {
+        $where_clause = '';
+        $params = array();
+        
+        if ($campaign_id) {
+            $where_clause = 'WHERE campaign_id = %d';
+            $params[] = $campaign_id;
         }
         
-        $results = array();
-        $total_score = 0;
-        $total_questions = count($answers);
+        $query = "
+            SELECT 
+                COUNT(*) as total,
+                COUNT(CASE WHEN is_active = 1 THEN 1 END) as active,
+                COUNT(CASE WHEN is_active = 0 THEN 1 END) as inactive,
+                COUNT(CASE WHEN difficulty = 'easy' THEN 1 END) as easy,
+                COUNT(CASE WHEN difficulty = 'medium' THEN 1 END) as medium,
+                COUNT(CASE WHEN difficulty = 'hard' THEN 1 END) as hard,
+                COUNT(CASE WHEN question_type = 'multiple_choice' THEN 1 END) as multiple_choice,
+                COUNT(CASE WHEN question_type = 'true_false' THEN 1 END) as true_false
+            FROM {$this->questions_table}
+            {$where_clause}
+        ";
         
-        foreach ($answers as $question_id => $user_answers) {
-            $question_id = intval($question_id);
-            $question = $this->model->get_question($question_id);
+        $stats = !empty($params) 
+            ? $this->db->get_row($this->db->prepare($query, $params), ARRAY_A)
+            : $this->db->get_row($query, ARRAY_A);
+        
+        return $stats ?: array();
+    }
+    
+    /**
+     * Validate question data
+     */
+    public function validate_question_data($data) {
+        $errors = array();
+        
+        // Check required fields
+        if (empty($data['question_text'])) {
+            $errors[] = 'Question text is required';
+        }
+        
+        if (empty($data['options']) || !is_array($data['options'])) {
+            $errors[] = 'At least one option is required';
+        } else {
+            // Check options
+            $filled_options = 0;
+            $correct_options = 0;
             
-            if (!$question) {
-                continue;
-            }
-            
-            // Get correct answers
-            $correct_answers = array();
-            foreach ($question->options as $option) {
-                if ($option->is_correct) {
-                    $correct_answers[] = $option->id;
+            foreach ($data['options'] as $option) {
+                if (!empty($option['option_text']) || !empty($option['text'])) {
+                    $filled_options++;
+                    
+                    if (!empty($option['is_correct'])) {
+                        $correct_options++;
+                    }
                 }
             }
             
-            // Normalize user answers
-            if (!is_array($user_answers)) {
-                $user_answers = array($user_answers);
-            }
-            $user_answers = array_map('intval', $user_answers);
-            
-            // Check if correct
-            $is_correct = (
-                count($correct_answers) === count($user_answers) &&
-                empty(array_diff($correct_answers, $user_answers))
-            );
-            
-            if ($is_correct) {
-                $total_score += $question->points;
+            if ($filled_options < 2) {
+                $errors[] = 'At least 2 options are required';
             }
             
-            $result = array(
-                'question_id' => $question_id,
-                'question_text' => $question->question_text,
-                'user_answers' => $user_answers,
-                'correct_answers' => $correct_answers,
-                'is_correct' => $is_correct,
-                'points_earned' => $is_correct ? $question->points : 0,
-                'max_points' => $question->points
-            );
-            
-            if ($include_explanations && $question->explanation) {
-                $result['explanation'] = $question->explanation;
+            if ($correct_options === 0) {
+                $errors[] = 'At least one correct answer is required';
             }
             
-            $results[$question_id] = $result;
+            // Check question type specific rules
+            $question_type = $data['question_type'] ?? 'multiple_choice';
+            
+            if ($question_type === 'true_false') {
+                if ($filled_options !== 2) {
+                    $errors[] = 'True/False questions must have exactly 2 options';
+                }
+                
+                if ($correct_options !== 1) {
+                    $errors[] = 'True/False questions must have exactly 1 correct answer';
+                }
+            }
         }
         
-        // Calculate summary statistics
-        $max_possible_score = array_sum(array_column($results, 'max_points'));
-        $correct_count = count(array_filter($results, function($r) { return $r['is_correct']; }));
-        $percentage = $max_possible_score > 0 ? round(($total_score / $max_possible_score) * 100, 2) : 0;
+        // Validate other fields
+        if (!empty($data['points']) && (!is_numeric($data['points']) || $data['points'] < 1)) {
+            $errors[] = 'Points must be a positive number';
+        }
         
-        return array(
-            'results' => $results,
-            'summary' => array(
-                'total_questions' => $total_questions,
-                'correct_answers' => $correct_count,
-                'incorrect_answers' => $total_questions - $correct_count,
-                'total_score' => $total_score,
-                'max_possible_score' => $max_possible_score,
-                'percentage' => $percentage,
-                'grade' => $this->calculate_grade($percentage)
-            )
-        );
-    }
-    
-    /**
-     * Calculate grade based on percentage
-     */
-    private function calculate_grade($percentage) {
-        if ($percentage >= 90) return 'A';
-        if ($percentage >= 80) return 'B';
-        if ($percentage >= 70) return 'C';
-        if ($percentage >= 60) return 'D';
-        return 'F';
+        if (!empty($data['difficulty']) && !in_array($data['difficulty'], array('easy', 'medium', 'hard'))) {
+            $errors[] = 'Difficulty must be easy, medium, or hard';
+        }
+        
+        return $errors;
     }
 }
