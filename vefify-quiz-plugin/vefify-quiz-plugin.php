@@ -581,7 +581,6 @@ if (defined('WP_DEBUG') && WP_DEBUG) {
         }
     });
 }
-
 // Add admin notice to show if things are working
 add_action('admin_notices', function() {
     if (isset($_GET['page']) && $_GET['page'] === 'vefify-questions') {
