@@ -23,6 +23,7 @@ define('VEFIFY_QUIZ_DB_VERSION', '1.0.0');
 /**
  * Main Plugin Class - Centralized Coordinator
  */
+ 
 class Vefify_Quiz_Plugin {
     
     private static $instance = null;
