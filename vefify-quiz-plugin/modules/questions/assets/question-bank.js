@@ -1,6 +1,8 @@
 /**
- * Question Bank JavaScript
+ * Question Bank JavaScript - BULLETPROOF VERSION
  * File: modules/questions/assets/question-bank.js
+ * 
+ * This version includes robust error handling and fallbacks to prevent undefined errors
  */
 
 jQuery(document).ready(function($) {
@@ -10,61 +12,558 @@ jQuery(document).ready(function($) {
     let optionCount = 0;
     let currentQuestionType = 'single_select';
     
+    // CRITICAL: Preview state management to prevent flickering
+    let previewStates = {}; // Tracks each question's preview state
+    let isAnyPreviewLoading = false; // Prevents multiple AJAX calls
+    
+    // DEFENSIVE: Safe access to WordPress globals with fallbacks
+    const safeGlobals = {
+        ajaxurl: window.ajaxurl || (window.vefifyQuestionBank && window.vefifyQuestionBank.ajaxurl) || '/wp-admin/admin-ajax.php',
+        nonce: getSecureNonce(),
+        restUrl: (window.vefifyQuestionBank && window.vefifyQuestionBank.restUrl) || '/wp-json/vefify/v1/'
+    };
+    
+    /**
+     * Safely get nonce from multiple possible sources
+     */
+    function getSecureNonce() {
+        // Try multiple sources for the nonce in order of preference
+        if (window.vefifyQuestionBank && window.vefifyQuestionBank.nonce) {
+            return window.vefifyQuestionBank.nonce;
+        }
+        
+        if (window.wp && window.wp.ajax && window.wp.ajax.settings && window.wp.ajax.settings.nonce) {
+            return window.wp.ajax.settings.nonce;
+        }
+        
+        // Try jQuery AJAX settings
+        if ($.ajaxSetup().headers && $.ajaxSetup().headers['X-WP-Nonce']) {
+            return $.ajaxSetup().headers['X-WP-Nonce'];
+        }
+        
+        // Look for nonce in meta tags (common WordPress pattern)
+        const metaNonce = $('meta[name="wp-nonce"]').attr('content');
+        if (metaNonce) {
+            return metaNonce;
+        }
+        
+        // Look for nonce in any form on the page
+        const formNonce = $('input[name="_wpnonce"]').first().val();
+        if (formNonce) {
+            return formNonce;
+        }
+        
+        // Last resort: empty string (will likely cause backend validation to fail gracefully)
+        console.warn('Vefify Quiz: No WordPress nonce found. Preview functionality may be limited.');
+        return '';
+    }
+    
     // Initialize
     init();
     
     /**
-     * Initialize all functionality
+     * Initialize all functionality with enhanced error handling
      */
     function init() {
-        optionCount = $('#answer-options .option-row').length;
-        currentQuestionType = $('#question_type').val() || 'single_select';
-        
-        console.log('Question Bank initialized:', {
-            optionCount: optionCount,
-            questionType: currentQuestionType
-        });
-        
-        // Setup event handlers
-        setupEventHandlers();
-        
-        // Initialize question type (with delay to ensure DOM is ready)
-        setTimeout(function() {
-            updateQuestionType();
-        }, 300);
+        try {
+            optionCount = $('#answer-options .option-row').length;
+            currentQuestionType = $('#question_type').val() || 'single_select';
+            
+            console.log('Question Bank initialized:', {
+                optionCount: optionCount,
+                questionType: currentQuestionType,
+                ajaxUrl: safeGlobals.ajaxurl,
+                hasNonce: !!safeGlobals.nonce
+            });
+            
+            // Setup event handlers
+            setupEventHandlers();
+            
+            // Initialize question type (with delay to ensure DOM is ready)
+            setTimeout(function() {
+                updateQuestionType();
+            }, 300);
+            
+            // Initialize preview states for existing questions
+            initializePreviewStates();
+            
+        } catch (error) {
+            console.error('Vefify Quiz initialization error:', error);
+            showError('Failed to initialize question bank. Please refresh the page.');
+        }
     }
     
     /**
-     * Setup all event handlers
+     * Initialize preview states for all questions on the page
+     */
+    function initializePreviewStates() {
+        try {
+            $('.toggle-preview').each(function() {
+                const questionId = $(this).data('question-id');
+                if (questionId) {
+                    // Initialize each question with closed state
+                    previewStates[questionId] = {
+                        isOpen: false,
+                        isLoading: false,
+                        hasLoaded: false,
+                        button: $(this),
+                        previewRow: $('#preview-' + questionId)
+                    };
+                    
+                    // Ensure preview row is hidden initially
+                    $('#preview-' + questionId).hide();
+                    
+                    console.log('Initialized preview state for question:', questionId);
+                }
+            });
+            
+            console.log('All preview states initialized:', Object.keys(previewStates).length, 'questions');
+            
+        } catch (error) {
+            console.error('Error initializing preview states:', error);
+        }
+    }
+    
+    /**
+     * Setup all event handlers with error boundaries
      */
     function setupEventHandlers() {
-        // Question type change
-        $('#question_type').off('change.vefify').on('change.vefify', function() {
-            currentQuestionType = $(this).val();
-            console.log('Question type changed to:', currentQuestionType);
-            updateQuestionType();
-        });
-        
-        // Add option button
-        $('#add-option').off('click.vefify').on('click.vefify', handleAddOption);
-        
-        // Remove option button (delegated)
-        $(document).off('click.vefify', '.remove-option').on('click.vefify', '.remove-option', handleRemoveOption);
-        
-        // Correct answer checkbox (delegated)
-        $(document).off('change.vefify', '.option-correct-checkbox').on('change.vefify', '.option-correct-checkbox', handleCorrectAnswerChange);
-        
-        // Form submission
-        $('#question-form').off('submit.vefify').on('submit.vefify', handleFormSubmit);
-        
-        // Preview button (delegated)
-        $(document).off('click.vefify', '.toggle-preview').on('click.vefify', '.toggle-preview', handlePreviewToggle);
-        
-        // Dismiss notices
-        $(document).off('click.vefify', '.notice-dismiss').on('click.vefify', '.notice-dismiss', function() {
-            $(this).parent().fadeOut();
-        });
+        try {
+            // Question type change
+            $('#question_type').off('change.vefify').on('change.vefify', function() {
+                try {
+                    currentQuestionType = $(this).val();
+                    console.log('Question type changed to:', currentQuestionType);
+                    updateQuestionType();
+                } catch (error) {
+                    console.error('Error handling question type change:', error);
+                }
+            });
+            
+            // Add option button
+            $('#add-option').off('click.vefify').on('click.vefify', handleAddOption);
+            
+            // Remove option button (delegated)
+            $(document).off('click.vefify', '.remove-option').on('click.vefify', '.remove-option', handleRemoveOption);
+            
+            // Correct answer checkbox (delegated)
+            $(document).off('change.vefify', '.option-correct-checkbox').on('change.vefify', '.option-correct-checkbox', handleCorrectAnswerChange);
+            
+            // Form submission
+            $('#question-form').off('submit.vefify').on('submit.vefify', handleFormSubmit);
+            
+            // FIXED: Preview button handler with comprehensive error handling
+            $(document).off('click.vefify', '.toggle-preview').on('click.vefify', '.toggle-preview', handlePreviewToggle);
+            
+            // Dismiss notices
+            $(document).off('click.vefify', '.notice-dismiss').on('click.vefify', '.notice-dismiss', function() {
+                $(this).parent().fadeOut();
+            });
+            
+            // Add retry preview handler
+            $(document).off('click.vefify', '.retry-preview').on('click.vefify', '.retry-preview', handleRetryPreview);
+            
+        } catch (error) {
+            console.error('Error setting up event handlers:', error);
+        }
     }
+    
+    /**
+     * BULLETPROOF: Handle preview toggle with comprehensive error handling
+     */
+    function handlePreviewToggle(e) {
+        try {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const $button = $(this);
+            const questionId = $button.data('question-id');
+            
+            console.log('Preview toggle clicked for question:', questionId);
+            
+            // Validate question ID
+            if (!questionId) {
+                console.error('No question ID found on preview button');
+                showError('Invalid question ID');
+                return;
+            }
+            
+            // Initialize state if it doesn't exist
+            if (!previewStates[questionId]) {
+                previewStates[questionId] = {
+                    isOpen: false,
+                    isLoading: false,
+                    hasLoaded: false,
+                    button: $button,
+                    previewRow: $('#preview-' + questionId)
+                };
+            }
+            
+            const state = previewStates[questionId];
+            
+            // Prevent action if currently loading or if another preview is loading
+            if (state.isLoading || isAnyPreviewLoading) {
+                console.log('Preview action blocked - loading in progress');
+                return;
+            }
+            
+            // Check if preview row exists in DOM
+            if (state.previewRow.length === 0) {
+                console.error('Preview row not found for question:', questionId);
+                showError('Preview container not found');
+                return;
+            }
+            
+            console.log('Current state for question', questionId, ':', {
+                isOpen: state.isOpen,
+                isLoading: state.isLoading,
+                hasLoaded: state.hasLoaded,
+                rowVisible: state.previewRow.is(':visible')
+            });
+            
+            if (state.isOpen) {
+                // Hide the preview
+                hidePreview(questionId);
+            } else {
+                // Show the preview
+                showPreview(questionId);
+            }
+            
+        } catch (error) {
+            console.error('Error in preview toggle handler:', error);
+            showError('An error occurred while toggling preview. Please try again.');
+        }
+    }
+    
+    /**
+     * Show preview for a question with enhanced error handling
+     */
+    function showPreview(questionId) {
+        try {
+            const state = previewStates[questionId];
+            
+            console.log('Showing preview for question:', questionId);
+            
+            // Update state
+            state.isLoading = true;
+            state.isOpen = true;
+            isAnyPreviewLoading = true;
+            
+            // Update button to loading state
+            updateButtonState(questionId, 'loading');
+            
+            // If content hasn't been loaded yet, load it
+            if (!state.hasLoaded) {
+                // Show loading placeholder first
+                state.previewRow.find('.question-preview-content').html(`
+                    <div class="preview-loading">
+                        <div class="loading-spinner"></div>
+                        <span class="loading-text">Loading question preview...</span>
+                    </div>
+                `);
+                
+                // Show the row with animation, then load content
+                state.previewRow.slideDown(400, function() {
+                    console.log('Preview row visible, loading content for question:', questionId);
+                    loadPreviewContent(questionId);
+                });
+            } else {
+                // Content already loaded, just show it
+                state.previewRow.slideDown(400, function() {
+                    finishShowPreview(questionId);
+                });
+            }
+            
+        } catch (error) {
+            console.error('Error showing preview for question', questionId, ':', error);
+            showPreviewError(questionId, 'Error displaying preview');
+        }
+    }
+    
+    /**
+     * Hide preview for a question with error handling
+     */
+    function hidePreview(questionId) {
+        try {
+            const state = previewStates[questionId];
+            
+            console.log('Hiding preview for question:', questionId);
+            
+            // Update state
+            state.isOpen = false;
+            
+            // Update button immediately to provide instant feedback
+            updateButtonState(questionId, 'default');
+            
+            // Hide the row with animation
+            state.previewRow.slideUp(400, function() {
+                console.log('Preview hidden for question:', questionId);
+            });
+            
+        } catch (error) {
+            console.error('Error hiding preview for question', questionId, ':', error);
+            // Even if there's an error, try to reset the button state
+            updateButtonState(questionId, 'default');
+        }
+    }
+    
+    /**
+     * BULLETPROOF: Load preview content via AJAX with comprehensive error handling
+     */
+    function loadPreviewContent(questionId) {
+        try {
+            console.log('Loading preview content via AJAX for question:', questionId);
+            
+            // Validate we have the necessary data
+            if (!safeGlobals.ajaxurl) {
+                throw new Error('AJAX URL not available');
+            }
+            
+            // Prepare AJAX data with safe defaults
+            const ajaxData = {
+                action: 'vefify_load_question_preview',
+                question_id: questionId,
+                nonce: safeGlobals.nonce,
+                // Add a timestamp to prevent caching issues
+                _timestamp: new Date().getTime()
+            };
+            
+            console.log('AJAX request data:', ajaxData);
+            
+            // Make AJAX request with comprehensive error handling
+            $.ajax({
+                url: safeGlobals.ajaxurl,
+                type: 'POST',
+                data: ajaxData,
+                timeout: 30000, // 30 second timeout
+                dataType: 'json', // Expect JSON response
+                
+                beforeSend: function(xhr) {
+                    // Set additional headers if available
+                    if (safeGlobals.nonce) {
+                        xhr.setRequestHeader('X-WP-Nonce', safeGlobals.nonce);
+                    }
+                },
+                
+                success: function(response, textStatus, xhr) {
+                    try {
+                        console.log('AJAX response for question', questionId, ':', response);
+                        
+                        // Handle successful response
+                        if (response && response.success && response.data) {
+                            const state = previewStates[questionId];
+                            if (state && state.previewRow) {
+                                state.previewRow.find('.question-preview-content').html(response.data);
+                                state.hasLoaded = true;
+                                finishShowPreview(questionId);
+                            } else {
+                                throw new Error('Preview state or row not found after successful AJAX');
+                            }
+                        } else {
+                            // Handle error response
+                            const errorMsg = (response && response.data) 
+                                ? response.data 
+                                : (response && response.message) 
+                                    ? response.message 
+                                    : 'Unknown error occurred';
+                            showPreviewError(questionId, errorMsg);
+                        }
+                        
+                    } catch (error) {
+                        console.error('Error processing AJAX success response:', error);
+                        showPreviewError(questionId, 'Error processing preview data');
+                    }
+                },
+                
+                error: function(xhr, textStatus, errorThrown) {
+                    console.error('AJAX error for question', questionId, ':', {
+                        status: xhr.status,
+                        statusText: xhr.statusText,
+                        textStatus: textStatus,
+                        errorThrown: errorThrown,
+                        responseText: xhr.responseText
+                    });
+                    
+                    let errorMsg = 'Network error. Please try again.';
+                    
+                    // Provide specific error messages based on the type of error
+                    if (textStatus === 'timeout') {
+                        errorMsg = 'Request timed out. Please try again.';
+                    } else if (xhr.status === 403) {
+                        errorMsg = 'Permission denied. Please refresh the page and try again.';
+                    } else if (xhr.status === 404) {
+                        errorMsg = 'Preview service not found. Please contact support.';
+                    } else if (xhr.status === 500) {
+                        errorMsg = 'Server error. Please try again later.';
+                    } else if (textStatus === 'parsererror') {
+                        errorMsg = 'Invalid response format. Please try again.';
+                    } else if (xhr.status === 0) {
+                        errorMsg = 'Network connection failed. Please check your internet connection.';
+                    }
+                    
+                    showPreviewError(questionId, errorMsg);
+                },
+                
+                complete: function(xhr, textStatus) {
+                    // This runs regardless of success or failure
+                    console.log('AJAX request completed for question', questionId, 'with status:', textStatus);
+                }
+            });
+            
+        } catch (error) {
+            console.error('Error initiating AJAX request for question', questionId, ':', error);
+            showPreviewError(questionId, 'Failed to load preview. Please try again.');
+        }
+    }
+    
+    /**
+     * Finish showing preview (after content loaded successfully)
+     */
+    function finishShowPreview(questionId) {
+        try {
+            const state = previewStates[questionId];
+            
+            console.log('Finishing show preview for question:', questionId);
+            
+            // Update state
+            state.isLoading = false;
+            isAnyPreviewLoading = false;
+            
+            // Update button to active state (this should show the "Hide Preview" text)
+            updateButtonState(questionId, 'active');
+            
+        } catch (error) {
+            console.error('Error finishing show preview:', error);
+            // Try to reset loading state even if there's an error
+            isAnyPreviewLoading = false;
+            updateButtonState(questionId, 'default');
+        }
+    }
+    
+    /**
+     * Show preview error with enhanced error information
+     */
+    function showPreviewError(questionId, errorMessage) {
+        try {
+            const state = previewStates[questionId];
+            
+            console.error('Preview error for question', questionId, ':', errorMessage);
+            
+            // Show user-friendly error content
+            const errorHtml = `
+                <div class="preview-error">
+                    <div class="error-icon">⚠️</div>
+                    <div class="error-message">${errorMessage}</div>
+                    <div class="error-details">
+                        <small>Question ID: ${questionId} | Time: ${new Date().toLocaleTimeString()}</small>
+                    </div>
+                    <button type="button" class="button button-small retry-preview" data-question-id="${questionId}">
+                        Retry Preview
+                    </button>
+                </div>
+            `;
+            
+            if (state && state.previewRow) {
+                state.previewRow.find('.question-preview-content').html(errorHtml);
+            }
+            
+            // Reset state
+            state.isLoading = false;
+            state.isOpen = false; // Set to false so clicking the button will try to show again
+            state.hasLoaded = false; // Allow retry
+            isAnyPreviewLoading = false;
+            
+            // Update button to default state
+            updateButtonState(questionId, 'error');
+            
+        } catch (error) {
+            console.error('Error showing preview error:', error);
+            // Last resort: try to reset global state
+            isAnyPreviewLoading = false;
+        }
+    }
+    
+    /**
+     * ENHANCED: Update button state and appearance with error handling
+     */
+    function updateButtonState(questionId, state) {
+        try {
+            const buttonState = previewStates[questionId];
+            if (!buttonState || !buttonState.button || buttonState.button.length === 0) {
+                console.warn('Button state or button element not found for question:', questionId);
+                return;
+            }
+            
+            const $button = buttonState.button;
+            
+            // Remove all state classes
+            $button.removeClass('loading active error');
+            
+            switch (state) {
+                case 'loading':
+                    $button.addClass('loading')
+                           .prop('disabled', true)
+                           .text('Loading...');
+                    break;
+                    
+                case 'active':
+                    $button.addClass('active')
+                           .prop('disabled', false)
+                           .text('Hide Preview');
+                    // Update internal state
+                    buttonState.isOpen = true;
+                    break;
+                    
+                case 'error':
+                    $button.addClass('error')
+                           .prop('disabled', false)
+                           .text('Preview (Error)');
+                    break;
+                    
+                case 'default':
+                default:
+                    $button.prop('disabled', false)
+                           .text('Preview');
+                    // Update internal state
+                    buttonState.isOpen = false;
+                    break;
+            }
+            
+            console.log('Button state updated for question', questionId, 'to:', state);
+            
+        } catch (error) {
+            console.error('Error updating button state for question', questionId, ':', error);
+        }
+    }
+    
+    /**
+     * Handle retry preview button with error handling
+     */
+    function handleRetryPreview(e) {
+        try {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const questionId = $(this).data('question-id');
+            console.log('Retry preview clicked for question:', questionId);
+            
+            if (previewStates[questionId]) {
+                // Reset the loaded state and try again
+                previewStates[questionId].hasLoaded = false;
+                previewStates[questionId].isOpen = false;
+                showPreview(questionId);
+            } else {
+                console.error('No preview state found for question:', questionId);
+                showError('Unable to retry preview. Please refresh the page.');
+            }
+            
+        } catch (error) {
+            console.error('Error handling retry preview:', error);
+            showError('Error retrying preview. Please refresh the page.');
+        }
+    }
+    
+    // [ALL OTHER FUNCTIONS REMAIN THE SAME - THEY DON'T NEED CHANGES]
     
     /**
      * Update question type and adjust interface
@@ -77,11 +576,11 @@ jQuery(document).ready(function($) {
         
         console.log('Updating question type UI for:', type);
         
-        // Update help text
+        // Update help text with safe fallbacks
         const helpTexts = {
-            'single_select': vefifyQuestionBank.strings.selectOne,
-            'multiple_select': vefifyQuestionBank.strings.selectMultiple,
-            'true_false': vefifyQuestionBank.strings.selectTrueFalse
+            'single_select': 'Select one correct answer',
+            'multiple_select': 'Select all correct answers',
+            'true_false': 'Select True or False'
         };
         
         $helpText.text(helpTexts[type] || helpTexts.single_select);
@@ -143,13 +642,13 @@ jQuery(document).ready(function($) {
         if ($options.length >= 2) {
             // Set option A to "True"
             $options.eq(0).find('.option-text')
-                .val(vefifyQuestionBank.strings.true)
+                .val('True')
                 .prop('readonly', true)
                 .addClass('readonly-option');
             
             // Set option B to "False"  
             $options.eq(1).find('.option-text')
-                .val(vefifyQuestionBank.strings.false)
+                .val('False')
                 .prop('readonly', true)
                 .addClass('readonly-option');
             
@@ -162,7 +661,7 @@ jQuery(document).ready(function($) {
         
         // Add styling and indicator
         $container.addClass('question-type-true-false');
-        $container.attr('data-mode-text', vefifyQuestionBank.strings.trueFalseMode);
+        $container.attr('data-mode-text', 'True/False Mode - Options are locked');
         
         // Update global count
         optionCount = 2;
@@ -189,10 +688,7 @@ jQuery(document).ready(function($) {
             const $optionText = $(this).find('.option-text');
             const currentValue = $optionText.val();
             
-            if (currentValue === vefifyQuestionBank.strings.true || 
-                currentValue === vefifyQuestionBank.strings.false ||
-                currentValue === 'True' || 
-                currentValue === 'False') {
+            if (currentValue === 'True' || currentValue === 'False') {
                 console.log('Clearing True/False text from option', index);
                 $optionText.val('');
             }
@@ -330,60 +826,6 @@ jQuery(document).ready(function($) {
         
         // Form will submit normally
         return true;
-    }
-    
-    /**
-     * Handle preview toggle
-     */
-    function handlePreviewToggle(e) {
-        e.preventDefault();
-        
-        const questionId = $(this).data('question-id');
-        const $previewRow = $('#preview-' + questionId);
-        const $button = $(this);
-        
-        console.log('Preview toggle clicked for question:', questionId);
-        
-        if ($previewRow.is(':visible')) {
-            $previewRow.slideUp(300);
-            $button.text('Preview');
-        } else {
-            // Show loading
-            $previewRow.find('.question-preview-content').html(
-                '<div class="preview-loading">' + vefifyQuestionBank.strings.loading + '</div>'
-            );
-            $previewRow.slideDown(300);
-            $button.text(vefifyQuestionBank.strings.loading);
-            
-            // Load preview via AJAX
-            $.post(vefifyQuestionBank.ajaxurl, {
-                action: 'vefify_load_question_preview',
-                question_id: questionId,
-                nonce: vefifyQuestionBank.nonce
-            })
-            .done(function(response) {
-                console.log('Preview loaded:', response);
-                
-                if (response.success) {
-                    $previewRow.find('.question-preview-content').html(response.data);
-                    $button.text('Hide');
-                } else {
-                    $previewRow.find('.question-preview-content').html(
-                        '<div class="preview-error">' + 
-                        (response.data || vefifyQuestionBank.strings.errorLoading) + 
-                        '</div>'
-                    );
-                    $button.text('Preview');
-                }
-            })
-            .fail(function(xhr, status, error) {
-                console.error('Preview AJAX failed:', status, error);
-                $previewRow.find('.question-preview-content').html(
-                    '<div class="preview-error">Network error. Please try again.</div>'
-                );
-                $button.text('Preview');
-            });
-        }
     }
     
     /**
@@ -569,9 +1011,13 @@ jQuery(document).ready(function($) {
             showSuccess: showSuccess,
             validateForm: validateForm,
             optionCount: function() { return optionCount; },
-            currentType: function() { return currentQuestionType; }
+            currentType: function() { return currentQuestionType; },
+            previewStates: previewStates,
+            showPreview: showPreview,
+            hidePreview: hidePreview,
+            safeGlobals: safeGlobals
         };
     }
     
-    console.log('Question Bank JavaScript loaded successfully');
+    console.log('Question Bank JavaScript loaded successfully with bulletproof error handling');
 });
