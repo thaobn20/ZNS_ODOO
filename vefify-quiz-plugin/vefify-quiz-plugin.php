@@ -23,7 +23,6 @@ define('VEFIFY_QUIZ_DB_VERSION', '1.0.0');
 /**
  * Main Plugin Class - Centralized Coordinator
  */
- 
 class Vefify_Quiz_Plugin {
     
     private static $instance = null;
@@ -76,14 +75,15 @@ class Vefify_Quiz_Plugin {
             'campaigns' => 'modules/campaigns/class-campaign-module.php',
             'questions' => 'modules/questions/class-question-module.php',
             'participants' => 'modules/participants/class-participant-module.php',
-            'gifts' => 'modules/gifts/class-gift-module.php'
-            // Note: analytics module will be created separately
+            'gifts' => 'modules/gifts/class-gift-module.php',
+            'analytics' => 'modules/analytics/class-analytics-module.php'
         );
         
         foreach ($module_files as $module => $file) {
             $full_path = VEFIFY_QUIZ_PLUGIN_DIR . $file;
             if (file_exists($full_path)) {
                 require_once $full_path;
+                error_log("Vefify Quiz: Loaded module file {$file}");
             } else {
                 error_log("Vefify Quiz: Module file not found: {$file}");
             }
@@ -118,13 +118,19 @@ class Vefify_Quiz_Plugin {
      */
     private function init_components() {
         // Initialize utilities first (needed by other components)
-        $this->utilities = new Vefify_Quiz_Utilities();
+        if (class_exists('Vefify_Quiz_Utilities')) {
+            $this->utilities = new Vefify_Quiz_Utilities();
+        }
         
         // Initialize database handler
-        $this->database = new Vefify_Quiz_Database();
+        if (class_exists('Vefify_Quiz_Database')) {
+            $this->database = new Vefify_Quiz_Database();
+        }
         
-        // Initialize installer - use correct class name
-        $this->installer = new Installer();
+        // Initialize admin menu (only in admin)
+        if (is_admin() && class_exists('Vefify_Quiz_Admin_Menu')) {
+            $this->admin_menu = new Vefify_Quiz_Admin_Menu();
+        }
         
         // Initialize REST API - check if class exists
         if (class_exists('Vefify_Quiz_REST_API')) {
@@ -140,27 +146,60 @@ class Vefify_Quiz_Plugin {
     }
     
     /**
-     * Load and initialize modules - FIXED class names
+     * Load and initialize modules - FIXED class names and error handling
      */
     private function load_modules() {
         $module_classes = array(
             'campaigns' => 'Vefify_Campaign_Module',
             'questions' => 'Vefify_Question_Module', 
             'participants' => 'Vefify_Participant_Module',
-            'gifts' => 'Vefify_Gift_Module'
-            // analytics module to be added later
+            'gifts' => 'Vefify_Gift_Module',
+            'analytics' => 'Vefify_Analytics_Module'
         );
         
         foreach ($module_classes as $module => $class) {
-            if (class_exists($class)) {
-                $this->modules[$module] = $class::get_instance();
-                error_log("Vefify Quiz: {$class} loaded successfully");
-            } else {
-                error_log("Vefify Quiz: Module class not found: {$class}");
-                // Create placeholder module
-                $this->modules[$module] = new stdClass();
+            try {
+                if (class_exists($class)) {
+                    $this->modules[$module] = $class::get_instance();
+                    error_log("Vefify Quiz: Module {$module} ({$class}) loaded successfully");
+                } else {
+                    error_log("Vefify Quiz: Module class not found: {$class}");
+                    // Create a placeholder to prevent errors
+                    $this->modules[$module] = null;
+                }
+            } catch (Exception $e) {
+                error_log("Vefify Quiz: Error loading module {$module}: " . $e->getMessage());
+                $this->modules[$module] = null;
             }
         }
+        
+        error_log("Vefify Quiz: Loaded modules: " . implode(', ', array_keys($this->modules)));
+    }
+    
+    /**
+     * CRITICAL: Get module instance - This method was missing!
+     */
+    public function get_module($module_name) {
+        if (isset($this->modules[$module_name])) {
+            return $this->modules[$module_name];
+        }
+        
+        error_log("Vefify Quiz: Module '{$module_name}' not found. Available modules: " . implode(', ', array_keys($this->modules)));
+        return null;
+    }
+    
+    /**
+     * Get all loaded modules
+     */
+    public function get_modules() {
+        return $this->modules;
+    }
+    
+    /**
+     * Check if module is loaded
+     */
+    public function has_module($module_name) {
+        return isset($this->modules[$module_name]) && $this->modules[$module_name] !== null;
     }
     
     /**
@@ -168,13 +207,13 @@ class Vefify_Quiz_Plugin {
      */
     public function activate() {
         try {
-            // Use the correct installer class
-            if (class_exists('Installer')) {
-                $installer = new Installer();
-                $installer->create_tables();
-                $installer->insert_sample_data();
+            // Use the installer from your current file structure
+            if (class_exists('Vefify_Quiz_Installer')) {
+                Vefify_Quiz_Installer::activate();
             } else {
-                error_log('Vefify Quiz: Installer class not found');
+                error_log('Vefify Quiz: Installer class not found - using manual setup');
+                // Fallback activation
+                $this->create_basic_tables();
             }
             
             // Clear any cached data
@@ -191,6 +230,36 @@ class Vefify_Quiz_Plugin {
             error_log('Vefify Quiz Plugin activation failed: ' . $e->getMessage());
             // Don't deactivate - just log the error
         }
+    }
+    
+    /**
+     * Fallback table creation
+     */
+    private function create_basic_tables() {
+        global $wpdb;
+        
+        $charset_collate = $wpdb->get_charset_collate();
+        $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
+        
+        // Basic campaigns table
+        $sql = "CREATE TABLE IF NOT EXISTS {$table_prefix}campaigns (
+            id int(11) NOT NULL AUTO_INCREMENT,
+            name varchar(255) NOT NULL,
+            slug varchar(255) NOT NULL,
+            description text,
+            start_date datetime NOT NULL,
+            end_date datetime NOT NULL,
+            is_active tinyint(1) DEFAULT 1,
+            questions_per_quiz int(11) DEFAULT 5,
+            pass_score int(11) DEFAULT 3,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id)
+        ) $charset_collate;";
+        
+        require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+        dbDelta($sql);
+        
+        error_log('Vefify Quiz: Basic tables created via fallback method');
     }
     
     /**
@@ -214,31 +283,36 @@ class Vefify_Quiz_Plugin {
         // Load text domain for translations
         load_plugin_textdomain('vefify-quiz', false, dirname(plugin_basename(__FILE__)) . '/languages');
         
-        // Initialize shortcodes if class exists
-        if (class_exists('Vefify_Quiz_Shortcodes')) {
-            new Vefify_Quiz_Shortcodes();
-        }
+        // Initialize any post-load functionality
+        do_action('vefify_quiz_loaded');
     }
     
     /**
-     * Initialize admin menu (FIXED IMPLEMENTATION)
+     * Initialize admin menu
      */
     public function init_admin_menu() {
         if (!is_admin()) {
             return;
         }
         
-        // Initialize admin menu class
-        $this->admin_menu = new Vefify_Quiz_Admin_Menu();
-        $this->admin_menu->register_menus();
+        if ($this->admin_menu && method_exists($this->admin_menu, 'init')) {
+            $this->admin_menu->init();
+        }
     }
     
     /**
-     * Initialize REST API - FIXED
+     * Initialize REST API
      */
     public function init_rest_api() {
-        if ($this->rest_api && method_exists($this->rest_api, 'register_routes')) {
-            $this->rest_api->register_routes();
+        if ($this->rest_api && method_exists($this->rest_api, 'init')) {
+            $this->rest_api->init();
+        }
+        
+        // Also initialize module REST endpoints
+        foreach ($this->modules as $module) {
+            if ($module && method_exists($module, 'init_rest_api')) {
+                $module->init_rest_api();
+            }
         }
     }
     
@@ -246,8 +320,9 @@ class Vefify_Quiz_Plugin {
      * Enqueue frontend assets
      */
     public function enqueue_frontend_assets() {
-        // Only load on pages with quiz shortcode
-        if (is_singular() && has_shortcode(get_post()->post_content, 'vefify_quiz')) {
+        // Only enqueue if shortcode is present
+        global $post;
+        if (is_a($post, 'WP_Post') && has_shortcode($post->post_content, 'vefify_quiz')) {
             wp_enqueue_style(
                 'vefify-quiz-frontend',
                 VEFIFY_QUIZ_PLUGIN_URL . 'assets/css/frontend.css',
@@ -263,14 +338,11 @@ class Vefify_Quiz_Plugin {
                 true
             );
             
+            // Localize script with data
             wp_localize_script('vefify-quiz-frontend', 'vefifyQuiz', array(
+                'ajaxUrl' => admin_url('admin-ajax.php'),
                 'restUrl' => rest_url('vefify/v1/'),
-                'nonce' => wp_create_nonce('wp_rest'),
-                'strings' => array(
-                    'loading' => __('Loading...', 'vefify-quiz'),
-                    'error' => __('An error occurred. Please try again.', 'vefify-quiz'),
-                    'submit_success' => __('Quiz submitted successfully!', 'vefify-quiz')
-                )
+                'nonce' => wp_create_nonce('vefify_quiz_nonce')
             ));
         }
     }
@@ -300,234 +372,107 @@ class Vefify_Quiz_Plugin {
         );
         
         wp_localize_script('vefify-quiz-admin', 'vefifyAdmin', array(
-            'ajaxurl' => admin_url('admin-ajax.php'),
-            'restUrl' => rest_url('vefify/v1/'),
-            'nonce' => wp_create_nonce('vefify_admin'),
-            'strings' => array(
-                'confirm_delete' => __('Are you sure you want to delete this item?', 'vefify-quiz'),
-                'loading' => __('Loading...', 'vefify-quiz'),
-                'error' => __('An error occurred. Please try again.', 'vefify-quiz')
-            )
+            'ajaxUrl' => admin_url('admin-ajax.php'),
+            'nonce' => wp_create_nonce('vefify_admin_nonce')
         ));
+    }
+    
+    /**
+     * Render quiz shortcode
+     */
+    public function render_quiz_shortcode($atts) {
+        $atts = shortcode_atts(array(
+            'campaign_id' => 1,
+            'template' => 'default'
+        ), $atts);
+        
+        // Try to use the campaigns module if available
+        if ($this->has_module('campaigns')) {
+            $campaigns_module = $this->get_module('campaigns');
+            if (method_exists($campaigns_module, 'render_frontend_quiz')) {
+                return $campaigns_module->render_frontend_quiz($atts);
+            }
+        }
+        
+        // Fallback rendering
+        return '<div class="vefify-quiz-placeholder">
+            <h3>🎯 Quiz Loading...</h3>
+            <p>Campaign ID: ' . esc_html($atts['campaign_id']) . '</p>
+            <p><em>Module system is initializing. Please check that all module files are properly uploaded.</em></p>
+        </div>';
     }
     
     /**
      * AJAX handler for dashboard data
      */
     public function ajax_dashboard_data() {
+        check_ajax_referer('vefify_admin_nonce', 'nonce');
+        
         if (!current_user_can('manage_options')) {
             wp_send_json_error('Unauthorized');
         }
         
-        if (!wp_verify_nonce($_POST['nonce'], 'vefify_admin')) {
-            wp_send_json_error('Security check failed');
-        }
-        
-        try {
-            $analytics = $this->get_module('analytics');
-            $data = array(
-                'campaigns' => array(
-                    'stats' => array(
-                        'total_campaigns' => array('value' => $this->get_campaign_count()),
-                        'active_campaigns' => array('value' => $this->get_active_campaign_count())
-                    )
-                ),
-                'participants' => array(
-                    'stats' => array(
-                        'total_participants' => array('value' => $this->get_participant_count())
-                    )
-                ),
-                'questions' => array(
-                    'stats' => array(
-                        'total_questions' => array('value' => $this->get_question_count())
-                    )
-                ),
-                'gifts' => array(
-                    'stats' => array(
-                        'distributed_gifts' => array('value' => $this->get_gift_count())
-                    )
-                )
-            );
-            
-            wp_send_json_success($data);
-            
-        } catch (Exception $e) {
-            wp_send_json_error('Failed to load dashboard data: ' . $e->getMessage());
-        }
-    }
-    
-    /**
-     * Quiz shortcode handler - FIXED error handling
-     */
-    public function render_quiz_shortcode($atts) {
-        $atts = shortcode_atts(array(
-            'campaign_id' => 1,
-            'template' => 'mobile'
-        ), $atts);
-        
-        // Validate campaign exists
+        // Get basic stats
         global $wpdb;
-        $campaign_table = $wpdb->prefix . 'vefify_campaigns';
+        $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
         
-        // Check if table exists first
-        if ($wpdb->get_var("SHOW TABLES LIKE '{$campaign_table}'") !== $campaign_table) {
-            return $this->render_error_message('Plugin not properly installed. Please deactivate and reactivate the plugin.');
-        }
-        
-        $campaign = $wpdb->get_row($wpdb->prepare(
-            "SELECT * FROM {$campaign_table} WHERE id = %d AND is_active = 1",
-            $atts['campaign_id']
-        ));
-        
-        if (!$campaign) {
-            return $this->render_error_message('Campaign not found or inactive.');
-        }
-        
-        // Enqueue quiz assets
-        $this->enqueue_quiz_assets($campaign);
-        
-        // Render quiz interface
-        return $this->render_quiz_interface($campaign, $atts);
-    }
-    
-    /**
-     * Render quiz interface
-     */
-    private function render_quiz_interface($campaign, $atts) {
-        ob_start();
-        include VEFIFY_QUIZ_PLUGIN_DIR . 'templates/quiz-interface.php';
-        return ob_get_clean();
-    }
-    
-    /**
-     * Render error message
-     */
-    private function render_error_message($message) {
-        return sprintf(
-            '<div class="vefify-error"><h3>❌ %s</h3><p>%s</p></div>',
-            __('Quiz Error', 'vefify-quiz'),
-            esc_html($message)
+        $stats = array(
+            'campaigns' => $wpdb->get_var("SELECT COUNT(*) FROM {$table_prefix}campaigns") ?: 0,
+            'participants' => $wpdb->get_var("SELECT COUNT(*) FROM {$table_prefix}quiz_users") ?: 0,
+            'questions' => $wpdb->get_var("SELECT COUNT(*) FROM {$table_prefix}questions") ?: 0,
+            'completed_today' => $wpdb->get_var("SELECT COUNT(*) FROM {$table_prefix}quiz_users WHERE DATE(completed_at) = CURDATE()") ?: 0
         );
-    }
-    
-    /**
-     * Enqueue quiz-specific assets
-     */
-    private function enqueue_quiz_assets($campaign) {
-        wp_enqueue_style('vefify-quiz-mobile', VEFIFY_QUIZ_PLUGIN_URL . 'assets/css/quiz-mobile.css');
-        wp_enqueue_script('vefify-quiz-mobile', VEFIFY_QUIZ_PLUGIN_URL . 'assets/js/quiz-mobile.js', array('jquery'));
         
-        wp_localize_script('vefify-quiz-mobile', 'vefifyQuizData', array(
-            'campaign' => array(
-                'id' => $campaign->id,
-                'name' => $campaign->name,
-                'description' => $campaign->description,
-                'questions_per_quiz' => $campaign->questions_per_quiz,
-                'time_limit' => $campaign->time_limit,
-                'pass_score' => $campaign->pass_score
-            ),
-            'restUrl' => rest_url('vefify/v1/'),
-            'nonce' => wp_create_nonce('wp_rest')
-        ));
+        wp_send_json_success($stats);
     }
     
     /**
-     * Get module instance
+     * Get plugin info for debugging
      */
-    public function get_module($module_name) {
-        return isset($this->modules[$module_name]) ? $this->modules[$module_name] : null;
-    }
-    
-    /**
-     * Get all modules
-     */
-    public function get_modules() {
-        return $this->modules;
-    }
-    
-    /**
-     * Get component instances
-     */
-    public function get_admin_menu() { return $this->admin_menu; }
-    public function get_database() { return $this->database; }
-    public function get_utilities() { return $this->utilities; }
-    public function get_rest_api() { return $this->rest_api; }
-    
-    /**
-     * Helper methods for dashboard stats
-     */
-    private function get_campaign_count() {
-        global $wpdb;
-        return $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}vefify_campaigns");
-    }
-    
-    private function get_active_campaign_count() {
-        global $wpdb;
-        return $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}vefify_campaigns WHERE is_active = 1");
-    }
-    
-    private function get_participant_count() {
-        global $wpdb;
-        return $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}vefify_quiz_users");
-    }
-    
-    private function get_question_count() {
-        global $wpdb;
-        return $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}vefify_questions WHERE is_active = 1");
-    }
-    
-    private function get_gift_count() {
-        global $wpdb;
-        return $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}vefify_quiz_users WHERE gift_id IS NOT NULL");
+    public function get_plugin_info() {
+        return array(
+            'version' => VEFIFY_QUIZ_VERSION,
+            'loaded_modules' => array_keys($this->modules),
+            'active_modules' => array_keys(array_filter($this->modules)),
+            'has_admin_menu' => !empty($this->admin_menu),
+            'has_database' => !empty($this->database)
+        );
     }
 }
 
-/**
- * Initialize the plugin
- */
+// Initialize the plugin
 function vefify_quiz_init() {
     return Vefify_Quiz_Plugin::get_instance();
 }
 
 // Start the plugin
-vefify_quiz_init();
+add_action('plugins_loaded', 'vefify_quiz_init');
 
-/**
- * Global helper function to get plugin instance
- */
-function vefify_quiz() {
-    return Vefify_Quiz_Plugin::get_instance();
-}
+// Activation/Deactivation hooks - MUST be in main plugin file
+register_activation_hook(__FILE__, array('Vefify_Quiz_Plugin', 'activate'));
+register_deactivation_hook(__FILE__, array('Vefify_Quiz_Plugin', 'deactivate'));
 
-/**
- * Scheduled cleanup tasks
- */
-add_action('vefify_quiz_daily_cleanup', function() {
-    global $wpdb;
-    
-    // Clean expired sessions
-    $wpdb->query("
-        DELETE FROM {$wpdb->prefix}vefify_quiz_sessions 
-        WHERE created_at < DATE_SUB(NOW(), INTERVAL 24 HOUR) 
-        AND is_completed = 0
-    ");
-    
-    // Clean old analytics data
-    $wpdb->query("
-        DELETE FROM {$wpdb->prefix}vefify_analytics 
-        WHERE created_at < DATE_SUB(NOW(), INTERVAL 90 DAY)
-    ");
-    
-    error_log('Vefify Quiz: Daily cleanup completed');
-});
-
-/**
- * Plugin upgrade check
- */
-add_action('plugins_loaded', function() {
-    $installed_version = get_option('vefify_quiz_db_version', '0');
-    if (version_compare($installed_version, VEFIFY_QUIZ_DB_VERSION, '<')) {
-        $installer = new Vefify_Quiz_Installer();
-        $installer->upgrade_database();
+// Debug helper function
+if (defined('WP_DEBUG') && WP_DEBUG) {
+    function vefify_debug_info() {
+        if (current_user_can('manage_options') && isset($_GET['vefify_debug'])) {
+            $plugin = Vefify_Quiz_Plugin::get_instance();
+            $info = $plugin->get_plugin_info();
+            
+            echo '<div style="position: fixed; top: 50px; right: 10px; background: white; border: 2px solid #ccc; padding: 15px; z-index: 9999; font-size: 12px; max-width: 300px;">';
+            echo '<h4>🔧 Vefify Quiz Debug</h4>';
+            echo '<strong>Version:</strong> ' . $info['version'] . '<br>';
+            echo '<strong>Loaded Modules:</strong><br>';
+            foreach ($info['loaded_modules'] as $module) {
+                $status = in_array($module, $info['active_modules']) ? '✅' : '❌';
+                echo "&nbsp;&nbsp;{$status} {$module}<br>";
+            }
+            echo '<strong>Admin Menu:</strong> ' . ($info['has_admin_menu'] ? '✅' : '❌') . '<br>';
+            echo '<strong>Database:</strong> ' . ($info['has_database'] ? '✅' : '❌') . '<br>';
+            echo '<a href="' . add_query_arg('vefify_debug', '1') . '" style="font-size: 10px;">Refresh</a>';
+            echo '</div>';
+        }
     }
-});
+    add_action('wp_footer', 'vefify_debug_info');
+    add_action('admin_footer', 'vefify_debug_info');
+}
