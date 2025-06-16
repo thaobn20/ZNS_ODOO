@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Vefify Quiz Campaign Manager
  * Description: Advanced quiz campaign management with mobile-first design
- * Version: 1.0.1
+ * Version: 1.0.0
  * Author: Vefify Team
  * License: GPL v2 or later
  * Text Domain: vefify-quiz
@@ -14,708 +14,75 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin constants
-define('VEFIFY_QUIZ_VERSION', '1.0.1');
+define('VEFIFY_QUIZ_VERSION', '1.0.0');
 define('VEFIFY_QUIZ_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('VEFIFY_QUIZ_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('VEFIFY_QUIZ_TABLE_PREFIX', 'vefify_');
-define('VEFIFY_QUIZ_DB_VERSION', '1.0.1');
-define('VEFIFY_QUIZ_OPTION_PREFIX', 'vefify_quiz_');
+define('VEFIFY_QUIZ_DB_VERSION', '1.0.0');
 
 /**
- * Main Plugin Class - Centralized Architecture
- */
-class Vefify_Quiz_Plugin {
-    
-    private static $instance = null;
-    private $modules = array();
-    private $admin_menu;
-    
-    /**
-     * Singleton instance
-     */
-    public static function get_instance() {
-        if (self::$instance === null) {
-            self::$instance = new self();
-        }
-        return self::$instance;
-    }
-    
-    /**
-     * Constructor
-     */
-    private function __construct() {
-        $this->init();
-    }
-    
-    /**
-     * Initialize plugin
-     */
-    private function init() {
-        // Load translations at the right time
-        add_action('init', array($this, 'load_textdomain'));
-        
-        // Load core components
-        $this->load_core_components();
-        
-        // Load modules  
-        add_action('init', array($this, 'load_modules'));
-        
-        // Initialize admin menu
-        $this->init_admin_menu();
-        
-        // Register hooks
-        $this->register_hooks();
-        
-        // Initialize shortcodes
-        add_action('init', array($this, 'init_shortcodes'));
-        
-        // Load REST API
-        $this->init_rest_api();
-    }
-    
-    /**
-     * Load plugin textdomain
-     */
-    public function load_textdomain() {
-        load_plugin_textdomain(
-            'vefify-quiz',
-            false,
-            dirname(plugin_basename(__FILE__)) . '/languages/'
-        );
-    }
-    
-    /**
-     * Load core components
-     */
-    private function load_core_components() {
-        // Load admin menu manager
-        $admin_menu_file = VEFIFY_QUIZ_PLUGIN_DIR . 'includes/class-admin-menu.php';
-        if (file_exists($admin_menu_file)) {
-            require_once $admin_menu_file;
-            $this->admin_menu = new Vefify_Quiz_Admin_Menu();
-        } else {
-            // Fallback admin menu
-            $this->admin_menu = $this->create_fallback_admin_menu();
-        }
-        
-        // Load utility classes (with file existence checks)
-        $utility_files = array(
-            'database' => 'includes/class-database.php',
-            'utilities' => 'includes/class-utilities.php',
-            'shortcodes' => 'includes/class-shortcodes.php',
-            'rest-api' => 'includes/class-rest-api.php'
-        );
-        
-        foreach ($utility_files as $name => $file_path) {
-            $full_path = VEFIFY_QUIZ_PLUGIN_DIR . $file_path;
-            if (file_exists($full_path)) {
-                require_once $full_path;
-            } else {
-                error_log("Vefify Quiz: Missing file {$file_path} - creating fallback");
-                $this->create_missing_file_fallback($name);
-            }
-        }
-    }
-    
-    /**
-     * Load all modules
-     */
-    public function load_modules() {
-        $modules = array(
-            'campaigns' => 'Vefify_Campaign_Module',
-            'questions' => 'Vefify_Question_Module', 
-            'participants' => 'Vefify_Participant_Module',
-            'gifts' => 'Vefify_Gift_Module',
-            'analytics' => 'Vefify_Analytics_Module',
-            'settings' => 'Vefify_Setting_Module'
-        );
-        
-        foreach ($modules as $module_name => $class_name) {
-            $module_file = VEFIFY_QUIZ_PLUGIN_DIR . "modules/{$module_name}/class-{$module_name}-module.php";
-            
-            if (file_exists($module_file)) {
-                require_once $module_file;
-                
-                if (class_exists($class_name)) {
-                    $this->modules[$module_name] = $class_name::get_instance();
-                } else {
-                    error_log("Vefify Quiz: Class {$class_name} not found in {$module_file}");
-                }
-            } else {
-                error_log("Vefify Quiz: Module file missing: {$module_file}");
-                // Create placeholder module
-                $this->modules[$module_name] = $this->create_placeholder_module($module_name);
-            }
-        }
-    }
-    
-    /**
-     * Create placeholder module for missing files
-     */
-    private function create_placeholder_module($module_name) {
-        return new class($module_name) {
-            private $name;
-            
-            public function __construct($name) {
-                $this->name = $name;
-            }
-            
-            public function get_module_analytics() {
-                return array(
-                    'title' => ucfirst($this->name) . ' Module',
-                    'description' => 'Module file missing - please upload required files',
-                    'icon' => '⚠️',
-                    'stats' => array(
-                        'status' => array(
-                            'label' => 'Status',
-                            'value' => 'Missing',
-                            'trend' => 'Setup required'
-                        )
-                    )
-                );
-            }
-            
-            public function admin_page_router() {
-                echo '<div class="wrap">';
-                echo '<h1>' . ucfirst($this->name) . ' Module</h1>';
-                echo '<div class="notice notice-error">';
-                echo '<p><strong>Module Not Available:</strong> The ' . $this->name . ' module files are missing.</p>';
-                echo '<p>Please upload the complete plugin files to enable this functionality.</p>';
-                echo '</div>';
-                echo '</div>';
-            }
-        };
-    }
-    
-    /**
-     * Initialize admin menu
-     */
-    private function init_admin_menu() {
-        if (is_admin()) {
-            add_action('admin_menu', array($this->admin_menu, 'register_menus'));
-            add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_assets'));
-        }
-    }
-    
-    /**
-     * Register WordPress hooks
-     */
-    private function register_hooks() {
-        // Frontend assets
-        add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_assets'));
-        
-        // Admin notices
-        add_action('admin_notices', array($this, 'display_admin_notices'));
-        
-        // AJAX handlers
-        add_action('wp_ajax_vefify_dashboard_data', array($this, 'ajax_dashboard_data'));
-        
-        // Cleanup hooks
-        add_action('vefify_quiz_daily_cleanup', array($this, 'daily_cleanup'));
-        add_action('vefify_quiz_weekly_summary', array($this, 'weekly_summary'));
-    }
-    
-    /**
-     * Initialize shortcodes
-     */
-    public function init_shortcodes() {
-        if (class_exists('Vefify_Quiz_Shortcodes')) {
-            $shortcodes = new Vefify_Quiz_Shortcodes();
-            $shortcodes->register_all();
-        } else {
-            // Fallback shortcode registration
-            $this->register_fallback_shortcodes();
-        }
-    }
-    
-    /**
-     * Register fallback shortcodes when class is missing
-     */
-    private function register_fallback_shortcodes() {
-        add_shortcode('vefify_quiz', function($atts) {
-            return '<div class="vefify-quiz-placeholder"><p><strong>Quiz Loading...</strong><br>Please complete plugin setup by uploading all required files.</p></div>';
-        });
-    }
-    
-    /**
-     * Initialize REST API
-     */
-    private function init_rest_api() {
-        add_action('rest_api_init', array($this, 'register_rest_routes'));
-    }
-    
-    /**
-     * Register REST API routes
-     */
-    public function register_rest_routes() {
-        if (class_exists('Vefify_Quiz_Rest_API')) {
-            $rest_api = new Vefify_Quiz_Rest_API();
-            $rest_api->register_routes();
-        } else {
-            // Register basic fallback routes
-            $this->register_fallback_rest_routes();
-        }
-    }
-    
-    /**
-     * Register fallback REST routes
-     */
-    private function register_fallback_rest_routes() {
-        register_rest_route('vefify/v1', '/status', array(
-            'methods' => 'GET',
-            'callback' => function() {
-                return rest_ensure_response(array(
-                    'status' => 'setup_required',
-                    'message' => 'Plugin setup incomplete - missing REST API files'
-                ));
-            },
-            'permission_callback' => '__return_true'
-        ));
-    }
-    
-    /**
-     * Enqueue admin assets
-     */
-    public function enqueue_admin_assets($hook_suffix) {
-        if (strpos($hook_suffix, 'vefify') === false) {
-            return;
-        }
-        
-        wp_enqueue_style(
-            'vefify-admin', 
-            VEFIFY_QUIZ_PLUGIN_URL . 'assets/css/admin.css', 
-            array(), 
-            VEFIFY_QUIZ_VERSION
-        );
-        
-        wp_enqueue_script(
-            'vefify-admin', 
-            VEFIFY_QUIZ_PLUGIN_URL . 'assets/js/admin.js', 
-            array('jquery', 'wp-util'), 
-            VEFIFY_QUIZ_VERSION, 
-            true
-        );
-        
-        wp_localize_script('vefify-admin', 'vefifyAdmin', array(
-            'ajaxUrl' => admin_url('admin-ajax.php'),
-            'restUrl' => rest_url('vefify/v1/'),
-            'nonce' => wp_create_nonce('vefify_admin_nonce'),
-            'pluginUrl' => VEFIFY_QUIZ_PLUGIN_URL,
-            'strings' => array(
-                'loading' => esc_html__('Loading...', 'vefify-quiz'),
-                'error' => esc_html__('An error occurred', 'vefify-quiz'),
-                'success' => esc_html__('Success!', 'vefify-quiz'),
-                'confirmDelete' => esc_html__('Are you sure you want to delete this item?', 'vefify-quiz')
-            )
-        ));
-    }
-    
-    /**
-     * Enqueue frontend assets
-     */
-    public function enqueue_frontend_assets() {
-        // Only enqueue on pages with quiz shortcodes
-        if (is_singular() && $this->has_quiz_shortcode()) {
-            wp_enqueue_style(
-                'vefify-frontend', 
-                VEFIFY_QUIZ_PLUGIN_URL . 'assets/css/frontend.css', 
-                array(), 
-                VEFIFY_QUIZ_VERSION
-            );
-            
-            wp_enqueue_script(
-                'vefify-frontend', 
-                VEFIFY_QUIZ_PLUGIN_URL . 'assets/js/frontend.js', 
-                array('jquery'), 
-                VEFIFY_QUIZ_VERSION, 
-                true
-            );
-            
-            wp_localize_script('vefify-frontend', 'vefifyFrontend', array(
-                'ajaxUrl' => admin_url('admin-ajax.php'),
-                'restUrl' => rest_url('vefify/v1/'),
-                'nonce' => wp_create_nonce('vefify_frontend_nonce'),
-                'strings' => array(
-                    'loading' => esc_html__('Loading...', 'vefify-quiz'),
-                    'error' => esc_html__('An error occurred. Please try again.', 'vefify-quiz'),
-                    'networkError' => esc_html__('Network error. Please check your connection.', 'vefify-quiz'),
-                    'submitSuccess' => esc_html__('Quiz submitted successfully!', 'vefify-quiz'),
-                    'alreadyParticipated' => esc_html__('You have already participated in this campaign.', 'vefify-quiz')
-                )
-            ));
-        }
-    }
-    
-    /**
-     * Check if current page has quiz shortcodes
-     */
-    private function has_quiz_shortcode() {
-        global $post;
-        
-        if (!is_a($post, 'WP_Post')) {
-            return false;
-        }
-        
-        $shortcodes = array('vefify_quiz', 'vefify_campaign', 'vefify_quiz_question');
-        
-        foreach ($shortcodes as $shortcode) {
-            if (has_shortcode($post->post_content, $shortcode)) {
-                return true;
-            }
-        }
-        
-        return false;
-    }
-    
-    /**
-     * Display admin notices
-     */
-    public function display_admin_notices() {
-        // Check for transient notices
-        $notice = get_transient('vefify_admin_notice');
-        
-        if ($notice) {
-            echo '<div class="notice notice-' . esc_attr($notice['type']) . ' is-dismissible">';
-            echo '<p>' . esc_html($notice['message']) . '</p>';
-            echo '</div>';
-            
-            delete_transient('vefify_admin_notice');
-        }
-        
-        // Check for activation success
-        if (get_option('vefify_quiz_activated')) {
-            echo '<div class="notice notice-success is-dismissible">';
-            echo '<h3>🎉 ' . esc_html__('Vefify Quiz Plugin Activated!', 'vefify-quiz') . '</h3>';
-            echo '<p>' . esc_html__('Database tables created successfully. You can now create your first campaign.', 'vefify-quiz') . '</p>';
-            echo '<p><a href="' . admin_url('admin.php?page=vefify-campaigns&action=new') . '" class="button button-primary">' . esc_html__('Create First Campaign', 'vefify-quiz') . '</a></p>';
-            echo '</div>';
-            
-            delete_option('vefify_quiz_activated');
-        }
-    }
-    
-    /**
-     * AJAX handler for dashboard data
-     */
-    public function ajax_dashboard_data() {
-        if (!wp_verify_nonce($_POST['nonce'], 'vefify_admin_nonce')) {
-            wp_send_json_error('Security check failed');
-        }
-        
-        if (!current_user_can('manage_options')) {
-            wp_send_json_error('Unauthorized');
-        }
-        
-        $data = array();
-        
-        // Get data from each module
-        foreach ($this->modules as $module_name => $module) {
-            if (method_exists($module, 'get_module_analytics')) {
-                $data[$module_name] = $module->get_module_analytics();
-            }
-        }
-        
-        wp_send_json_success($data);
-    }
-    
-    /**
-     * Daily cleanup routine
-     */
-    public function daily_cleanup() {
-        global $wpdb;
-        $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
-        
-        // Clean up expired sessions
-        $deleted_sessions = $wpdb->query("
-            DELETE FROM {$table_prefix}quiz_sessions 
-            WHERE created_at < DATE_SUB(NOW(), INTERVAL 24 HOUR) 
-            AND is_completed = 0
-        ");
-        
-        // Clean up old analytics data
-        $deleted_analytics = $wpdb->query("
-            DELETE FROM {$table_prefix}analytics 
-            WHERE created_at < DATE_SUB(NOW(), INTERVAL 90 DAY)
-        ");
-        
-        error_log("Vefify Quiz: Daily cleanup - Deleted {$deleted_sessions} sessions, {$deleted_analytics} analytics");
-    }
-    
-    /**
-     * Weekly summary
-     */
-    public function weekly_summary() {
-        // Generate weekly summary report
-        $summary = $this->generate_weekly_summary();
-        
-        // Email to admin
-        $admin_email = get_option('admin_email');
-        $subject = 'Vefify Quiz - Weekly Summary';
-        $message = $this->format_weekly_summary($summary);
-        
-        wp_mail($admin_email, $subject, $message);
-    }
-    
-    /**
-     * Generate weekly summary data
-     */
-    private function generate_weekly_summary() {
-        global $wpdb;
-        $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
-        
-        return $wpdb->get_row("
-            SELECT 
-                COUNT(*) as total_participants,
-                COUNT(CASE WHEN completed_at IS NOT NULL THEN 1 END) as completed_quizzes,
-                AVG(score) as average_score,
-                COUNT(CASE WHEN gift_id IS NOT NULL THEN 1 END) as gifts_awarded
-            FROM {$table_prefix}quiz_users 
-            WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
-        ", ARRAY_A);
-    }
-    
-    /**
-     * Format weekly summary email
-     */
-    private function format_weekly_summary($summary) {
-        $message = "Weekly Quiz Summary:\n\n";
-        $message .= "Total Participants: " . number_format($summary['total_participants']) . "\n";
-        $message .= "Completed Quizzes: " . number_format($summary['completed_quizzes']) . "\n";
-        $message .= "Average Score: " . number_format($summary['average_score'], 1) . "\n";
-        $message .= "Gifts Awarded: " . number_format($summary['gifts_awarded']) . "\n";
-        
-        return $message;
-    }
-    
-    /**
-     * Get module instance
-     */
-    public function get_module($module_name) {
-        return isset($this->modules[$module_name]) ? $this->modules[$module_name] : null;
-    }
-    
-    /**
-     * Get all modules
-     */
-    public function get_modules() {
-        return $this->modules;
-    }
-    
-    /**
-     * Get admin menu instance
-     */
-    public function get_admin_menu() {
-        return $this->admin_menu;
-    }
-    
-    /**
-     * Create fallback admin menu when file is missing
-     */
-    private function create_fallback_admin_menu() {
-        return new class {
-            public function register_menus() {
-                add_menu_page(
-                    'Vefify Quiz',
-                    'Vefify Quiz',
-                    'manage_options',
-                    'vefify-quiz',
-                    array($this, 'render_placeholder'),
-                    'dashicons-forms',
-                    30
-                );
-            }
-            
-            public function render_placeholder() {
-                echo '<div class="wrap">';
-                echo '<h1>Vefify Quiz Plugin</h1>';
-                echo '<div class="notice notice-warning">';
-                echo '<p><strong>Setup Required:</strong> Please upload the missing plugin files to complete installation.</p>';
-                echo '<p>Missing files: includes/class-admin-menu.php</p>';
-                echo '</div>';
-                echo '</div>';
-            }
-        };
-    }
-    
-    /**
-     * Create fallback for missing files
-     */
-    private function create_missing_file_fallback($file_type) {
-        switch ($file_type) {
-            case 'utilities':
-                if (!class_exists('Vefify_Quiz_Utilities')) {
-                    eval('class Vefify_Quiz_Utilities { public function __construct() {} }');
-                }
-                break;
-            case 'rest-api':
-                if (!class_exists('Vefify_Quiz_Rest_API')) {
-                    eval('class Vefify_Quiz_Rest_API { public function register_routes() {} }');
-                }
-                break;
-        }
-    }
-}
-
-/**
- * Plugin Installer Class - Fixed Database Issues
+ * Installer Class - Handles plugin activation/deactivation
  */
 class Vefify_Quiz_Installer {
     
     /**
-     * Plugin activation
+     * Plugin activation callback
      */
     public static function activate() {
         try {
             $installer = new self();
             
-            // Create/update database tables
+            // Create database tables
             $installer->create_tables();
             
-            // Insert sample data only on fresh install
-            if (!get_option('vefify_quiz_installed')) {
-                $installer->insert_sample_data();
-                update_option('vefify_quiz_installed', true);
-            }
+            // Insert sample data (only on fresh install)
+            $installer->insert_sample_data();
             
-            // Set default options
+            // Set plugin options
             $installer->set_default_options();
             
-            // Create directories
+            // Create upload directories
             $installer->create_directories();
             
-            // Schedule events
+            // Schedule cleanup events
             $installer->schedule_events();
             
             // Flush rewrite rules
             flush_rewrite_rules();
             
-            // Set activation flag
-            update_option('vefify_quiz_activated', true);
-            
+            // Log successful activation
             error_log('Vefify Quiz Plugin activated successfully');
             
         } catch (Exception $e) {
+            // Log error and show admin notice
             error_log('Vefify Quiz Plugin activation failed: ' . $e->getMessage());
+            
+            // Store error for admin display
+            update_option('vefify_quiz_activation_error', $e->getMessage());
+            
+            // Deactivate plugin if critical error
             deactivate_plugins(plugin_basename(__FILE__));
-            wp_die('Plugin activation failed: ' . esc_html($e->getMessage()));
+            wp_die('Plugin activation failed: ' . esc_html($e->getMessage()) . '<br><br><a href="' . admin_url('plugins.php') . '">Return to Plugins</a>');
         }
     }
     
     /**
-     * Plugin deactivation
+     * Plugin deactivation callback
      */
     public static function deactivate() {
+        // Clear scheduled events
         wp_clear_scheduled_hook('vefify_quiz_daily_cleanup');
         wp_clear_scheduled_hook('vefify_quiz_weekly_summary');
+        
+        // Flush rewrite rules
         flush_rewrite_rules();
-    }
- /**
- * Daily cleanup cron job
- */
-add_action('vefify_quiz_daily_cleanup', 'vefify_quiz_run_daily_cleanup');
-
-function vefify_quiz_run_daily_cleanup() {
-    try {
-        require_once VEFIFY_QUIZ_PLUGIN_DIR . 'includes/class-database.php';
-        $database = new Vefify_Quiz_Database();
         
-        // Clean expired data
-        $cleaned = $database->cleanup_expired_data();
-        
-        // Log cleanup results
-        error_log('Vefify Quiz: Daily cleanup completed - ' . json_encode($cleaned));
-        
-    } catch (Exception $e) {
-        error_log('Vefify Quiz: Daily cleanup failed - ' . $e->getMessage());
-    }
-}
-
-/**
- * Check plugin requirements
- */
-function vefify_quiz_check_requirements() {
-    $requirements = array();
-    
-    // Check PHP version
-    if (version_compare(PHP_VERSION, '7.4', '<')) {
-        $requirements[] = 'PHP 7.4 or higher is required. Current version: ' . PHP_VERSION;
+        // Log deactivation
+        error_log('Vefify Quiz Plugin deactivated');
     }
     
-    // Check WordPress version
-    global $wp_version;
-    if (version_compare($wp_version, '5.0', '<')) {
-        $requirements[] = 'WordPress 5.0 or higher is required. Current version: ' . $wp_version;
-    }
-    
-    // Check MySQL version
-    global $wpdb;
-    $mysql_version = $wpdb->get_var("SELECT VERSION()");
-    if (version_compare($mysql_version, '5.6', '<')) {
-        $requirements[] = 'MySQL 5.6 or higher is required. Current version: ' . $mysql_version;
-    }
-    
-    // Check required PHP extensions
-    $required_extensions = array('json', 'mysqli');
-    foreach ($required_extensions as $extension) {
-        if (!extension_loaded($extension)) {
-            $requirements[] = "PHP extension '{$extension}' is required but not loaded.";
-        }
-    }
-    
-    return $requirements;
-}
-
-/**
- * Admin notice for requirements
- */
-function vefify_quiz_requirements_notice() {
-    $requirements = vefify_quiz_check_requirements();
-    
-    if (!empty($requirements)) {
-        echo '<div class="notice notice-error"><p><strong>Vefify Quiz Plugin:</strong><br>';
-        foreach ($requirements as $requirement) {
-            echo '• ' . esc_html($requirement) . '<br>';
-        }
-        echo '</p></div>';
-    }
-}
-
-add_action('admin_notices', 'vefify_quiz_requirements_notice');
-
-/**
- * Database health check (for debugging)
- */
-function vefify_quiz_admin_health_check() {
-    if (!current_user_can('manage_options')) {
-        return;
-    }
-    
-    if (isset($_GET['vefify_health_check']) && $_GET['vefify_health_check'] === '1') {
-        try {
-            require_once VEFIFY_QUIZ_PLUGIN_DIR . 'includes/class-database.php';
-            $database = new Vefify_Quiz_Database();
-            
-            $health = $database->check_database_health();
-            
-            echo '<div class="notice notice-info"><p><strong>Database Health Check:</strong><br>';
-            echo 'Tables exist: ' . ($health['tables_exist'] ? 'Yes' : 'No') . '<br>';
-            
-            if (!empty($health['missing_tables'])) {
-                echo 'Missing tables: ' . implode(', ', $health['missing_tables']) . '<br>';
-            }
-            
-            echo 'Last activity: ' . ($health['last_activity'] ?: 'No data') . '<br>';
-            echo '</p></div>';
-            
-        } catch (Exception $e) {
-            echo '<div class="notice notice-error"><p>Health check failed: ' . esc_html($e->getMessage()) . '</p></div>';
-        }
-    }
-}
-
-add_action('admin_notices', 'vefify_quiz_admin_health_check');
     /**
-     * Create database tables - FIXED VERSION
+     * Create all database tables
      */
     public function create_tables() {
         global $wpdb;
@@ -723,351 +90,1146 @@ add_action('admin_notices', 'vefify_quiz_admin_health_check');
         $charset_collate = $wpdb->get_charset_collate();
         $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
         
-        // Check if tables need creation/update
+        // Check if we need to create tables
         $installed_version = get_option('vefify_quiz_db_version', '0');
         
         if (version_compare($installed_version, VEFIFY_QUIZ_DB_VERSION, '>=')) {
-            return;
+            return; // Tables already up to date
         }
         
+        // Include WordPress dbDelta function
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
         
-        // FIXED: Consistent table structure
+        // 1. Campaigns Table
+        $sql_campaigns = "CREATE TABLE {$table_prefix}campaigns (
+            id int(11) NOT NULL AUTO_INCREMENT,
+            name varchar(255) NOT NULL,
+            slug varchar(255) NOT NULL,
+            description text,
+            start_date datetime NOT NULL,
+            end_date datetime NOT NULL,
+            is_active tinyint(1) DEFAULT 1,
+            max_participants int(11) DEFAULT NULL,
+            allow_retake tinyint(1) DEFAULT 0,
+            questions_per_quiz int(11) DEFAULT 5,
+            time_limit int(11) DEFAULT NULL,
+            pass_score int(11) DEFAULT 3,
+            meta_data longtext,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY idx_active_campaigns (is_active, start_date, end_date),
+            UNIQUE KEY idx_slug (slug)
+        ) $charset_collate;";
+        
+        // 2. Questions Table
+        $sql_questions = "CREATE TABLE {$table_prefix}questions (
+            id int(11) NOT NULL AUTO_INCREMENT,
+            campaign_id int(11) DEFAULT NULL,
+            question_text text NOT NULL,
+            question_type enum('multiple_choice', 'multiple_select', 'true_false') DEFAULT 'multiple_choice',
+            category varchar(100) DEFAULT NULL,
+            difficulty enum('easy', 'medium', 'hard') DEFAULT 'medium',
+            points int(11) DEFAULT 1,
+            explanation text,
+            is_active tinyint(1) DEFAULT 1,
+            order_index int(11) DEFAULT 0,
+            meta_data longtext,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY idx_campaign_questions (campaign_id, is_active),
+            KEY idx_category (category)
+        ) $charset_collate;";
+        
+        // 3. Question Options Table
+        $sql_options = "CREATE TABLE {$table_prefix}question_options (
+            id int(11) NOT NULL AUTO_INCREMENT,
+            question_id int(11) NOT NULL,
+            option_text text NOT NULL,
+            is_correct tinyint(1) DEFAULT 0,
+            order_index int(11) DEFAULT 0,
+            explanation text,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY idx_question_options (question_id)
+        ) $charset_collate;";
+        
+        // 4. Gifts Table
+        $sql_gifts = "CREATE TABLE {$table_prefix}gifts (
+            id int(11) NOT NULL AUTO_INCREMENT,
+            campaign_id int(11) NOT NULL,
+            gift_name varchar(255) NOT NULL,
+            gift_type enum('voucher', 'discount', 'product', 'points') NOT NULL,
+            gift_value varchar(100) NOT NULL,
+            gift_description text,
+            min_score int(11) NOT NULL DEFAULT 0,
+            max_score int(11) DEFAULT NULL,
+            max_quantity int(11) DEFAULT NULL,
+            used_count int(11) DEFAULT 0,
+            gift_code_prefix varchar(20) DEFAULT NULL,
+            api_endpoint varchar(255) DEFAULT NULL,
+            api_params longtext,
+            is_active tinyint(1) DEFAULT 1,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY idx_campaign_gifts (campaign_id, is_active),
+            KEY idx_score_range (min_score, max_score)
+        ) $charset_collate;";
+        
+        // 5. Quiz Users Table
+        $sql_users = "CREATE TABLE {$table_prefix}quiz_users (
+            id int(11) NOT NULL AUTO_INCREMENT,
+            campaign_id int(11) NOT NULL,
+            session_id varchar(100) NOT NULL,
+            full_name varchar(255) NOT NULL,
+            phone_number varchar(20) NOT NULL,
+            province varchar(100) DEFAULT NULL,
+            pharmacy_code varchar(50) DEFAULT NULL,
+            email varchar(255) DEFAULT NULL,
+            score int(11) DEFAULT 0,
+            total_questions int(11) DEFAULT 0,
+            completion_time int(11) DEFAULT NULL,
+            gift_id int(11) DEFAULT NULL,
+            gift_code varchar(100) DEFAULT NULL,
+            gift_status enum('none', 'assigned', 'claimed', 'expired') DEFAULT 'none',
+            gift_response longtext,
+            ip_address varchar(45) DEFAULT NULL,
+            user_agent text,
+            started_at datetime DEFAULT NULL,
+            completed_at datetime DEFAULT NULL,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY unique_campaign_phone (campaign_id, phone_number),
+            KEY idx_session (session_id),
+            KEY idx_phone_lookup (phone_number),
+            KEY idx_completion (completed_at)
+        ) $charset_collate;";
+        
+        // 6. Quiz Sessions Table
+        $sql_sessions = "CREATE TABLE {$table_prefix}quiz_sessions (
+            id int(11) NOT NULL AUTO_INCREMENT,
+            session_id varchar(100) NOT NULL,
+            user_id int(11) NOT NULL,
+            campaign_id int(11) NOT NULL,
+            current_question int(11) DEFAULT 0,
+            questions_data longtext,
+            answers_data longtext,
+            time_remaining int(11) DEFAULT NULL,
+            is_completed tinyint(1) DEFAULT 0,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY unique_session (session_id),
+            KEY idx_user_session (user_id, session_id)
+        ) $charset_collate;";
+        
+        // 7. Analytics Table
+        $sql_analytics = "CREATE TABLE {$table_prefix}analytics (
+            id int(11) NOT NULL AUTO_INCREMENT,
+            campaign_id int(11) NOT NULL,
+            event_type enum('view', 'start', 'question_answer', 'complete', 'gift_claim') NOT NULL,
+            user_id int(11) DEFAULT NULL,
+            session_id varchar(100) DEFAULT NULL,
+            question_id int(11) DEFAULT NULL,
+            event_data longtext,
+            ip_address varchar(45) DEFAULT NULL,
+            user_agent text,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY idx_campaign_analytics (campaign_id, event_type),
+            KEY idx_event_tracking (event_type, created_at)
+        ) $charset_collate;";
+        
+        // Execute table creation
         $tables = array(
-            'campaigns' => "CREATE TABLE {$table_prefix}campaigns (
-                id int(11) NOT NULL AUTO_INCREMENT,
-                name varchar(255) NOT NULL,
-                slug varchar(255) NOT NULL,
-                description text,
-                start_date datetime NOT NULL,
-                end_date datetime NOT NULL,
-                is_active tinyint(1) DEFAULT 1,
-                max_participants int(11) DEFAULT NULL,
-                allow_retake tinyint(1) DEFAULT 0,
-                questions_per_quiz int(11) DEFAULT 5,
-                time_limit int(11) DEFAULT NULL,
-                pass_score int(11) DEFAULT 3,
-                meta_data longtext,
-                created_at datetime DEFAULT CURRENT_TIMESTAMP,
-                updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                PRIMARY KEY (id),
-                KEY idx_active_campaigns (is_active, start_date, end_date),
-                UNIQUE KEY idx_slug (slug)
-            ) $charset_collate;",
-            
-            'questions' => "CREATE TABLE {$table_prefix}questions (
-                id int(11) NOT NULL AUTO_INCREMENT,
-                campaign_id int(11) DEFAULT NULL,
-                question_text text NOT NULL,
-                question_type enum('multiple_choice', 'multiple_select', 'true_false') DEFAULT 'multiple_choice',
-                category varchar(100) DEFAULT NULL,
-                difficulty enum('easy', 'medium', 'hard') DEFAULT 'medium',
-                points int(11) DEFAULT 1,
-                explanation text,
-                is_active tinyint(1) DEFAULT 1,
-                order_index int(11) DEFAULT 0,
-                meta_data longtext,
-                created_at datetime DEFAULT CURRENT_TIMESTAMP,
-                updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                PRIMARY KEY (id),
-                KEY idx_campaign_questions (campaign_id, is_active),
-                KEY idx_category (category)
-            ) $charset_collate;",
-            
-            'question_options' => "CREATE TABLE {$table_prefix}question_options (
-                id int(11) NOT NULL AUTO_INCREMENT,
-                question_id int(11) NOT NULL,
-                option_text text NOT NULL,
-                is_correct tinyint(1) DEFAULT 0,
-                order_index int(11) DEFAULT 0,
-                explanation text,
-                created_at datetime DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (id),
-                KEY idx_question_options (question_id),
-                FOREIGN KEY (question_id) REFERENCES {$table_prefix}questions(id) ON DELETE CASCADE
-            ) $charset_collate;",
-            
-            'gifts' => "CREATE TABLE {$table_prefix}gifts (
-                id int(11) NOT NULL AUTO_INCREMENT,
-                campaign_id int(11) NOT NULL,
-                gift_name varchar(255) NOT NULL,
-                gift_type enum('voucher', 'discount', 'product', 'points') NOT NULL,
-                gift_value varchar(100) NOT NULL,
-                gift_description text,
-                min_score int(11) NOT NULL DEFAULT 0,
-                max_score int(11) DEFAULT NULL,
-                max_quantity int(11) DEFAULT NULL,
-                used_count int(11) DEFAULT 0,
-                gift_code_prefix varchar(20) DEFAULT NULL,
-                api_endpoint varchar(255) DEFAULT NULL,
-                api_params longtext,
-                is_active tinyint(1) DEFAULT 1,
-                created_at datetime DEFAULT CURRENT_TIMESTAMP,
-                updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                PRIMARY KEY (id),
-                KEY idx_campaign_gifts (campaign_id, is_active),
-                KEY idx_score_range (min_score, max_score),
-                FOREIGN KEY (campaign_id) REFERENCES {$table_prefix}campaigns(id) ON DELETE CASCADE
-            ) $charset_collate;",
-            
-            // FIXED: Unified participants table (was quiz_users)
-            'participants' => "CREATE TABLE {$table_prefix}participants (
-                id int(11) NOT NULL AUTO_INCREMENT,
-                campaign_id int(11) NOT NULL,
-                session_id varchar(100) NOT NULL,
-                full_name varchar(255) NOT NULL,
-                phone_number varchar(20) NOT NULL,
-                province varchar(100) DEFAULT NULL,
-                pharmacy_code varchar(50) DEFAULT NULL,
-                email varchar(255) DEFAULT NULL,
-                score int(11) DEFAULT 0,
-                total_questions int(11) DEFAULT 0,
-                completion_time int(11) DEFAULT NULL,
-                gift_id int(11) DEFAULT NULL,
-                gift_code varchar(100) DEFAULT NULL,
-                gift_status enum('none', 'assigned', 'claimed', 'expired') DEFAULT 'none',
-                gift_response longtext,
-                ip_address varchar(45) DEFAULT NULL,
-                user_agent text,
-                started_at datetime DEFAULT NULL,
-                completed_at datetime DEFAULT NULL,
-                created_at datetime DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (id),
-                UNIQUE KEY unique_campaign_phone (campaign_id, phone_number),
-                KEY idx_session (session_id),
-                KEY idx_phone_lookup (phone_number),
-                KEY idx_completion (completed_at),
-                FOREIGN KEY (campaign_id) REFERENCES {$table_prefix}campaigns(id) ON DELETE CASCADE,
-                FOREIGN KEY (gift_id) REFERENCES {$table_prefix}gifts(id) ON DELETE SET NULL
-            ) $charset_collate;",
-            
-            'quiz_sessions' => "CREATE TABLE {$table_prefix}quiz_sessions (
-                id int(11) NOT NULL AUTO_INCREMENT,
-                session_id varchar(100) NOT NULL,
-                participant_id int(11) NOT NULL,
-                campaign_id int(11) NOT NULL,
-                current_question int(11) DEFAULT 0,
-                questions_data longtext,
-                answers_data longtext,
-                time_remaining int(11) DEFAULT NULL,
-                is_completed tinyint(1) DEFAULT 0,
-                created_at datetime DEFAULT CURRENT_TIMESTAMP,
-                updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                PRIMARY KEY (id),
-                UNIQUE KEY unique_session (session_id),
-                KEY idx_participant_session (participant_id, session_id),
-                FOREIGN KEY (participant_id) REFERENCES {$table_prefix}participants(id) ON DELETE CASCADE,
-                FOREIGN KEY (campaign_id) REFERENCES {$table_prefix}campaigns(id) ON DELETE CASCADE
-            ) $charset_collate;",
-            
-            'analytics' => "CREATE TABLE {$table_prefix}analytics (
-                id int(11) NOT NULL AUTO_INCREMENT,
-                campaign_id int(11) NOT NULL,
-                event_type enum('view', 'start', 'question_answer', 'complete', 'gift_claim') NOT NULL,
-                participant_id int(11) DEFAULT NULL,
-                session_id varchar(100) DEFAULT NULL,
-                question_id int(11) DEFAULT NULL,
-                event_data longtext,
-                ip_address varchar(45) DEFAULT NULL,
-                user_agent text,
-                created_at datetime DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (id),
-                KEY idx_campaign_analytics (campaign_id, event_type),
-                KEY idx_event_tracking (event_type, created_at),
-                FOREIGN KEY (campaign_id) REFERENCES {$table_prefix}campaigns(id) ON DELETE CASCADE
-            ) $charset_collate;"
+            'campaigns' => $sql_campaigns,
+            'questions' => $sql_questions,
+            'question_options' => $sql_options,
+            'gifts' => $sql_gifts,
+            'quiz_users' => $sql_users,
+            'quiz_sessions' => $sql_sessions,
+            'analytics' => $sql_analytics
         );
         
-        // Create tables
         foreach ($tables as $table_name => $sql) {
             $result = dbDelta($sql);
             
             if ($wpdb->last_error) {
                 throw new Exception("Failed to create table {$table_name}: " . $wpdb->last_error);
             }
+            
+            error_log("Vefify Quiz: Created/Updated table {$table_name}");
         }
         
         // Update database version
         update_option('vefify_quiz_db_version', VEFIFY_QUIZ_DB_VERSION);
         
-        error_log('Vefify Quiz: Database tables created/updated successfully');
+        error_log('Vefify Quiz: All database tables created successfully');
     }
     
     /**
-     * Insert sample data
+     * Insert sample data (only on fresh install)
      */
     public function insert_sample_data() {
-        // Use the Database class for consistent data insertion
-        $database = new Vefify_Quiz_Database();
-        $database->insert_sample_data();
-    }
-    
-    /**
-     * Set default options
-     */
-    public function set_default_options() {
-        $defaults = array(
-            'vefify_quiz_version' => VEFIFY_QUIZ_VERSION,
-            'vefify_quiz_db_version' => VEFIFY_QUIZ_DB_VERSION,
-            'vefify_quiz_settings' => array(
-                'default_questions_per_quiz' => 5,
-                'default_time_limit' => 600,
-                'default_pass_score' => 3,
-                'enable_retakes' => false,
-                'phone_required' => true,
-                'province_required' => true,
-                'pharmacy_code_required' => false,
-                'enable_analytics' => true,
-                'enable_gift_api' => false,
-                'max_participants_per_campaign' => 10000
-            )
-        );
+        global $wpdb;
         
-        foreach ($defaults as $option_name => $option_value) {
-            if (!get_option($option_name)) {
-                add_option($option_name, $option_value);
+        $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
+        
+        // Check if sample data already exists
+        $existing_campaigns = $wpdb->get_var("SELECT COUNT(*) FROM {$table_prefix}campaigns");
+        
+        if ($existing_campaigns > 0) {
+            return; // Sample data already exists
+        }
+        
+        // Start transaction
+        $wpdb->query('START TRANSACTION');
+        
+        try {
+            // 1. Insert sample campaign
+            $campaign_result = $wpdb->insert(
+                $table_prefix . 'campaigns',
+                array(
+                    'name' => 'Health Knowledge Quiz 2024',
+                    'slug' => 'health-quiz-2024',
+                    'description' => 'Test your health and wellness knowledge to win amazing prizes!',
+                    'start_date' => '2024-01-01 00:00:00',
+                    'end_date' => '2024-12-31 23:59:59',
+                    'is_active' => 1,
+                    'max_participants' => 10000,
+                    'questions_per_quiz' => 5,
+                    'time_limit' => 600, // 10 minutes
+                    'pass_score' => 3,
+                    'meta_data' => json_encode(array(
+                        'welcome_message' => 'Welcome to our Health Quiz!',
+                        'completion_message' => 'Thank you for participating!'
+                    ))
+                ),
+                array('%s', '%s', '%s', '%s', '%s', '%d', '%d', '%d', '%d', '%d', '%s')
+            );
+            
+            if (!$campaign_result) {
+                throw new Exception('Failed to insert sample campaign');
             }
+            
+            $campaign_id = $wpdb->insert_id;
+            
+            // 2. Insert sample questions
+            $questions_data = array(
+                array(
+                    'question_text' => 'What is Aspirin commonly used for?',
+                    'question_type' => 'multiple_select',
+                    'category' => 'medication',
+                    'difficulty' => 'easy',
+                    'options' => array(
+                        array('text' => 'Pain relief', 'correct' => true),
+                        array('text' => 'Fever reduction', 'correct' => true),
+                        array('text' => 'Sleep aid', 'correct' => false),
+                        array('text' => 'Anxiety treatment', 'correct' => false)
+                    )
+                ),
+                array(
+                    'question_text' => 'Which vitamin is essential for bone health?',
+                    'question_type' => 'multiple_choice',
+                    'category' => 'nutrition',
+                    'difficulty' => 'medium',
+                    'options' => array(
+                        array('text' => 'Vitamin A', 'correct' => false),
+                        array('text' => 'Vitamin C', 'correct' => false),
+                        array('text' => 'Vitamin D', 'correct' => true),
+                        array('text' => 'Vitamin E', 'correct' => false)
+                    )
+                ),
+                array(
+                    'question_text' => 'What should you do before taking any medication?',
+                    'question_type' => 'multiple_select',
+                    'category' => 'safety',
+                    'difficulty' => 'easy',
+                    'options' => array(
+                        array('text' => 'Read the instructions', 'correct' => true),
+                        array('text' => 'Consult a healthcare provider', 'correct' => true),
+                        array('text' => 'Take it immediately', 'correct' => false),
+                        array('text' => 'Double the dose', 'correct' => false)
+                    )
+                ),
+                array(
+                    'question_text' => 'How often should you wash your hands?',
+                    'question_type' => 'multiple_choice',
+                    'category' => 'hygiene',
+                    'difficulty' => 'easy',
+                    'options' => array(
+                        array('text' => 'Once a day', 'correct' => false),
+                        array('text' => 'Before meals and after using restroom', 'correct' => true),
+                        array('text' => 'Only when dirty', 'correct' => false),
+                        array('text' => 'Never', 'correct' => false)
+                    )
+                ),
+                array(
+                    'question_text' => 'What is the recommended daily water intake for adults?',
+                    'question_type' => 'multiple_choice',
+                    'category' => 'nutrition',
+                    'difficulty' => 'medium',
+                    'options' => array(
+                        array('text' => '1-2 glasses', 'correct' => false),
+                        array('text' => '8-10 glasses (2-2.5 liters)', 'correct' => true),
+                        array('text' => '15-20 glasses', 'correct' => false),
+                        array('text' => 'As little as possible', 'correct' => false)
+                    )
+                )
+            );
+            
+            foreach ($questions_data as $index => $question_data) {
+                // Insert question
+                $question_result = $wpdb->insert(
+                    $table_prefix . 'questions',
+                    array(
+                        'campaign_id' => $campaign_id,
+                        'question_text' => $question_data['question_text'],
+                        'question_type' => $question_data['question_type'],
+                        'category' => $question_data['category'],
+                        'difficulty' => $question_data['difficulty'],
+                        'order_index' => $index + 1,
+                        'is_active' => 1
+                    ),
+                    array('%d', '%s', '%s', '%s', '%s', '%d', '%d')
+                );
+                
+                if (!$question_result) {
+                    throw new Exception("Failed to insert question: " . $question_data['question_text']);
+                }
+                
+                $question_id = $wpdb->insert_id;
+                
+                // Insert options for this question
+                foreach ($question_data['options'] as $option_index => $option) {
+                    $option_result = $wpdb->insert(
+                        $table_prefix . 'question_options',
+                        array(
+                            'question_id' => $question_id,
+                            'option_text' => $option['text'],
+                            'is_correct' => $option['correct'] ? 1 : 0,
+                            'order_index' => $option_index + 1
+                        ),
+                        array('%d', '%s', '%d', '%d')
+                    );
+                    
+                    if (!$option_result) {
+                        throw new Exception("Failed to insert option: " . $option['text']);
+                    }
+                }
+            }
+            
+            // 3. Insert sample gifts
+            $gifts_data = array(
+                array(
+                    'gift_name' => 'Participation Certificate',
+                    'gift_type' => 'product',
+                    'gift_value' => 'Digital Certificate',
+                    'gift_description' => 'Thank you for participating in our health quiz!',
+                    'min_score' => 1,
+                    'max_score' => 2,
+                    'max_quantity' => null, // Unlimited
+                    'gift_code_prefix' => 'CERT'
+                ),
+                array(
+                    'gift_name' => '10% Discount Voucher',
+                    'gift_type' => 'discount',
+                    'gift_value' => '10%',
+                    'gift_description' => '10% discount on your next purchase',
+                    'min_score' => 3,
+                    'max_score' => 4,
+                    'max_quantity' => 100,
+                    'gift_code_prefix' => 'SAVE10'
+                ),
+                array(
+                    'gift_name' => '50,000 VND Voucher',
+                    'gift_type' => 'voucher',
+                    'gift_value' => '50,000 VND',
+                    'gift_description' => 'Cash voucher worth 50,000 VND',
+                    'min_score' => 5,
+                    'max_score' => 5,
+                    'max_quantity' => 20,
+                    'gift_code_prefix' => 'GIFT50K'
+                )
+            );
+            
+            foreach ($gifts_data as $gift_data) {
+                $gift_result = $wpdb->insert(
+                    $table_prefix . 'gifts',
+                    array(
+                        'campaign_id' => $campaign_id,
+                        'gift_name' => $gift_data['gift_name'],
+                        'gift_type' => $gift_data['gift_type'],
+                        'gift_value' => $gift_data['gift_value'],
+                        'gift_description' => $gift_data['gift_description'],
+                        'min_score' => $gift_data['min_score'],
+                        'max_score' => $gift_data['max_score'],
+                        'max_quantity' => $gift_data['max_quantity'],
+                        'used_count' => 0,
+                        'gift_code_prefix' => $gift_data['gift_code_prefix'],
+                        'is_active' => 1
+                    ),
+                    array('%d', '%s', '%s', '%s', '%s', '%d', '%d', '%d', '%d', '%s', '%d')
+                );
+                
+                if (!$gift_result) {
+                    throw new Exception("Failed to insert gift: " . $gift_data['gift_name']);
+                }
+            }
+            
+            // Commit transaction
+            $wpdb->query('COMMIT');
+            
+            error_log('Vefify Quiz: Sample data inserted successfully');
+            
+            // Set flag to show admin notice
+            update_option('vefify_quiz_sample_data_inserted', true);
+            
+        } catch (Exception $e) {
+            // Rollback transaction
+            $wpdb->query('ROLLBACK');
+            throw $e;
         }
     }
     
     /**
-     * Create directories
+     * Set default plugin options
+     */
+    public function set_default_options() {
+        $default_settings = array(
+            'default_questions_per_quiz' => 5,
+            'default_time_limit' => 600, // 10 minutes
+            'default_pass_score' => 3,
+            'enable_retakes' => false,
+            'phone_number_required' => true,
+            'province_required' => true,
+            'pharmacy_code_required' => false,
+            'enable_analytics' => true,
+            'enable_gift_api' => false,
+            'gift_api_timeout' => 30,
+            'max_participants_per_campaign' => 10000
+        );
+        
+        // Only set if not already configured
+        if (!get_option('vefify_quiz_settings')) {
+            update_option('vefify_quiz_settings', $default_settings);
+        }
+        
+        // Set initial plugin version
+        update_option('vefify_quiz_version', VEFIFY_QUIZ_VERSION);
+        
+        // Set installation date
+        if (!get_option('vefify_quiz_installed_date')) {
+            update_option('vefify_quiz_installed_date', current_time('mysql'));
+        }
+    }
+    
+    /**
+     * Create necessary directories
      */
     public function create_directories() {
         $upload_dir = wp_upload_dir();
-        $plugin_dir = $upload_dir['basedir'] . '/vefify-quiz/';
+        $vefify_dir = $upload_dir['basedir'] . '/vefify-quiz/';
         
         $directories = array(
-            $plugin_dir,
-            $plugin_dir . 'exports/',
-            $plugin_dir . 'imports/',
-            $plugin_dir . 'logs/',
-            $plugin_dir . 'cache/'
+            $vefify_dir,
+            $vefify_dir . 'exports/',
+            $vefify_dir . 'imports/',
+            $vefify_dir . 'logs/',
+            $vefify_dir . 'cache/'
         );
         
         foreach ($directories as $dir) {
             if (!is_dir($dir)) {
                 wp_mkdir_p($dir);
+                
+                // Create .htaccess to protect directories
                 file_put_contents($dir . '.htaccess', "deny from all\n");
+                
+                // Create index.php to prevent directory listing
                 file_put_contents($dir . 'index.php', "<?php // Silence is golden");
             }
         }
     }
     
     /**
-     * Schedule events
+     * Schedule recurring events
      */
     public function schedule_events() {
+        // Schedule daily cleanup
         if (!wp_next_scheduled('vefify_quiz_daily_cleanup')) {
             wp_schedule_event(time(), 'daily', 'vefify_quiz_daily_cleanup');
         }
         
+        // Schedule weekly analytics summary
         if (!wp_next_scheduled('vefify_quiz_weekly_summary')) {
             wp_schedule_event(time(), 'weekly', 'vefify_quiz_weekly_summary');
         }
     }
 }
 
-// Register activation/deactivation hooks
-//register_activation_hook(__FILE__, array('Vefify_Quiz_Installer', 'activate'));
-//register_deactivation_hook(__FILE__, array('Vefify_Quiz_Installer', 'deactivate'));
-register_activation_hook(__FILE__, 'vefify_quiz_activate_plugin');
-register_deactivation_hook(__FILE__, 'vefify_quiz_deactivate_plugin');
-//vefify_quiz_activate_plugin
-function vefify_quiz_activate_plugin() {
-    try {
-        // Load database class
-        require_once VEFIFY_QUIZ_PLUGIN_DIR . 'includes/class-database.php';
+// Activation/Deactivation hooks - MUST be in main plugin file
+register_activation_hook(__FILE__, array('Vefify_Quiz_Installer', 'activate'));
+register_deactivation_hook(__FILE__, array('Vefify_Quiz_Installer', 'deactivate'));
+
+/**
+ * Add admin notices for successful installation
+ */
+add_action('admin_notices', function() {
+    if (get_option('vefify_quiz_sample_data_inserted')) {
+        echo '<div class="notice notice-success is-dismissible">';
+        echo '<h3>🎉 Vefify Quiz Plugin Activated Successfully!</h3>';
+        echo '<p><strong>Database Status:</strong></p>';
+        echo '<ul style="list-style: disc; margin-left: 20px;">';
+        echo '<li>✅ 7 database tables created</li>';
+        echo '<li>✅ Sample campaign: "Health Knowledge Quiz 2024"</li>';
+        echo '<li>✅ 5 health questions with 20 answer options</li>';
+        echo '<li>✅ 3-tier gift system configured</li>';
+        echo '<li>✅ Security directories created</li>';
+        echo '</ul>';
+        echo '<p><strong>🚀 Quick Start:</strong></p>';
+        echo '<ol style="margin-left: 20px;">';
+        echo '<li>Create a new page</li>';
+        echo '<li>Add shortcode: <code>[vefify_quiz campaign_id="1"]</code></li>';
+        echo '<li>Publish and test</li>';
+        echo '</ol>';
+        echo '<p>';
+        echo '<a href="' . admin_url('post-new.php?post_type=page') . '" class="button button-primary">Create Quiz Page Now</a> ';
+        echo '<a href="#" class="button" onclick="this.closest(\'.notice\').style.display=\'none\';">Dismiss</a>';
+        echo '</p>';
+        echo '</div>';
         
-        // Initialize database
-        $database = new Vefify_Quiz_Database();
-        
-        // Create tables with proper foreign key handling
-        $result = $database->create_tables();
-        
-        if ($result !== true) {
-            throw new Exception('Failed to create database tables');
-        }
-        
-        // Insert sample data
-        $sample_result = $database->insert_sample_data();
-        
-        if ($sample_result !== true) {
-            error_log('Vefify Quiz: Sample data insertion failed, but plugin activated');
-        }
-        
-        // Set plugin version
-        update_option('vefify_quiz_version', VEFIFY_QUIZ_VERSION);
-        update_option('vefify_quiz_activated', true);
-        
-        // Create default options
-        $default_options = array(
-            'vefify_quiz_email_enabled' => false,
-            'vefify_quiz_api_configured' => false,
-            'vefify_quiz_security_enabled' => true,
-            'vefify_quiz_backup_enabled' => false,
-            'vefify_quiz_debug_mode' => false
-        );
-        
-        foreach ($default_options as $option_name => $default_value) {
-            if (get_option($option_name) === false) {
-                update_option($option_name, $default_value);
-            }
-        }
-        
-        // Schedule cleanup cron job
-        if (!wp_next_scheduled('vefify_quiz_daily_cleanup')) {
-            wp_schedule_event(time(), 'daily', 'vefify_quiz_daily_cleanup');
-        }
-        
-        // Log successful activation
-        error_log('Vefify Quiz Plugin activated successfully');
-        
-    } catch (Exception $e) {
-        // Log the specific error
-        error_log('Vefify Quiz Plugin activation failed: ' . $e->getMessage());
-        
-        // For debugging, you can uncomment this to see the error in admin
-        // wp_die('Plugin activation failed: ' . $e->getMessage());
-        
-        // More graceful error handling for production
-        deactivate_plugins(plugin_basename(__FILE__));
-        wp_die(
-            '<h3>Plugin Activation Failed</h3>' .
-            '<p><strong>Error:</strong> ' . esc_html($e->getMessage()) . '</p>' .
-            '<p>Please check your database configuration and try again.</p>' .
-            '<p><a href="' . admin_url('plugins.php') . '">Back to Plugins</a></p>'
-        );
+        // Remove the notice after showing it once
+        delete_option('vefify_quiz_sample_data_inserted');
     }
-}
-/**
- * Plugin deactivation function
- */
-function vefify_quiz_deactivate_plugin() {
-    // Clear scheduled events
-    wp_clear_scheduled_hook('vefify_quiz_daily_cleanup');
     
-    // Log deactivation
-    error_log('Vefify Quiz Plugin deactivated');
-}
+    // Show activation error if any
+    $activation_error = get_option('vefify_quiz_activation_error');
+    if ($activation_error) {
+        echo '<div class="notice notice-error">';
+        echo '<h3>❌ Vefify Quiz Plugin Activation Error</h3>';
+        echo '<p><strong>Error:</strong> ' . esc_html($activation_error) . '</p>';
+        echo '<p><strong>Common Solutions:</strong></p>';
+        echo '<ul style="margin-left: 20px;">';
+        echo '<li>Check database user has CREATE TABLE permissions</li>';
+        echo '<li>Ensure MySQL version 5.7+ or MariaDB 10.2+</li>';
+        echo '<li>Verify wp-content/uploads is writable</li>';
+        echo '<li>Contact your hosting provider if issues persist</li>';
+        echo '</ul>';
+        echo '</div>';
+        delete_option('vefify_quiz_activation_error');
+    }
+});
+
 /**
- * Initialize the plugin
+ * Enhanced shortcode with full mobile interface
  */
-function vefify_quiz_init() {
-    return Vefify_Quiz_Plugin::get_instance();
+add_shortcode('vefify_quiz', function($atts) {
+    $atts = shortcode_atts(array(
+        'campaign_id' => 1,
+        'template' => 'mobile'
+    ), $atts);
+    
+    // Get campaign data
+    global $wpdb;
+    $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
+    
+    $campaign = $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM {$table_prefix}campaigns WHERE id = %d AND is_active = 1",
+        $atts['campaign_id']
+    ));
+    
+    if (!$campaign) {
+        return '<div style="padding: 20px; border: 2px solid #e74c3c; border-radius: 8px; background: #fdf2f2; color: #e74c3c; text-align: center;">
+            <h3>❌ Campaign Not Found</h3>
+            <p>Campaign ID ' . esc_html($atts['campaign_id']) . ' not found or inactive.</p>
+        </div>';
+    }
+    
+    // Enqueue styles and scripts
+    wp_enqueue_style('vefify-quiz-mobile', plugin_dir_url(__FILE__) . 'assets/quiz-mobile.css', array(), VEFIFY_QUIZ_VERSION);
+    wp_enqueue_script('vefify-quiz-mobile', plugin_dir_url(__FILE__) . 'assets/quiz-mobile.js', array('jquery'), VEFIFY_QUIZ_VERSION, true);
+    
+    // Localize script with campaign data and API endpoints
+    wp_localize_script('vefify-quiz-mobile', 'vefifyQuiz', array(
+        'apiUrl' => rest_url('wp/v2/'),
+        'restUrl' => rest_url('vefify/v1/'),
+        'nonce' => wp_create_nonce('wp_rest'),
+        'campaign' => array(
+            'id' => $campaign->id,
+            'name' => $campaign->name,
+            'description' => $campaign->description,
+            'questions_per_quiz' => $campaign->questions_per_quiz,
+            'time_limit' => $campaign->time_limit,
+            'pass_score' => $campaign->pass_score
+        ),
+        'strings' => array(
+            'loading' => 'Loading quiz questions...',
+            'error' => 'An error occurred. Please try again.',
+            'already_participated' => 'You have already participated in this campaign.',
+            'submit_success' => 'Quiz submitted successfully!',
+            'network_error' => 'Network error. Please check your connection.'
+        )
+    ));
+    
+    // Return the mobile quiz interface HTML
+    ob_start();
+    ?>
+    
+    <!-- Vefify Quiz Mobile Interface -->
+    <div class="vefify-quiz-wrapper" data-campaign-id="<?php echo esc_attr($campaign->id); ?>">
+        <div class="container">
+            <div class="header">
+                <h1>🎯 <?php echo esc_html($campaign->name); ?></h1>
+                <p><?php echo esc_html($campaign->description); ?></p>
+            </div>
+            
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+
+            <!-- Registration Form -->
+            <div class="content" id="registrationForm">
+                <form id="userForm">
+                    <div class="form-group">
+                        <label class="form-label" for="fullName">Full Name *</label>
+                        <input type="text" id="fullName" class="form-input" placeholder="Enter your full name" required>
+                        <div class="error-message" id="nameError">Please enter your full name</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="phoneNumber">Phone Number *</label>
+                        <input type="tel" id="phoneNumber" class="form-input" placeholder="0901234567" required>
+                        <div class="error-message" id="phoneError">Please enter a valid phone number</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="province">Province/City *</label>
+                        <select id="province" class="form-select" required>
+                            <option value="">Select your province/city</option>
+                            <option value="hanoi">Hanoi</option>
+                            <option value="hcm">Ho Chi Minh City</option>
+                            <option value="danang">Da Nang</option>
+                            <option value="haiphong">Hai Phong</option>
+                            <option value="cantho">Can Tho</option>
+                        </select>
+                        <div class="error-message" id="provinceError">Please select your province/city</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="pharmacyCode">Pharmacy Code</label>
+                        <input type="text" id="pharmacyCode" class="form-input" placeholder="Optional">
+                    </div>
+
+                    <div class="button-group">
+                        <button type="submit" class="btn btn-primary">Continue →</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Loading State -->
+            <div class="loading" id="loadingState">
+                <div class="spinner"></div>
+                <p>Loading quiz questions...</p>
+            </div>
+
+            <!-- Quiz Container -->
+            <div class="question-container" id="quizContainer">
+                <div class="content">
+                    <div class="question-header">
+                        <div class="question-counter" id="questionCounter">Question 1 of 5</div>
+                        <div class="question-title" id="questionTitle">Loading question...</div>
+                    </div>
+
+                    <div class="answers-container" id="answersContainer">
+                        <!-- Answers will be loaded here -->
+                    </div>
+
+                    <div class="button-group">
+                        <button type="button" class="btn btn-secondary" id="prevBtn" disabled>← Previous</button>
+                        <button type="button" class="btn btn-primary" id="nextBtn">Next →</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Result Container -->
+            <div class="result-container" id="resultContainer">
+                <div class="result-icon">🎉</div>
+                <div class="result-score" id="resultScore">5/5</div>
+                <div class="result-message" id="resultMessage">Congratulations! You've completed the quiz.</div>
+                
+                <div class="reward-card" id="rewardCard" style="display: none;">
+                    <div class="reward-title">🎁 You've Won!</div>
+                    <div class="reward-code" id="rewardCode">GIFT50K</div>
+                    <div class="reward-description" id="rewardDescription">Cash voucher worth 50,000 VND</div>
+                </div>
+
+                <div class="button-group">
+                    <button type="button" class="btn btn-primary" onclick="restartQuiz()">Take Another Quiz</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Popup for already participated -->
+        <div class="popup" id="alreadyParticipatedPopup">
+            <div class="popup-content">
+                <div class="popup-icon">⚠️</div>
+                <div class="popup-message">You have already participated in this campaign.</div>
+                <button class="btn btn-primary" onclick="closePopup()">OK</button>
+            </div>
+        </div>
+
+        <!-- Error Popup -->
+        <div class="popup" id="errorPopup">
+            <div class="popup-content">
+                <div class="popup-icon">❌</div>
+                <div class="popup-message" id="errorMessage">An error occurred. Please try again.</div>
+                <button class="btn btn-primary" onclick="closePopup()">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <?php
+    return ob_get_clean();
+});
+
+/**
+ * Create REST API endpoints for the quiz
+ */
+add_action('rest_api_init', function() {
+    // Check participation endpoint
+    register_rest_route('vefify/v1', '/check-participation', array(
+        'methods' => 'POST',
+        'callback' => 'vefify_check_participation',
+        'permission_callback' => '__return_true'
+    ));
+    
+    // Start quiz endpoint
+    register_rest_route('vefify/v1', '/start-quiz', array(
+        'methods' => 'POST',
+        'callback' => 'vefify_start_quiz',
+        'permission_callback' => '__return_true'
+    ));
+    
+    // Submit quiz endpoint
+    register_rest_route('vefify/v1', '/submit-quiz', array(
+        'methods' => 'POST',
+        'callback' => 'vefify_submit_quiz',
+        'permission_callback' => '__return_true'
+    ));
+});
+
+/**
+ * Check if phone number already participated
+ */
+function vefify_check_participation($request) {
+    global $wpdb;
+    $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
+    
+    $phone = sanitize_text_field($request->get_param('phone'));
+    $campaign_id = intval($request->get_param('campaign_id'));
+    
+    if (!$phone || !$campaign_id) {
+        return new WP_Error('missing_data', 'Phone and campaign ID required', array('status' => 400));
+    }
+    
+    // Format phone number
+    $phone = preg_replace('/\D/', '', $phone);
+    
+    $existing = $wpdb->get_var($wpdb->prepare(
+        "SELECT id FROM {$table_prefix}quiz_users WHERE campaign_id = %d AND phone_number = %s",
+        $campaign_id, $phone
+    ));
+    
+    return rest_ensure_response(array(
+        'participated' => !empty($existing),
+        'message' => $existing ? 'You have already participated in this campaign' : 'You can participate'
+    ));
 }
 
-// Start the plugin
-add_action('plugins_loaded', 'vefify_quiz_init');
+/**
+ * Start quiz and get questions
+ */
+function vefify_start_quiz($request) {
+    global $wpdb;
+    $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
+    
+    $campaign_id = intval($request->get_param('campaign_id'));
+    $user_data = $request->get_param('user_data');
+    
+    if (!$campaign_id || !$user_data) {
+        return new WP_Error('missing_data', 'Campaign ID and user data required', array('status' => 400));
+    }
+    
+    // Validate user data
+    if (empty($user_data['full_name']) || empty($user_data['phone_number']) || empty($user_data['province'])) {
+        return new WP_Error('invalid_data', 'Required fields missing', array('status' => 400));
+    }
+    
+    // Check if already participated
+    $phone = preg_replace('/\D/', '', $user_data['phone_number']);
+    $existing = $wpdb->get_var($wpdb->prepare(
+        "SELECT id FROM {$table_prefix}quiz_users WHERE campaign_id = %d AND phone_number = %s",
+        $campaign_id, $phone
+    ));
+    
+    if ($existing) {
+        return new WP_Error('already_participated', 'You have already participated', array('status' => 409));
+    }
+    
+    // Get campaign info
+    $campaign = $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM {$table_prefix}campaigns WHERE id = %d AND is_active = 1",
+        $campaign_id
+    ));
+    
+    if (!$campaign) {
+        return new WP_Error('invalid_campaign', 'Campaign not found', array('status' => 404));
+    }
+    
+    // Get questions for this campaign
+    $questions = $wpdb->get_results($wpdb->prepare(
+        "SELECT q.*, 
+                (SELECT JSON_ARRAYAGG(
+                    JSON_OBJECT('id', qo.id, 'text', qo.option_text, 'order_index', qo.order_index)
+                    ORDER BY qo.order_index
+                ) FROM {$table_prefix}question_options qo WHERE qo.question_id = q.id) as options
+         FROM {$table_prefix}questions q 
+         WHERE q.campaign_id = %d AND q.is_active = 1 
+         ORDER BY q.order_index ASC, RAND() 
+         LIMIT %d",
+        $campaign_id, $campaign->questions_per_quiz
+    ), ARRAY_A);
+    
+    if (empty($questions)) {
+        return new WP_Error('no_questions', 'No questions available', array('status' => 500));
+    }
+    
+    // Decode options JSON
+    foreach ($questions as &$question) {
+        $question['options'] = json_decode($question['options'], true) ?: array();
+    }
+    
+    // Create user session
+    $session_id = 'vq_' . uniqid() . '_' . wp_generate_password(8, false);
+    
+    $user_result = $wpdb->insert(
+        $table_prefix . 'quiz_users',
+        array(
+            'campaign_id' => $campaign_id,
+            'session_id' => $session_id,
+            'full_name' => sanitize_text_field($user_data['full_name']),
+            'phone_number' => $phone,
+            'province' => sanitize_text_field($user_data['province']),
+            'pharmacy_code' => sanitize_text_field($user_data['pharmacy_code'] ?? ''),
+            'total_questions' => count($questions),
+            'started_at' => current_time('mysql'),
+            'ip_address' => $_SERVER['REMOTE_ADDR'] ?? '',
+            'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? ''
+        ),
+        array('%d', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%s')
+    );
+    
+    if (!$user_result) {
+        return new WP_Error('db_error', 'Failed to create user session', array('status' => 500));
+    }
+    
+    $user_id = $wpdb->insert_id;
+    
+    // Create quiz session
+    $wpdb->insert(
+        $table_prefix . 'quiz_sessions',
+        array(
+            'session_id' => $session_id,
+            'user_id' => $user_id,
+            'campaign_id' => $campaign_id,
+            'questions_data' => json_encode(array_column($questions, 'id')),
+            'answers_data' => json_encode(array())
+        ),
+        array('%s', '%d', '%d', '%s', '%s')
+    );
+    
+    return rest_ensure_response(array(
+        'success' => true,
+        'session_id' => $session_id,
+        'user_id' => $user_id,
+        'campaign' => array(
+            'name' => $campaign->name,
+            'time_limit' => $campaign->time_limit,
+            'questions_per_quiz' => $campaign->questions_per_quiz
+        ),
+        'questions' => $questions
+    ));
+}
+
+/**
+ * Submit quiz and calculate results
+ */
+function vefify_submit_quiz($request) {
+    global $wpdb;
+    $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
+    
+    $session_id = sanitize_text_field($request->get_param('session_id'));
+    $answers = $request->get_param('answers');
+    
+    if (!$session_id || !is_array($answers)) {
+        return new WP_Error('missing_data', 'Session ID and answers required', array('status' => 400));
+    }
+    
+    // Get session and user data
+    $session = $wpdb->get_row($wpdb->prepare(
+        "SELECT s.*, u.campaign_id, u.total_questions FROM {$table_prefix}quiz_sessions s
+         JOIN {$table_prefix}quiz_users u ON s.user_id = u.id
+         WHERE s.session_id = %s",
+        $session_id
+    ));
+    
+    if (!$session) {
+        return new WP_Error('invalid_session', 'Session not found', array('status' => 404));
+    }
+    
+    if ($session->is_completed) {
+        return new WP_Error('already_completed', 'Quiz already completed', array('status' => 409));
+    }
+    
+    // Calculate score
+    $questions_data = json_decode($session->questions_data, true);
+    $score = 0;
+    $detailed_results = array();
+    
+    foreach ($questions_data as $question_id) {
+        // Get correct answers
+        $correct_answers = $wpdb->get_col($wpdb->prepare(
+            "SELECT id FROM {$table_prefix}question_options WHERE question_id = %d AND is_correct = 1",
+            $question_id
+        ));
+        
+        $user_answers = isset($answers[$question_id]) ? (array)$answers[$question_id] : array();
+        $user_answers = array_map('intval', $user_answers);
+        
+        // Check if correct
+        $is_correct = (
+            count($correct_answers) === count($user_answers) &&
+            empty(array_diff($correct_answers, $user_answers))
+        );
+        
+        if ($is_correct) {
+            $score++;
+        }
+        
+        $detailed_results[$question_id] = array(
+            'user_answers' => $user_answers,
+            'correct_answers' => $correct_answers,
+            'is_correct' => $is_correct
+        );
+    }
+    
+    $completion_time = time() - strtotime($session->created_at);
+    
+    // Update user record
+    $wpdb->update(
+        $table_prefix . 'quiz_users',
+        array(
+            'score' => $score,
+            'completion_time' => $completion_time,
+            'completed_at' => current_time('mysql')
+        ),
+        array('id' => $session->user_id),
+        array('%d', '%d', '%s'),
+        array('%d')
+    );
+    
+    // Mark session as completed
+    $wpdb->update(
+        $table_prefix . 'quiz_sessions',
+        array(
+            'is_completed' => 1,
+            'answers_data' => json_encode($answers)
+        ),
+        array('session_id' => $session_id),
+        array('%d', '%s'),
+        array('%s')
+    );
+    
+    // Check for gifts
+    $gift_result = vefify_assign_gift($session->campaign_id, $session->user_id, $score);
+    
+    return rest_ensure_response(array(
+        'success' => true,
+        'score' => $score,
+        'total_questions' => $session->total_questions,
+        'percentage' => round(($score / $session->total_questions) * 100),
+        'completion_time' => $completion_time,
+        'gift' => $gift_result,
+        'detailed_results' => $detailed_results
+    ));
+}
+
+/**
+ * Assign gift based on score
+ */
+function vefify_assign_gift($campaign_id, $user_id, $score) {
+    global $wpdb;
+    $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
+    
+    // Find available gift for this score
+    $gift = $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM {$table_prefix}gifts 
+         WHERE campaign_id = %d 
+         AND is_active = 1 
+         AND min_score <= %d 
+         AND (max_score IS NULL OR max_score >= %d)
+         AND (max_quantity IS NULL OR used_count < max_quantity)
+         ORDER BY min_score DESC, gift_value DESC
+         LIMIT 1",
+        $campaign_id, $score, $score
+    ));
+    
+    if (!$gift) {
+        return array(
+            'has_gift' => false,
+            'message' => 'No gifts available for your score'
+        );
+    }
+    
+    // Generate gift code
+    $gift_code = $gift->gift_code_prefix . strtoupper(wp_generate_password(6, false));
+    
+    // Update user with gift
+    $wpdb->update(
+        $table_prefix . 'quiz_users',
+        array(
+            'gift_id' => $gift->id,
+            'gift_code' => $gift_code,
+            'gift_status' => 'assigned'
+        ),
+        array('id' => $user_id),
+        array('%d', '%s', '%s'),
+        array('%d')
+    );
+    
+    // Update gift usage count
+    $wpdb->query($wpdb->prepare(
+        "UPDATE {$table_prefix}gifts SET used_count = used_count + 1 WHERE id = %d",
+        $gift->id
+    ));
+    
+    return array(
+        'has_gift' => true,
+        'gift_name' => $gift->gift_name,
+        'gift_type' => $gift->gift_type,
+        'gift_value' => $gift->gift_value,
+        'gift_code' => $gift_code,
+        'gift_description' => $gift->gift_description,
+        'message' => 'Congratulations! You have earned a gift!'
+    );
+}
+
+/**
+ * Register cleanup hooks
+ */
+add_action('vefify_quiz_daily_cleanup', function() {
+    global $wpdb;
+    $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
+    
+    // Clean up expired sessions (older than 24 hours and not completed)
+    $deleted_sessions = $wpdb->query("
+        DELETE FROM {$table_prefix}quiz_sessions 
+        WHERE created_at < DATE_SUB(NOW(), INTERVAL 24 HOUR) 
+        AND is_completed = 0
+    ");
+    
+    // Clean up old analytics data (older than 90 days)
+    $deleted_analytics = $wpdb->query("
+        DELETE FROM {$table_prefix}analytics 
+        WHERE created_at < DATE_SUB(NOW(), INTERVAL 90 DAY)
+    ");
+    
+    error_log("Vefify Quiz: Daily cleanup completed. Deleted {$deleted_sessions} expired sessions and {$deleted_analytics} old analytics records.");
+});
 
 /**
  * Plugin upgrade check
  */
-add_action('admin_init', function() {
+add_action('plugins_loaded', function() {
     $installed_version = get_option('vefify_quiz_db_version', '0');
-    
     if (version_compare($installed_version, VEFIFY_QUIZ_DB_VERSION, '<')) {
+        // Run upgrade if needed
         $installer = new Vefify_Quiz_Installer();
         $installer->create_tables();
     }
 });
+
+/**
+ * Helper function to check database status
+ */
+function vefify_quiz_check_database() {
+    global $wpdb;
+    $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
+    
+    $tables = array('campaigns', 'questions', 'question_options', 'gifts', 'quiz_users', 'quiz_sessions', 'analytics');
+    $status = array();
+    
+    foreach ($tables as $table) {
+        $table_name = $table_prefix . $table;
+        $exists = $wpdb->get_var("SHOW TABLES LIKE '$table_name'") === $table_name;
+        $status[$table] = $exists ? 'exists' : 'missing';
+    }
+    
+    return $status;
+}
+
+/**
+ * Debug information (remove in production)
+ */
+if (defined('WP_DEBUG') && WP_DEBUG) {
+    add_action('wp_footer', function() {
+        if (current_user_can('manage_options') && isset($_GET['vefify_debug'])) {
+            $db_status = vefify_quiz_check_database();
+            echo '<div style="position: fixed; bottom: 10px; right: 10px; background: white; border: 1px solid #ccc; padding: 10px; font-size: 12px; z-index: 9999;">';
+            echo '<strong>Vefify Quiz Debug:</strong><br>';
+            foreach ($db_status as $table => $status) {
+                $icon = $status === 'exists' ? '✅' : '❌';
+                echo "{$icon} {$table}: {$status}<br>";
+            }
+            echo '</div>';
+        }
+    });
+}
+
+/**
+ * Settings Page Placeholder
+ */
+function vefify_admin_settings() {
+    ?>
+    <div class="wrap">
+        <h1>Settings</h1>
+        <p>Settings page coming soon...</p>
+    </div>
+    <?php
+}
+
+/**
+ * Plugin upgrade check and database repair
+ */
+add_action('admin_init', function() {
+    // Check if we need to fix database issues
+    $db_status = vefify_quiz_check_database();
+    $missing_tables = array_filter($db_status, function($status) {
+        return $status === 'missing';
+    });
+    
+    if (!empty($missing_tables)) {
+        // Try to recreate missing tables
+        try {
+            $installer = new Vefify_Quiz_Installer();
+            $installer->create_tables();
+        } catch (Exception $e) {
+            error_log('Vefify Quiz: Failed to recreate missing tables: ' . $e->getMessage());
+        }
+    }
+});
+
+// FIXED: All functions and classes are now properly closed with braces
