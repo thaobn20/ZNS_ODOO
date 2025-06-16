@@ -1,8 +1,9 @@
 <?php
 /**
- * Participant Management Module
+ * Participant Module - FIXED VERSION
  * File: modules/participants/class-participant-module.php
- * Handles participant tracking, performance analysis, and engagement patterns
+ * 
+ * Handles participant management and results
  */
 
 if (!defined('ABSPATH')) {
@@ -12,8 +13,7 @@ if (!defined('ABSPATH')) {
 class Vefify_Participant_Module {
     
     private static $instance = null;
-    private $model;
-    private $manager;
+    private $database;
     
     public static function get_instance() {
         if (self::$instance === null) {
@@ -23,205 +23,319 @@ class Vefify_Participant_Module {
     }
     
     private function __construct() {
+        $this->database = new Vefify_Quiz_Database();
         $this->init();
     }
     
     private function init() {
-        // Load components
-        $this->load_components();
-        
-        // WordPress hooks
-        add_action('admin_menu', array($this, 'add_admin_menu'));
-        add_action('wp_ajax_vefify_participant_action', array($this, 'ajax_participant_action'));
+        // AJAX handlers
         add_action('wp_ajax_vefify_export_participants', array($this, 'ajax_export_participants'));
-        
-        // Frontend hooks for participant tracking
-        add_action('wp_ajax_vefify_start_quiz', array($this, 'ajax_start_quiz'));
-        add_action('wp_ajax_nopriv_vefify_start_quiz', array($this, 'ajax_start_quiz'));
-        add_action('wp_ajax_vefify_submit_quiz', array($this, 'ajax_submit_quiz'));
-        add_action('wp_ajax_nopriv_vefify_submit_quiz', array($this, 'ajax_submit_quiz'));
+        add_action('wp_ajax_vefify_participant_details', array($this, 'ajax_participant_details'));
     }
     
-    private function load_components() {
-        require_once VEFIFY_QUIZ_PLUGIN_DIR . 'modules/participants/class-participant-model.php';
-        require_once VEFIFY_QUIZ_PLUGIN_DIR . 'modules/participants/class-participant-manager.php';
-        
-        $this->model = new Vefify_Participant_Model();
-        if (is_admin()) {
-            $this->manager = new Vefify_Participant_Manager();
-        }
-    }
-    
-    public function add_admin_menu() {
-        add_submenu_page(
-            'vefify-quiz',
-            'Participants',
-            '👥 Participants',
-            'manage_options',
-            'vefify-participants',
-            array($this, 'admin_page_router')
-        );
-    }
-    
+    /**
+     * Admin page router
+     */
     public function admin_page_router() {
         $action = isset($_GET['action']) ? sanitize_text_field($_GET['action']) : 'list';
         
         switch ($action) {
             case 'view':
-                $this->manager->display_participant_details();
+                $this->render_participant_details();
                 break;
-            case 'analytics':
-                $this->manager->display_participant_analytics();
-                break;
-            case 'segments':
-                $this->manager->display_participant_segments();
-                break;
-            case 'communications':
-                $this->manager->display_communication_center();
+            case 'export':
+                $this->handle_export();
                 break;
             default:
-                $this->manager->display_participants_list();
+                $this->render_participants_list();
                 break;
         }
     }
     
     /**
-     * AJAX: Start quiz session
+     * Render participants list
      */
-    public function ajax_start_quiz() {
-        if (!wp_verify_nonce($_POST['nonce'], 'vefify_frontend_nonce')) {
-            wp_send_json_error('Security check failed');
+    private function render_participants_list() {
+        // Get filter parameters
+        $campaign_filter = $_GET['campaign_id'] ?? '';
+        $province_filter = $_GET['province'] ?? '';
+        $status_filter = $_GET['status'] ?? '';
+        $date_filter = $_GET['date_range'] ?? '';
+        
+        // Build query conditions
+        $where_conditions = array('1=1');
+        $params = array();
+        
+        if ($campaign_filter) {
+            $where_conditions[] = 'p.campaign_id = %d';
+            $params[] = $campaign_filter;
         }
         
-        $campaign_id = intval($_POST['campaign_id']);
-        $participant_data = array(
-            'participant_name' => sanitize_text_field($_POST['participant_name']),
-            'participant_email' => sanitize_email($_POST['participant_email']),
-            'participant_phone' => sanitize_text_field($_POST['participant_phone']),
-            'ip_address' => $_SERVER['REMOTE_ADDR'],
-            'user_agent' => $_SERVER['HTTP_USER_AGENT']
-        );
-        
-        $participant_id = $this->model->start_quiz_session($campaign_id, $participant_data);
-        
-        if (is_wp_error($participant_id)) {
-            wp_send_json_error($participant_id->get_error_message());
+        if ($province_filter) {
+            $where_conditions[] = 'p.province = %s';
+            $params[] = $province_filter;
         }
         
-        // Get quiz questions
-        $questions = $this->get_quiz_questions($campaign_id);
+        if ($status_filter === 'completed') {
+            $where_conditions[] = 'p.completed_at IS NOT NULL';
+        } elseif ($status_filter === 'incomplete') {
+            $where_conditions[] = 'p.completed_at IS NULL';
+        }
         
-        wp_send_json_success(array(
-            'participant_id' => $participant_id,
-            'questions' => $questions,
-            'session_data' => $this->model->get_participant($participant_id)
-        ));
+        if ($date_filter === 'today') {
+            $where_conditions[] = 'DATE(p.created_at) = CURDATE()';
+        } elseif ($date_filter === 'week') {
+            $where_conditions[] = 'p.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)';
+        }
+        
+        $where_clause = implode(' AND ', $where_conditions);
+        
+        // Get participants
+        $participants_table = $this->database->get_table_name('participants');
+        $campaigns_table = $this->database->get_table_name('campaigns');
+        $gifts_table = $this->database->get_table_name('gifts');
+        
+        $participants = $this->database->get_results("
+            SELECT p.*, c.name as campaign_name, g.gift_name, g.gift_value
+            FROM {$participants_table} p
+            JOIN {$campaigns_table} c ON p.campaign_id = c.id
+            LEFT JOIN {$gifts_table} g ON p.gift_id = g.id
+            WHERE {$where_clause}
+            ORDER BY p.created_at DESC
+            LIMIT 50
+        ", $params);
+        
+        // Get summary stats
+        $summary = $this->database->get_results("
+            SELECT 
+                COUNT(*) as total,
+                COUNT(CASE WHEN completed_at IS NOT NULL THEN 1 END) as completed,
+                COUNT(CASE WHEN gift_id IS NOT NULL THEN 1 END) as with_gifts,
+                AVG(CASE WHEN score > 0 THEN score END) as avg_score
+            FROM {$participants_table} p
+            WHERE {$where_clause}
+        ", $params);
+        
+        $summary = $summary[0] ?? (object)array('total' => 0, 'completed' => 0, 'with_gifts' => 0, 'avg_score' => 0);
+        
+        // Get filter options
+        $campaigns = $this->database->get_results("SELECT id, name FROM {$campaigns_table} ORDER BY name");
+        $provinces = $this->database->get_results("SELECT DISTINCT province FROM {$participants_table} WHERE province IS NOT NULL ORDER BY province");
+        
+        ?>
+        <div class="wrap">
+            <h1 class="wp-heading-inline">Participants & Results</h1>
+            <a href="<?php echo admin_url('admin.php?page=vefify-participants&action=export'); ?>" class="page-title-action">Export Data</a>
+            
+            <!-- Summary Stats -->
+            <div class="participants-summary">
+                <div class="summary-stats">
+                    <div class="stat-card">
+                        <h3><?php echo number_format($summary->total); ?></h3>
+                        <p>Total Participants</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($summary->completed); ?></h3>
+                        <p>Completed Quizzes</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($summary->with_gifts); ?></h3>
+                        <p>Gifts Awarded</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3><?php echo $summary->avg_score ? number_format($summary->avg_score, 1) : '0'; ?></h3>
+                        <p>Average Score</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Filters -->
+            <div class="participants-filters">
+                <form method="get" action="">
+                    <input type="hidden" name="page" value="vefify-participants">
+                    
+                    <select name="campaign_id" onchange="this.form.submit()">
+                        <option value="">All Campaigns</option>
+                        <?php foreach ($campaigns as $campaign): ?>
+                            <option value="<?php echo $campaign->id; ?>" <?php selected($campaign_filter, $campaign->id); ?>>
+                                <?php echo esc_html($campaign->name); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    
+                    <select name="province" onchange="this.form.submit()">
+                        <option value="">All Provinces</option>
+                        <?php foreach ($provinces as $province): ?>
+                            <option value="<?php echo esc_attr($province->province); ?>" <?php selected($province_filter, $province->province); ?>>
+                                <?php echo esc_html(ucfirst($province->province)); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    
+                    <select name="status" onchange="this.form.submit()">
+                        <option value="">All Status</option>
+                        <option value="completed" <?php selected($status_filter, 'completed'); ?>>Completed</option>
+                        <option value="incomplete" <?php selected($status_filter, 'incomplete'); ?>>Incomplete</option>
+                    </select>
+                    
+                    <select name="date_range" onchange="this.form.submit()">
+                        <option value="">All Time</option>
+                        <option value="today" <?php selected($date_filter, 'today'); ?>>Today</option>
+                        <option value="week" <?php selected($date_filter, 'week'); ?>>This Week</option>
+                    </select>
+                    
+                    <?php if (array_filter([$campaign_filter, $province_filter, $status_filter, $date_filter])): ?>
+                        <a href="<?php echo admin_url('admin.php?page=vefify-participants'); ?>" class="button">Clear Filters</a>
+                    <?php endif; ?>
+                </form>
+            </div>
+            
+            <!-- Participants Table -->
+            <table class="wp-list-table widefat fixed striped">
+                <thead>
+                    <tr>
+                        <th>Participant</th>
+                        <th>Campaign</th>
+                        <th>Province</th>
+                        <th>Score</th>
+                        <th>Gift</th>
+                        <th>Date</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (empty($participants)): ?>
+                        <tr>
+                            <td colspan="7" style="text-align: center;">No participants found.</td>
+                        </tr>
+                    <?php else: ?>
+                        <?php foreach ($participants as $participant): ?>
+                        <tr>
+                            <td>
+                                <strong><?php echo esc_html($participant->full_name); ?></strong><br>
+                                <small><?php echo esc_html($participant->phone_number); ?></small>
+                            </td>
+                            <td><?php echo esc_html($participant->campaign_name); ?></td>
+                            <td><?php echo esc_html(ucfirst($participant->province)); ?></td>
+                            <td>
+                                <?php if ($participant->completed_at): ?>
+                                    <span class="score-badge score-<?php echo $participant->score; ?>">
+                                        <?php echo $participant->score; ?>/<?php echo $participant->total_questions; ?>
+                                    </span>
+                                <?php else: ?>
+                                    <span class="incomplete-badge">Incomplete</span>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <?php if ($participant->gift_name): ?>
+                                    <div class="gift-info">
+                                        <strong><?php echo esc_html($participant->gift_name); ?></strong><br>
+                                        <code><?php echo esc_html($participant->gift_code); ?></code>
+                                    </div>
+                                <?php else: ?>
+                                    <span class="no-gift">No gift</span>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <?php echo mysql2date('M j, Y g:i A', $participant->created_at); ?>
+                                <?php if ($participant->completed_at): ?>
+                                    <br><small>Completed: <?php echo mysql2date('M j, g:i A', $participant->completed_at); ?></small>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <button class="button button-small view-details" data-participant-id="<?php echo $participant->id; ?>">
+                                    View Details
+                                </button>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+        
+        <style>
+        .participants-summary { margin: 20px 0; }
+        .summary-stats { display: flex; gap: 20px; }
+        .stat-card { background: #fff; border: 1px solid #ccd0d4; padding: 20px; border-radius: 4px; text-align: center; flex: 1; }
+        .stat-card h3 { margin: 0 0 10px; font-size: 24px; color: #0073aa; }
+        .stat-card p { margin: 0; color: #666; }
+        .participants-filters { margin: 20px 0; padding: 15px; background: #f9f9f9; }
+        .participants-filters form { display: flex; gap: 10px; align-items: center; }
+        .score-badge { padding: 4px 8px; border-radius: 3px; color: white; font-size: 12px; font-weight: bold; }
+        .score-badge.score-5 { background: #00a32a; }
+        .score-badge.score-4 { background: #4caf50; }
+        .score-badge.score-3 { background: #ff9800; }
+        .score-badge.score-2 { background: #f44336; }
+        .score-badge.score-1 { background: #d32f2f; }
+        .score-badge.score-0 { background: #666; }
+        .incomplete-badge { background: #ddd; color: #666; padding: 4px 8px; border-radius: 3px; font-size: 12px; }
+        .gift-info { max-width: 150px; }
+        .gift-info code { background: #f0f0f0; padding: 2px 4px; border-radius: 3px; font-size: 11px; }
+        .no-gift { color: #999; font-style: italic; }
+        </style>
+        
+        <script>
+        jQuery(document).ready(function($) {
+            $('.view-details').click(function() {
+                const participantId = $(this).data('participant-id');
+                alert('Participant details for ID: ' + participantId + '\n\nFull details view coming soon!');
+            });
+        });
+        </script>
+        <?php
     }
     
     /**
-     * AJAX: Submit quiz answers
+     * Handle export functionality
      */
-    public function ajax_submit_quiz() {
-        if (!wp_verify_nonce($_POST['nonce'], 'vefify_frontend_nonce')) {
-            wp_send_json_error('Security check failed');
+    private function handle_export() {
+        if (!current_user_can('manage_options')) {
+            wp_die('Unauthorized');
         }
         
-        $participant_id = intval($_POST['participant_id']);
-        $answers = $_POST['answers']; // Array of question_id => answer_id(s)
+        $participants_table = $this->database->get_table_name('participants');
+        $campaigns_table = $this->database->get_table_name('campaigns');
+        $gifts_table = $this->database->get_table_name('gifts');
         
-        $result = $this->model->submit_quiz_answers($participant_id, $answers);
+        $data = $this->database->get_results("
+            SELECT 
+                p.full_name, p.phone_number, p.province, p.pharmacy_code,
+                p.score, p.total_questions, p.completion_time,
+                p.created_at, p.completed_at,
+                c.name as campaign_name,
+                g.gift_name, g.gift_value, p.gift_code
+            FROM {$participants_table} p
+            JOIN {$campaigns_table} c ON p.campaign_id = c.id
+            LEFT JOIN {$gifts_table} g ON p.gift_id = g.id
+            ORDER BY p.created_at DESC
+        ");
         
-        if (is_wp_error($result)) {
-            wp_send_json_error($result->get_error_message());
+        if (empty($data)) {
+            echo '<div class="wrap"><h1>Export Results</h1><p>No data to export.</p></div>';
+            return;
         }
         
-        // Trigger quiz completion hook for gift distribution
-        do_action('vefify_quiz_completed', $participant_id, $result['final_score']);
-        
-        wp_send_json_success($result);
-    }
-    
-    /**
-     * AJAX: Participant management actions
-     */
-    public function ajax_participant_action() {
-        if (!wp_verify_nonce($_POST['nonce'], 'vefify_participant_ajax')) {
-            wp_send_json_error('Security check failed');
+        // Convert to array for CSV
+        $csv_data = array();
+        foreach ($data as $row) {
+            $csv_data[] = (array)$row;
         }
         
-        $action = sanitize_text_field($_POST['participant_action']);
-        $participant_ids = array_map('intval', $_POST['participant_ids']);
-        
-        switch ($action) {
-            case 'send_message':
-                $message = sanitize_textarea_field($_POST['message']);
-                $subject = sanitize_text_field($_POST['subject']);
-                $result = $this->send_bulk_message($participant_ids, $subject, $message);
-                break;
-            case 'export_data':
-                $result = $this->export_participant_data($participant_ids);
-                break;
-            case 'add_to_segment':
-                $segment_id = intval($_POST['segment_id']);
-                $result = $this->add_participants_to_segment($participant_ids, $segment_id);
-                break;
-            default:
-                wp_send_json_error('Invalid action');
-        }
-        
-        if (is_wp_error($result)) {
-            wp_send_json_error($result->get_error_message());
-        }
-        
-        wp_send_json_success($result);
-    }
-    
-    /**
-     * AJAX: Export participants data
-     */
-    public function ajax_export_participants() {
-        if (!wp_verify_nonce($_POST['nonce'], 'vefify_participant_ajax')) {
-            wp_die('Security check failed');
-        }
-        
-        $filters = array(
-            'campaign_id' => isset($_POST['campaign_id']) ? intval($_POST['campaign_id']) : null,
-            'status' => isset($_POST['status']) ? sanitize_text_field($_POST['status']) : 'all',
-            'date_from' => isset($_POST['date_from']) ? sanitize_text_field($_POST['date_from']) : null,
-            'date_to' => isset($_POST['date_to']) ? sanitize_text_field($_POST['date_to']) : null
-        );
-        
-        $participants = $this->model->get_participants_for_export($filters);
-        
-        // Generate CSV
-        $filename = 'participants-export-' . date('Y-m-d-H-i-s') . '.csv';
+        $filename = 'vefify_participants_' . date('Y-m-d') . '.csv';
         
         header('Content-Type: text/csv');
         header('Content-Disposition: attachment; filename="' . $filename . '"');
         
         $output = fopen('php://output', 'w');
         
-        // CSV headers
-        fputcsv($output, array(
-            'ID', 'Campaign', 'Name', 'Email', 'Phone', 'Status', 
-            'Start Time', 'End Time', 'Final Score', 'Gift Code', 'IP Address'
-        ));
-        
-        // CSV data
-        foreach ($participants as $participant) {
-            fputcsv($output, array(
-                $participant['id'],
-                $participant['campaign_name'],
-                $participant['participant_name'],
-                $participant['participant_email'],
-                $participant['participant_phone'],
-                $participant['quiz_status'],
-                $participant['start_time'],
-                $participant['end_time'],
-                $participant['final_score'],
-                $participant['gift_code'],
-                $participant['ip_address']
-            ));
+        // Add headers
+        if (!empty($csv_data)) {
+            fputcsv($output, array_keys($csv_data[0]));
+            
+            foreach ($csv_data as $row) {
+                fputcsv($output, $row);
+            }
         }
         
         fclose($output);
@@ -232,33 +346,44 @@ class Vefify_Participant_Module {
      * Get module analytics for dashboard
      */
     public function get_module_analytics() {
-        $stats = $this->model->get_participant_statistics();
+        $participants_table = $this->database->get_table_name('participants');
+        
+        $stats = $this->database->get_results("
+            SELECT 
+                COUNT(*) as total_participants,
+                COUNT(CASE WHEN completed_at IS NOT NULL THEN 1 END) as completed,
+                COUNT(CASE WHEN gift_id IS NOT NULL THEN 1 END) as with_gifts,
+                COUNT(CASE WHEN DATE(created_at) = CURDATE() THEN 1 END) as today
+            FROM {$participants_table}
+        ");
+        
+        $stats = $stats[0] ?? (object)array('total_participants' => 0, 'completed' => 0, 'with_gifts' => 0, 'today' => 0);
         
         return array(
-            'title' => 'Participants Management',
-            'description' => 'Track participant engagement, performance, and behavior patterns',
+            'title' => 'Participant Management',
+            'description' => 'Track and manage quiz participants and their results',
             'icon' => '👥',
             'stats' => array(
                 'total_participants' => array(
                     'label' => 'Total Participants',
-                    'value' => number_format($stats['total_participants']),
-                    'trend' => '+34% this month'
+                    'value' => number_format($stats->total_participants),
+                    'trend' => '+' . $stats->today . ' today'
                 ),
-                'active_participants' => array(
-                    'label' => 'Active (30 days)',
-                    'value' => number_format($stats['active_participants']),
-                    'trend' => '58% of total'
+                'completed_quizzes' => array(
+                    'label' => 'Completed Quizzes',
+                    'value' => number_format($stats->completed),
+                    'trend' => round($stats->total_participants > 0 ? ($stats->completed / $stats->total_participants) * 100 : 0, 1) . '% completion rate'
                 ),
-                'completion_rate' => array(
-                    'label' => 'Completion Rate',
-                    'value' => $stats['completion_rate'] . '%',
-                    'trend' => '+15% improvement'
+                'gifts_awarded' => array(
+                    'label' => 'Gifts Awarded',
+                    'value' => number_format($stats->with_gifts),
+                    'trend' => round($stats->completed > 0 ? ($stats->with_gifts / $stats->completed) * 100 : 0, 1) . '% gift rate'
                 )
             ),
             'quick_actions' => array(
                 array(
-                    'label' => 'View Analytics',
-                    'url' => admin_url('admin.php?page=vefify-participants&action=analytics'),
+                    'label' => 'View All Participants',
+                    'url' => admin_url('admin.php?page=vefify-participants'),
                     'class' => 'button-primary'
                 ),
                 array(
@@ -268,56 +393,5 @@ class Vefify_Participant_Module {
                 )
             )
         );
-    }
-    
-    // Helper methods
-    private function get_quiz_questions($campaign_id) {
-        $plugin = vefify_quiz_init();
-        $question_module = $plugin->get_module('questions');
-        if ($question_module) {
-            return $question_module->get_campaign_questions($campaign_id);
-        }
-        return array();
-    }
-    
-    private function send_bulk_message($participant_ids, $subject, $message) {
-        $participants = $this->model->get_participants_by_ids($participant_ids);
-        $sent_count = 0;
-        
-        foreach ($participants as $participant) {
-            if ($participant['participant_email']) {
-                $personalized_message = str_replace(
-                    '{participant_name}', 
-                    $participant['participant_name'], 
-                    $message
-                );
-                
-                if (wp_mail($participant['participant_email'], $subject, $personalized_message)) {
-                    $sent_count++;
-                }
-            }
-        }
-        
-        return array(
-            'sent_count' => $sent_count,
-            'total_count' => count($participants)
-        );
-    }
-    
-    private function export_participant_data($participant_ids) {
-        return $this->model->get_participants_by_ids($participant_ids);
-    }
-    
-    private function add_participants_to_segment($participant_ids, $segment_id) {
-        // Implementation for adding participants to segments
-        return $this->model->add_to_segment($participant_ids, $segment_id);
-    }
-    
-    public function get_model() {
-        return $this->model;
-    }
-    
-    public function get_manager() {
-        return $this->manager;
     }
 }
