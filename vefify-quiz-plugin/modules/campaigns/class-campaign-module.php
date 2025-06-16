@@ -32,7 +32,7 @@ class Vefify_Campaign_Module {
         
         // WordPress hooks
         add_action('admin_menu', array($this, 'add_admin_menu'));
-        add_action('init', array($this, 'init_shortcodes'));
+        add_action('wp_ajax_vefify_campaign_action', array($this, 'ajax_campaign_action'));
         
         // Handle URL actions
         add_action('admin_init', array($this, 'handle_url_actions'));

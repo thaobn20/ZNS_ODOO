@@ -112,12 +112,9 @@ class Vefify_Quiz_Plugin {
         // Load textdomain for translations
         load_plugin_textdomain('vefify-quiz', false, dirname(plugin_basename(__FILE__)) . '/languages/');
         
-        // Initialize modules
-        foreach ($this->modules as $module) {
-            if (method_exists($module, 'init')) {
-                $module->init();
-            }
-        }
+        // Note: Modules initialize themselves in their constructors
+        // We don't need to call init() on them here since they're already initialized
+        // when we called get_instance() in load_modules()
     }
     
     /**
@@ -213,11 +210,11 @@ class Vefify_Quiz_Plugin {
         global $wpdb;
         $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
         
-        // Get overview statistics
-        $total_campaigns = $wpdb->get_var("SELECT COUNT(*) FROM {$table_prefix}campaigns");
-        $active_campaigns = $wpdb->get_var("SELECT COUNT(*) FROM {$table_prefix}campaigns WHERE is_active = 1 AND start_date <= NOW() AND end_date >= NOW()");
-        $total_participants = $wpdb->get_var("SELECT COUNT(*) FROM {$table_prefix}participants");
-        $total_questions = $wpdb->get_var("SELECT COUNT(*) FROM {$table_prefix}questions");
+        // Get overview statistics with error handling
+        $total_campaigns = $wpdb->get_var("SELECT COUNT(*) FROM {$table_prefix}campaigns") ?: 0;
+        $active_campaigns = $wpdb->get_var("SELECT COUNT(*) FROM {$table_prefix}campaigns WHERE is_active = 1 AND start_date <= NOW() AND end_date >= NOW()") ?: 0;
+        $total_participants = $wpdb->get_var("SELECT COUNT(*) FROM {$table_prefix}participants") ?: 0;
+        $total_questions = $wpdb->get_var("SELECT COUNT(*) FROM {$table_prefix}questions") ?: 0;
         
         $widgets = array(
             array(
