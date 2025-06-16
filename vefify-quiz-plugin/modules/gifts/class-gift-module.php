@@ -31,7 +31,7 @@ class Vefify_Gift_Module {
         $this->load_components();
         
         // WordPress hooks
-        add_action('admin_menu', array($this, 'add_admin_menu'));
+        //add_action('admin_menu', array($this, 'add_admin_menu'));
         add_action('wp_ajax_vefify_generate_gift_codes', array($this, 'ajax_generate_gift_codes'));
         add_action('wp_ajax_vefify_check_gift_inventory', array($this, 'ajax_check_inventory'));
         
@@ -48,7 +48,7 @@ class Vefify_Gift_Module {
             $this->manager = new Vefify_Gift_Manager();
         }
     }
-    
+    /*
     public function add_admin_menu() {
         add_submenu_page(
             'vefify-quiz',
@@ -58,7 +58,7 @@ class Vefify_Gift_Module {
             'vefify-gifts',
             array($this, 'admin_page_router')
         );
-    }
+    }*/
     
     public function admin_page_router() {
         $action = isset($_GET['action']) ? sanitize_text_field($_GET['action']) : 'list';

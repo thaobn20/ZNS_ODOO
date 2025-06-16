@@ -31,7 +31,7 @@ class Vefify_Campaign_Module {
         $this->load_components();
         
         // WordPress hooks
-        add_action('admin_menu', array($this, 'add_admin_menu'));
+        //add_action('admin_menu', array($this, 'add_admin_menu'));
         add_action('wp_ajax_vefify_campaign_action', array($this, 'ajax_campaign_action'));
         
         // Handle URL actions
@@ -55,7 +55,7 @@ class Vefify_Campaign_Module {
     
     /**
      * Add admin menu items
-     */
+     *
     public function add_admin_menu() {
         // Main campaigns page
         add_submenu_page(
@@ -66,7 +66,7 @@ class Vefify_Campaign_Module {
             'vefify-campaigns',
             array($this, 'admin_page_router')
         );
-    }
+    }*/
     
     /**
      * Route admin page requests
