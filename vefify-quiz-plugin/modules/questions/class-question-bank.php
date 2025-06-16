@@ -1,436 +1,309 @@
 <?php
 /**
- * Question Bank Management Admin Interface
+ * Question Bank Management
  * File: modules/questions/class-question-bank.php
  */
 
-if (!defined('ABSPATH')) {
-    exit;
-}
-
-class Vefify_Question_Bank {
+class QuestionBank {
+    private $db;
     
-    private $model;
-    private $table_prefix;
-    
-    /**
-     * Constructor
-     */
     public function __construct() {
         global $wpdb;
-        $this->table_prefix = $wpdb->prefix . 'vefify_';
-        
-        // Initialize question model
-        $this->model = new Vefify_Question_Model();
-        
-        // Hook into WordPress
-        $this->init_hooks();
+        $this->db = $wpdb;
     }
     
     /**
-     * Initialize WordPress hooks
+     * Get all questions with pagination
      */
-    private function init_hooks() {
-        // Register menu with specific priority to place it between Campaigns and Gifts
-        add_action('admin_menu', array($this, 'add_admin_menu'), 15);
-        add_action('admin_init', array($this, 'handle_form_submissions'));
-        add_action('wp_ajax_vefify_load_question_preview', array($this, 'ajax_load_question_preview'));
-        add_action('wp_ajax_vefify_duplicate_question', array($this, 'ajax_duplicate_question'));
-        add_action('wp_ajax_vefify_toggle_question_status', array($this, 'ajax_toggle_question_status'));
-        add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_scripts'));
+    public function get_questions($args = []) {
+        $defaults = [
+            'campaign_id' => null,
+            'category' => null,
+            'difficulty' => null,
+            'is_active' => 1,
+            'per_page' => 20,
+            'page' => 1,
+            'search' => null
+        ];
+        
+        $args = array_merge($defaults, $args);
+        
+        $questions_table = $this->db->prefix . 'vefify_questions';
+        $options_table = $this->db->prefix . 'vefify_question_options';
+        
+        // Build WHERE clause
+        $where_conditions = ['1=1'];
+        $params = [];
+        
+        if ($args['campaign_id']) {
+            $where_conditions[] = 'q.campaign_id = %d';
+            $params[] = $args['campaign_id'];
+        }
+        
+        if ($args['category']) {
+            $where_conditions[] = 'q.category = %s';
+            $params[] = $args['category'];
+        }
+        
+        if ($args['difficulty']) {
+            $where_conditions[] = 'q.difficulty = %s';
+            $params[] = $args['difficulty'];
+        }
+        
+        if ($args['is_active'] !== null) {
+            $where_conditions[] = 'q.is_active = %d';
+            $params[] = $args['is_active'];
+        }
+        
+        if ($args['search']) {
+            $where_conditions[] = 'q.question_text LIKE %s';
+            $params[] = '%' . $this->db->esc_like($args['search']) . '%';
+        }
+        
+        $where_clause = 'WHERE ' . implode(' AND ', $where_conditions);
+        
+        // Get total count
+        $total_query = "SELECT COUNT(*) FROM {$questions_table} q {$where_clause}";
+        $total = $this->db->get_var($this->db->prepare($total_query, $params));
+        
+        // Get questions with pagination
+        $offset = ($args['page'] - 1) * $args['per_page'];
+        $limit_clause = "LIMIT %d OFFSET %d";
+        $params[] = $args['per_page'];
+        $params[] = $offset;
+        
+        $questions_query = "
+            SELECT q.*, c.name as campaign_name
+            FROM {$questions_table} q
+            LEFT JOIN {$this->db->prefix}vefify_campaigns c ON q.campaign_id = c.id
+            {$where_clause}
+            ORDER BY q.created_at DESC
+            {$limit_clause}
+        ";
+        
+        $questions = $this->db->get_results($this->db->prepare($questions_query, $params), ARRAY_A);
+        
+        // Get options for each question
+        foreach ($questions as &$question) {
+            $question['options'] = $this->db->get_results($this->db->prepare(
+                "SELECT * FROM {$options_table} WHERE question_id = %d ORDER BY order_index",
+                $question['id']
+            ), ARRAY_A);
+        }
+        
+        return [
+            'questions' => $questions,
+            'total' => $total,
+            'pages' => ceil($total / $args['per_page']),
+            'current_page' => $args['page']
+        ];
     }
     
     /**
-     * Add admin menu
+     * Create new question
      */
-    public function add_admin_menu() {
-        // Add as submenu to main Vefify Quiz menu  
-        // This will appear in the correct position: Dashboard → Campaigns → Questions → Gifts
-        add_submenu_page(
-            'vefify-quiz',              // Parent slug
-            'Question Bank',            // Page title
-            'Questions',               // Menu title
-            'manage_options',          // Capability
-            'vefify-questions',        // Menu slug
-            array($this, 'render_admin_page')  // Callback - our working function!
-        );
-    }
-    
-    /**
-     * Enqueue admin scripts and styles
-     */
-    public function enqueue_admin_scripts($hook) {
-        // Debug: Check hook name
-        if (defined('WP_DEBUG') && WP_DEBUG) {
-            error_log('Question Bank Hook: ' . $hook);
+    public function create_question($data) {
+        $questions_table = $this->db->prefix . 'vefify_questions';
+        $options_table = $this->db->prefix . 'vefify_question_options';
+        
+        // Validate required fields
+        if (empty($data['question_text']) || empty($data['options'])) {
+            return new \WP_Error('missing_data', 'Question text and options are required');
         }
         
-        // Check if we're on the question bank page
-        // Hook format: 'vefify-quiz_page_vefify-questions'
-        if ($hook !== 'vefify-quiz_page_vefify-questions') {
-            return;
+        // Validate at least one correct answer
+        $has_correct = false;
+        foreach ($data['options'] as $option) {
+            if (!empty($option['is_correct'])) {
+                $has_correct = true;
+                break;
+            }
         }
         
-        wp_enqueue_script('jquery');
-        wp_enqueue_script('jquery-ui-sortable');
-        
-        // Build file paths
-        $css_path = plugin_dir_url(__FILE__) . 'assets/question-bank.css';
-        $js_path = plugin_dir_url(__FILE__) . 'assets/question-bank.js';
-        
-        // Debug: Check file paths
-        if (defined('WP_DEBUG') && WP_DEBUG) {
-            error_log('CSS Path: ' . $css_path);
-            error_log('JS Path: ' . $js_path);
-            error_log('CSS File Exists: ' . (file_exists(plugin_dir_path(__FILE__) . 'assets/question-bank.css') ? 'YES' : 'NO'));
-            error_log('JS File Exists: ' . (file_exists(plugin_dir_path(__FILE__) . 'assets/question-bank.js') ? 'YES' : 'NO'));
+        if (!$has_correct) {
+            return new \WP_Error('no_correct_answer', 'At least one correct answer is required');
         }
         
-        // Enqueue external CSS and JS files
-        wp_enqueue_style(
-            'vefify-question-bank',
-            $css_path,
-            array(),
-            defined('VEFIFY_QUIZ_VERSION') ? VEFIFY_QUIZ_VERSION : '1.0.0'
-        );
+        // Start transaction
+        $this->db->query('START TRANSACTION');
         
-        wp_enqueue_script(
-            'vefify-question-bank',
-            $js_path,
-            array('jquery'),
-            defined('VEFIFY_QUIZ_VERSION') ? VEFIFY_QUIZ_VERSION : '1.0.0',
-            true
-        );
-        
-        // CRITICAL: Localize script for JavaScript - THIS FIXES THE UNDEFINED ERROR
-        wp_localize_script('vefify-question-bank', 'vefifyQuestionBank', array(
-            'ajaxurl' => admin_url('admin-ajax.php'),
-            'nonce' => wp_create_nonce('vefify_question_bank'),
-            'strings' => array(
-                'loading' => 'Loading...',
-                'errorLoading' => 'Error loading preview',
-                'selectOne' => 'Select the correct answer',
-                'selectMultiple' => 'Select all correct answers',
-                'selectTrueFalse' => 'Select True or False',
-                'trueFalseMode' => 'True/False Mode - Options are automatically set',
-                'true' => 'True',
-                'false' => 'False'
-            )
-        ));
-        
-        // Add inline style as backup for basic styling
-        wp_add_inline_style('vefify-question-bank', '
-            .questions-filters {
-                margin: 20px 0;
-                padding: 15px;
-                background: #f9f9f9;
-                border-radius: 4px;
-                border: 1px solid #ddd;
-            }
-            .questions-filters form {
-                display: flex;
-                gap: 10px;
-                align-items: center;
-                flex-wrap: wrap;
-            }
-            .difficulty-badge {
-                padding: 2px 6px;
-                border-radius: 3px;
-                font-size: 11px;
-                color: white;
-                font-weight: bold;
-            }
-            .difficulty-badge.difficulty-easy { background: #4caf50; }
-            .difficulty-badge.difficulty-medium { background: #ff9800; }
-            .difficulty-badge.difficulty-hard { background: #f44336; }
-            .category-badge {
-                padding: 2px 6px;
-                border-radius: 3px;
-                font-size: 11px;
-                color: white;
-                font-weight: bold;
-                background: #607d8b;
-            }
-            .question-preview-row {
-                background: #f9f9f9;
-            }
-            .question-preview-content {
-                padding: 15px;
-                background: #f5f5f5;
-                border-radius: 4px;
-                margin: 10px 0;
-            }
-            .vefify-status-toggle {
-                cursor: pointer;
-                padding: 4px 8px;
-                border-radius: 4px;
-                transition: background 0.2s;
-            }
-            .vefify-status-toggle:hover {
-                background: #f0f0f0;
-            }
-        ');
-        
-        // Add inline JavaScript to handle missing functions
-        wp_add_inline_script('vefify-question-bank', '
-            // Fallback if vefifyQuestionBank is not loaded
-            if (typeof vefifyQuestionBank === "undefined") {
-                window.vefifyQuestionBank = {
-                    ajaxurl: "' . admin_url('admin-ajax.php') . '",
-                    nonce: "' . wp_create_nonce('vefify_question_bank') . '",
-                    strings: {
-                        loading: "Loading...",
-                        errorLoading: "Error loading preview",
-                        selectOne: "Select the correct answer",
-                        selectMultiple: "Select all correct answers", 
-                        selectTrueFalse: "Select True or False",
-                        trueFalseMode: "True/False Mode - Options are automatically set",
-                        true: "True",
-                        false: "False"
-                    }
-                };
+        try {
+            // Insert question
+            $question_result = $this->db->insert($questions_table, [
+                'campaign_id' => $data['campaign_id'] ?: null,
+                'question_text' => sanitize_textarea_field($data['question_text']),
+                'question_type' => sanitize_text_field($data['question_type']),
+                'category' => sanitize_text_field($data['category']),
+                'difficulty' => sanitize_text_field($data['difficulty']),
+                'points' => intval($data['points'] ?: 1),
+                'explanation' => sanitize_textarea_field($data['explanation'] ?: ''),
+                'order_index' => intval($data['order_index'] ?: 0)
+            ]);
+            
+            if ($question_result === false) {
+                throw new Exception('Failed to create question');
             }
             
-            // Add status toggle functionality
-            jQuery(document).ready(function($) {
-                // Status toggle click handler
-                $(document).on("click", ".vefify-status-toggle", function(e) {
-                    e.preventDefault();
-                    var $this = $(this);
-                    var questionId = $this.data("question-id");
-                    var currentStatus = $this.data("status");
-                    var newStatus = currentStatus ? 0 : 1;
-                    
-                    $.post(vefifyQuestionBank.ajaxurl, {
-                        action: "vefify_toggle_question_status",
-                        question_id: questionId,
-                        status: newStatus,
-                        nonce: vefifyQuestionBank.nonce
-                    }, function(response) {
-                        if (response.success) {
-                            $this.data("status", newStatus);
-                            $this.html(newStatus ? "✅ Active" : "❌ Inactive");
-                        } else {
-                            alert("Error: " + (response.data || "Failed to update status"));
-                        }
-                    });
-                });
+            $question_id = $this->db->insert_id;
+            
+            // Insert options
+            foreach ($data['options'] as $index => $option) {
+                if (empty($option['option_text'])) continue;
                 
-                // Preview toggle functionality
-                $(document).on("click", ".toggle-preview", function(e) {
-                    e.preventDefault();
-                    var questionId = $(this).data("question-id");
-                    var $previewRow = $("#preview-" + questionId);
-                    var $button = $(this);
-                    
-                    if ($previewRow.is(":visible")) {
-                        $previewRow.slideUp(300);
-                        $button.text("Preview");
-                    } else {
-                        $previewRow.find(".question-preview-content").html("<div style=\"text-align: center; padding: 20px;\">Loading...</div>");
-                        $previewRow.slideDown(300);
-                        $button.text("Loading...");
-                        
-                        $.post(vefifyQuestionBank.ajaxurl, {
-                            action: "vefify_load_question_preview",
-                            question_id: questionId,
-                            nonce: vefifyQuestionBank.nonce
-                        }, function(response) {
-                            if (response.success) {
-                                $previewRow.find(".question-preview-content").html(response.data);
-                                $button.text("Hide Preview");
-                            } else {
-                                $previewRow.find(".question-preview-content").html("<div style=\"color: red; text-align: center; padding: 20px;\">Error loading preview</div>");
-                                $button.text("Preview");
-                            }
-                        });
-                    }
-                });
+                $option_result = $this->db->insert($options_table, [
+                    'question_id' => $question_id,
+                    'option_text' => sanitize_textarea_field($option['option_text']),
+                    'is_correct' => !empty($option['is_correct']) ? 1 : 0,
+                    'order_index' => $index,
+                    'explanation' => sanitize_textarea_field($option['explanation'] ?: '')
+                ]);
                 
-                // Duplicate functionality
-                $(document).on("click", ".vefify-duplicate-question", function(e) {
-                    e.preventDefault();
-                    var questionId = $(this).data("question-id");
-                    
-                    if (confirm("Are you sure you want to duplicate this question?")) {
-                        $.post(vefifyQuestionBank.ajaxurl, {
-                            action: "vefify_duplicate_question",
-                            question_id: questionId,
-                            nonce: vefifyQuestionBank.nonce
-                        }, function(response) {
-                            if (response.success) {
-                                location.reload();
-                            } else {
-                                alert("Error: " + (response.data || "Failed to duplicate question"));
-                            }
-                        });
-                    }
-                });
-                
-                // Bulk select all functionality
-                $("#cb-select-all").change(function() {
-                    $("input[name=\"question_ids[]\"]").prop("checked", this.checked);
-                });
-            });
-        ');
-    }
-    
-    /**
-     * Handle form submissions
-     */
-    public function handle_form_submissions() {
-        if (!isset($_POST['vefify_question_action']) || !current_user_can('manage_options')) {
-            return;
-        }
-        
-        if (!wp_verify_nonce($_POST['vefify_question_nonce'], 'vefify_question_action')) {
-            wp_die('Security check failed');
-        }
-        
-        $action = sanitize_text_field($_POST['vefify_question_action']);
-        
-        switch ($action) {
-            case 'save_question':
-                $this->handle_save_question();
-                break;
-            case 'import_csv':
-                $this->handle_csv_import();
-                break;
-            case 'bulk_action':
-                $this->handle_bulk_action();
-                break;
-        }
-    }
-    
-    /**
-     * Handle save question
-     */
-    private function handle_save_question() {
-        $question_id = !empty($_POST['question_id']) ? intval($_POST['question_id']) : 0;
-        
-        // Prepare question data
-        $data = array(
-            'campaign_id' => !empty($_POST['campaign_id']) ? intval($_POST['campaign_id']) : null,
-            'question_text' => sanitize_textarea_field($_POST['question_text']),
-            'question_type' => sanitize_text_field($_POST['question_type']),
-            'category' => sanitize_text_field($_POST['category']),
-            'difficulty' => sanitize_text_field($_POST['difficulty']),
-            'points' => intval($_POST['points']),
-            'explanation' => sanitize_textarea_field($_POST['explanation']),
-            'options' => array()
-        );
-        
-        // Handle options
-        if (!empty($_POST['options'])) {
-            foreach ($_POST['options'] as $index => $option) {
-                if (!empty($option['text'])) {
-                    $data['options'][] = array(
-                        'option_text' => sanitize_textarea_field($option['text']),
-                        'is_correct' => !empty($option['is_correct']) ? 1 : 0,
-                        'explanation' => sanitize_textarea_field($option['explanation'] ?? '')
-                    );
+                if ($option_result === false) {
+                    throw new Exception('Failed to create option');
                 }
             }
+            
+            $this->db->query('COMMIT');
+            return $question_id;
+            
+        } catch (Exception $e) {
+            $this->db->query('ROLLBACK');
+            return new \WP_Error('db_error', $e->getMessage());
         }
-        
-        // Save question
-        if ($question_id > 0) {
-            $result = $this->model->update_question($question_id, $data);
-        } else {
-            $result = $this->model->create_question($data);
-        }
-        
-        if (is_wp_error($result)) {
-            add_action('admin_notices', function() use ($result) {
-                echo '<div class="notice notice-error"><p>Error: ' . $result->get_error_message() . '</p></div>';
-            });
-        } else {
-            add_action('admin_notices', function() {
-                echo '<div class="notice notice-success"><p>Question saved successfully!</p></div>';
-            });
-        }
-        
-        wp_redirect(admin_url('admin.php?page=vefify-questions'));
-        exit;
     }
     
     /**
-     * Handle CSV import
+     * Update question
      */
-    private function handle_csv_import() {
-        if (empty($_FILES['csv_file']['tmp_name'])) {
-            add_action('admin_notices', function() {
-                echo '<div class="notice notice-error"><p>Please select a CSV file to import.</p></div>';
-            });
-            return;
+    public function update_question($question_id, $data) {
+        $questions_table = $this->db->prefix . 'vefify_questions';
+        $options_table = $this->db->prefix . 'vefify_question_options';
+        
+        // Start transaction
+        $this->db->query('START TRANSACTION');
+        
+        try {
+            // Update question
+            $question_result = $this->db->update($questions_table, [
+                'question_text' => sanitize_textarea_field($data['question_text']),
+                'question_type' => sanitize_text_field($data['question_type']),
+                'category' => sanitize_text_field($data['category']),
+                'difficulty' => sanitize_text_field($data['difficulty']),
+                'points' => intval($data['points'] ?: 1),
+                'explanation' => sanitize_textarea_field($data['explanation'] ?: ''),
+                'order_index' => intval($data['order_index'] ?: 0),
+                'updated_at' => current_time('mysql')
+            ], ['id' => $question_id]);
+            
+            if ($question_result === false) {
+                throw new Exception('Failed to update question');
+            }
+            
+            // Delete existing options
+            $this->db->delete($options_table, ['question_id' => $question_id]);
+            
+            // Insert new options
+            foreach ($data['options'] as $index => $option) {
+                if (empty($option['option_text'])) continue;
+                
+                $option_result = $this->db->insert($options_table, [
+                    'question_id' => $question_id,
+                    'option_text' => sanitize_textarea_field($option['option_text']),
+                    'is_correct' => !empty($option['is_correct']) ? 1 : 0,
+                    'order_index' => $index,
+                    'explanation' => sanitize_textarea_field($option['explanation'] ?: '')
+                ]);
+                
+                if ($option_result === false) {
+                    throw new Exception('Failed to create option');
+                }
+            }
+            
+            $this->db->query('COMMIT');
+            return true;
+            
+        } catch (Exception $e) {
+            $this->db->query('ROLLBACK');
+            return new \WP_Error('db_error', $e->getMessage());
+        }
+    }
+    
+    /**
+     * Delete question
+     */
+    public function delete_question($question_id) {
+        $questions_table = $this->db->prefix . 'vefify_questions';
+        
+        // Check if question is used in any completed quizzes
+        $sessions_table = $this->db->prefix . 'vefify_quiz_sessions';
+        $used_in_sessions = $this->db->get_var($this->db->prepare(
+            "SELECT COUNT(*) FROM {$sessions_table} 
+             WHERE JSON_CONTAINS(questions_data, %s) AND is_completed = 1",
+            json_encode([$question_id])
+        ));
+        
+        if ($used_in_sessions > 0) {
+            return new \WP_Error('question_in_use', 'Cannot delete question that has been used in completed quizzes');
         }
         
-        $campaign_id = !empty($_POST['campaign_id']) ? intval($_POST['campaign_id']) : null;
+        // Soft delete by setting is_active = 0
+        $result = $this->db->update($questions_table, 
+            ['is_active' => 0], 
+            ['id' => $question_id]
+        );
         
-        // Simple CSV processing
-        $handle = fopen($_FILES['csv_file']['tmp_name'], 'r');
+        return $result !== false;
+    }
+    
+    /**
+     * Import questions from CSV
+     */
+    public function import_questions_csv($file_path, $campaign_id = null) {
+        if (!file_exists($file_path)) {
+            return new \WP_Error('file_not_found', 'CSV file not found');
+        }
+        
+        $handle = fopen($file_path, 'r');
         if (!$handle) {
-            add_action('admin_notices', function() {
-                echo '<div class="notice notice-error"><p>Cannot read CSV file.</p></div>';
-            });
-            return;
+            return new \WP_Error('file_error', 'Cannot read CSV file');
         }
         
         $imported = 0;
-        $errors = array();
+        $errors = [];
         $line = 0;
         
         // Skip header row
         fgetcsv($handle);
         
-        while (($row = fgetcsv($handle)) !== false) {
+        while (($data = fgetcsv($handle)) !== false) {
             $line++;
             
-            if (count($row) < 6) {
+            if (count($data) < 6) {
                 $errors[] = "Line {$line}: Insufficient columns";
                 continue;
             }
             
             // Expected format: question_text, option1, option2, option3, option4, correct_options, category, difficulty
-            $question_data = array(
+            $question_data = [
                 'campaign_id' => $campaign_id,
-                'question_text' => $row[0],
+                'question_text' => $data[0],
                 'question_type' => 'multiple_choice',
-                'category' => $row[6] ?? 'general',
-                'difficulty' => $row[7] ?? 'medium',
-                'options' => array()
-            );
+                'category' => $data[6] ?? 'general',
+                'difficulty' => $data[7] ?? 'medium',
+                'options' => []
+            ];
             
-            // Process options (columns 1-4)
+            // Add options
             for ($i = 1; $i <= 4; $i++) {
-                if (!empty($row[$i])) {
-                    $is_correct = false;
-                    
-                    // Check if this option is marked as correct
-                    if (!empty($row[5])) {
-                        $correct_options = explode(',', $row[5]);
-                        $is_correct = in_array((string)$i, $correct_options);
-                    }
-                    
-                    $question_data['options'][] = array(
-                        'option_text' => $row[$i],
-                        'is_correct' => $is_correct
-                    );
+                if (!empty($data[$i])) {
+                    $question_data['options'][] = [
+                        'option_text' => $data[$i],
+                        'is_correct' => strpos($data[5], (string)$i) !== false
+                    ];
                 }
             }
             
-            // Validate and create question
-            if (empty($question_data['question_text'])) {
-                $errors[] = "Line {$line}: Question text is required";
-                continue;
-            }
-            
-            if (empty($question_data['options'])) {
-                $errors[] = "Line {$line}: At least one option is required";
-                continue;
-            }
-            
-            $result = $this->model->create_question($question_data);
+            $result = $this->create_question($question_data);
             
             if (is_wp_error($result)) {
                 $errors[] = "Line {$line}: " . $result->get_error_message();
@@ -441,662 +314,44 @@ class Vefify_Question_Bank {
         
         fclose($handle);
         
-        add_action('admin_notices', function() use ($imported, $errors) {
-            if ($imported > 0) {
-                echo '<div class="notice notice-success"><p>' . $imported . ' questions imported successfully!</p></div>';
-            }
-            if (!empty($errors)) {
-                echo '<div class="notice notice-warning"><p>Some errors occurred:<br>' . implode('<br>', array_slice($errors, 0, 5)) . '</p></div>';
-            }
-        });
+        return [
+            'imported' => $imported,
+            'errors' => $errors,
+            'total_lines' => $line
+        ];
     }
     
     /**
-     * Handle bulk actions
+     * Get question categories
      */
-    private function handle_bulk_action() {
-        $action = sanitize_text_field($_POST['bulk_action']);
-        $question_ids = array_map('intval', $_POST['question_ids'] ?? array());
+    public function get_categories() {
+        $questions_table = $this->db->prefix . 'vefify_questions';
         
-        if (empty($question_ids)) {
-            add_action('admin_notices', function() {
-                echo '<div class="notice notice-error"><p>Please select questions to perform bulk action.</p></div>';
-            });
-            return;
-        }
-        
-        switch ($action) {
-            case 'activate':
-                $this->bulk_toggle_status($question_ids, 1);
-                break;
-            case 'deactivate':
-                $this->bulk_toggle_status($question_ids, 0);
-                break;
-            case 'delete':
-                $this->bulk_delete($question_ids);
-                break;
-        }
+        return $this->db->get_col("
+            SELECT DISTINCT category 
+            FROM {$questions_table} 
+            WHERE category IS NOT NULL AND category != ''
+            ORDER BY category
+        ");
     }
     
     /**
-     * Bulk toggle status
+     * Get question statistics
      */
-    private function bulk_toggle_status($question_ids, $status) {
-        global $wpdb;
+    public function get_question_stats($campaign_id = null) {
+        $questions_table = $this->db->prefix . 'vefify_questions';
         
-        $placeholders = implode(',', array_fill(0, count($question_ids), '%d'));
-        $query = $wpdb->prepare(
-            "UPDATE {$this->table_prefix}questions SET is_active = %d WHERE id IN ({$placeholders})",
-            array_merge([$status], $question_ids)
-        );
+        $where = $campaign_id ? 'WHERE campaign_id = ' . intval($campaign_id) : '';
         
-        $result = $wpdb->query($query);
-        
-        if ($result !== false) {
-            $action_text = $status ? 'activated' : 'deactivated';
-            add_action('admin_notices', function() use ($result, $action_text) {
-                echo '<div class="notice notice-success"><p>' . $result . ' questions ' . $action_text . '.</p></div>';
-            });
-        }
-    }
-    
-    /**
-     * Bulk delete
-     */
-    private function bulk_delete($question_ids) {
-        $deleted = 0;
-        foreach ($question_ids as $question_id) {
-            $result = $this->model->delete_question($question_id);
-            if (!is_wp_error($result)) {
-                $deleted++;
-            }
-        }
-        
-        add_action('admin_notices', function() use ($deleted) {
-            echo '<div class="notice notice-success"><p>' . $deleted . ' questions deleted.</p></div>';
-        });
-    }
-    
-    /**
-     * AJAX: Load question preview
-     */
-    public function ajax_load_question_preview() {
-        if (!current_user_can('manage_options')) {
-            wp_send_json_error('Unauthorized');
-        }
-        
-        // Accept both old and new nonce formats for compatibility
-        $nonce_valid = wp_verify_nonce($_POST['nonce'] ?? '', 'vefify_question_bank') || 
-                      wp_verify_nonce($_POST['_wpnonce'] ?? '', 'vefify_question_action');
-        
-        if (!$nonce_valid) {
-            wp_send_json_error('Security check failed');
-        }
-        
-        $question_id = intval($_POST['question_id']);
-        $question = $this->model->get_question($question_id);
-        
-        if (!$question) {
-            wp_send_json_error('Question not found');
-        }
-        
-        ob_start();
-        $this->render_question_preview($question);
-        $html = ob_get_clean();
-        
-        wp_send_json_success($html);
-    }
-    
-    /**
-     * AJAX: Duplicate question
-     */
-    public function ajax_duplicate_question() {
-        if (!current_user_can('manage_options')) {
-            wp_send_json_error('Unauthorized');
-        }
-        
-        // Accept both old and new nonce formats for compatibility
-        $nonce_valid = wp_verify_nonce($_POST['nonce'] ?? '', 'vefify_question_bank') || 
-                      wp_verify_nonce($_POST['_wpnonce'] ?? '', 'vefify_question_action');
-        
-        if (!$nonce_valid) {
-            wp_send_json_error('Security check failed');
-        }
-        
-        $question_id = intval($_POST['question_id']);
-        $result = $this->model->duplicate_question($question_id);
-        
-        if (is_wp_error($result)) {
-            wp_send_json_error($result->get_error_message());
-        }
-        
-        wp_send_json_success(array('new_id' => $result));
-    }
-    
-    /**
-     * AJAX: Toggle question status
-     */
-    public function ajax_toggle_question_status() {
-        if (!current_user_can('manage_options')) {
-            wp_send_json_error('Unauthorized');
-        }
-        
-        // Accept both old and new nonce formats for compatibility
-        $nonce_valid = wp_verify_nonce($_POST['nonce'] ?? '', 'vefify_question_bank') || 
-                      wp_verify_nonce($_POST['_wpnonce'] ?? '', 'vefify_question_action');
-        
-        if (!$nonce_valid) {
-            wp_send_json_error('Security check failed');
-        }
-        
-        $question_id = intval($_POST['question_id']);
-        $status = intval($_POST['status']);
-        
-        global $wpdb;
-        $result = $wpdb->update(
-            $this->table_prefix . 'questions',
-            array('is_active' => $status, 'updated_at' => current_time('mysql')),
-            array('id' => $question_id)
-        );
-        
-        if ($result !== false) {
-            wp_send_json_success();
-        } else {
-            wp_send_json_error('Failed to update status');
-        }
-    }
-    
-    /**
-     * Render admin page
-     */
-    public function render_admin_page() {
-        $current_action = $_GET['action'] ?? 'list';
-        $question_id = intval($_GET['question_id'] ?? 0);
-        
-        switch ($current_action) {
-            case 'add':
-                $this->render_question_form();
-                break;
-            case 'edit':
-                $this->render_question_form($question_id);
-                break;
-            case 'import':
-                $this->render_import_form();
-                break;
-            default:
-                $this->render_questions_list();
-                break;
-        }
-    }
-    
-    /**
-     * Render questions list
-     */
-    private function render_questions_list() {
-        // Get questions with filters
-        $args = array(
-            'campaign_id' => intval($_GET['campaign_id'] ?? 0) ?: null,
-            'category' => sanitize_text_field($_GET['category'] ?? ''),
-            'difficulty' => sanitize_text_field($_GET['difficulty'] ?? ''),
-            'search' => sanitize_text_field($_GET['search'] ?? ''),
-            'page' => intval($_GET['paged'] ?? 1),
-            'per_page' => 20
-        );
-        
-        $result = $this->model->get_questions($args);
-        $questions = $result['questions'];
-        $total_pages = $result['pages'];
-        $current_page = $result['current_page'];
-        
-        // Get campaigns for filter
-        global $wpdb;
-        $campaigns = $wpdb->get_results(
-            "SELECT id, name FROM {$this->table_prefix}campaigns ORDER BY name"
-        );
-        
-        // Get categories for filter
-        $categories = $this->model->get_categories();
-        
-        ?>
-        <div class="wrap">
-            <h1 class="wp-heading-inline">Question Bank</h1>
-            <a href="<?php echo admin_url('admin.php?page=vefify-questions&action=add'); ?>" class="page-title-action">Add New Question</a>
-            <a href="<?php echo admin_url('admin.php?page=vefify-questions&action=import'); ?>" class="page-title-action">Import CSV</a>
-            
-            <hr class="wp-header-end">
-            
-            <!-- Filters -->
-            <div class="questions-filters">
-                <form method="get" action="">
-                    <input type="hidden" name="page" value="vefify-questions">
-                    
-                    <select name="campaign_id">
-                        <option value="">All Campaigns</option>
-                        <?php foreach ($campaigns as $campaign): ?>
-                            <option value="<?php echo $campaign->id; ?>" <?php selected($args['campaign_id'], $campaign->id); ?>>
-                                <?php echo esc_html($campaign->name); ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                    
-                    <select name="category">
-                        <option value="">All Categories</option>
-                        <?php foreach ($categories as $category): ?>
-                            <option value="<?php echo $category; ?>" <?php selected($args['category'], $category); ?>>
-                                <?php echo esc_html($category); ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                    
-                    <select name="difficulty">
-                        <option value="">All Difficulties</option>
-                        <option value="easy" <?php selected($args['difficulty'], 'easy'); ?>>Easy</option>
-                        <option value="medium" <?php selected($args['difficulty'], 'medium'); ?>>Medium</option>
-                        <option value="hard" <?php selected($args['difficulty'], 'hard'); ?>>Hard</option>
-                    </select>
-                    
-                    <input type="text" name="search" placeholder="Search questions..." value="<?php echo esc_attr($args['search']); ?>">
-                    
-                    <input type="submit" class="button" value="Filter">
-                </form>
-            </div>
-            
-            <!-- Bulk Actions -->
-            <form id="vefify-bulk-form" method="post" action="">
-                <?php wp_nonce_field('vefify_question_action', 'vefify_question_nonce'); ?>
-                <input type="hidden" name="vefify_question_action" value="bulk_action">
-                
-                <div class="tablenav top">
-                    <div class="alignleft actions bulkactions">
-                        <select name="bulk_action">
-                            <option value="">Bulk Actions</option>
-                            <option value="activate">Activate</option>
-                            <option value="deactivate">Deactivate</option>
-                            <option value="delete">Delete</option>
-                        </select>
-                        <input type="submit" class="button action" value="Apply">
-                    </div>
-                </div>
-                
-                <!-- Questions Table -->
-                <table class="wp-list-table widefat fixed striped questions">
-                    <thead>
-                        <tr>
-                            <td class="manage-column column-cb check-column">
-                                <input type="checkbox" id="cb-select-all">
-                            </td>
-                            <th class="manage-column">Question</th>
-                            <th class="manage-column">Type</th>
-                            <th class="manage-column">Category</th>
-                            <th class="manage-column">Difficulty</th>
-                            <th class="manage-column">Campaign</th>
-                            <th class="manage-column">Status</th>
-                            <th class="manage-column">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php if (empty($questions)): ?>
-                            <tr>
-                                <td colspan="8" class="no-items">No questions found.</td>
-                            </tr>
-                        <?php else: ?>
-                            <?php foreach ($questions as $question): ?>
-                                <tr>
-                                    <th class="check-column">
-                                        <input type="checkbox" name="question_ids[]" value="<?php echo $question->id; ?>">
-                                    </th>
-                                    <td class="column-question">
-                                        <strong><?php echo esc_html(wp_trim_words($question->question_text, 10)); ?></strong>
-                                        <div class="row-actions">
-                                            <span class="edit">
-                                                <a href="<?php echo admin_url('admin.php?page=vefify-questions&action=edit&question_id=' . $question->id); ?>">Edit</a>
-                                            </span>
-                                            |
-                                            <span class="preview">
-                                                <a href="#" class="toggle-preview" data-question-id="<?php echo $question->id; ?>">Preview</a>
-                                            </span>
-                                            |
-                                            <span class="duplicate">
-                                                <a href="#" class="vefify-duplicate-question" data-question-id="<?php echo $question->id; ?>">Duplicate</a>
-                                            </span>
-                                        </div>
-                                    </td>
-                                    <td><?php echo esc_html($question->question_type); ?></td>
-                                    <td>
-                                        <span class="category-badge category-<?php echo esc_attr(strtolower($question->category)); ?>">
-                                            <?php echo esc_html($question->category); ?>
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <span class="difficulty-badge difficulty-<?php echo esc_attr($question->difficulty); ?>">
-                                            <?php echo esc_html(ucfirst($question->difficulty)); ?>
-                                        </span>
-                                    </td>
-                                    <td><?php echo esc_html($question->campaign_name ?? 'N/A'); ?></td>
-                                    <td>
-                                        <span class="vefify-status-toggle" data-question-id="<?php echo $question->id; ?>" data-status="<?php echo $question->is_active; ?>">
-                                            <?php echo $question->is_active ? '✅ Active' : '❌ Inactive'; ?>
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <a href="<?php echo admin_url('admin.php?page=vefify-questions&action=edit&question_id=' . $question->id); ?>" class="button button-small">Edit</a>
-                                    </td>
-                                </tr>
-                                <tr id="preview-<?php echo $question->id; ?>" class="question-preview-row" style="display: none;">
-                                    <td colspan="8">
-                                        <div class="question-preview-content">
-                                            <!-- Preview content will be loaded here -->
-                                        </div>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
-                
-                <!-- Pagination -->
-                <?php if ($total_pages > 1): ?>
-                    <div class="tablenav bottom">
-                        <div class="tablenav-pages">
-                            <?php
-                            $pagination_args = array(
-                                'base' => add_query_arg('paged', '%#%'),
-                                'format' => '',
-                                'prev_text' => '&laquo;',
-                                'next_text' => '&raquo;',
-                                'total' => $total_pages,
-                                'current' => $current_page
-                            );
-                            echo paginate_links($pagination_args);
-                            ?>
-                        </div>
-                    </div>
-                <?php endif; ?>
-            </form>
-        </div>
-        <?php
-    }
-    
-    /**
-     * Render question form
-     */
-    private function render_question_form($question_id = 0) {
-        $question = null;
-        $options = array();
-        
-        if ($question_id > 0) {
-            $question = $this->model->get_question($question_id);
-            if (!$question) {
-                echo '<div class="notice notice-error"><p>Question not found.</p></div>';
-                return;
-            }
-            
-            $options = $question->options;
-        }
-        
-        // Get campaigns
-        global $wpdb;
-        $campaigns = $wpdb->get_results(
-            "SELECT id, name FROM {$this->table_prefix}campaigns ORDER BY name"
-        );
-        
-        ?>
-        <div class="wrap">
-            <h1><?php echo $question_id ? 'Edit Question' : 'Add New Question'; ?></h1>
-            
-            <form method="post" action="" id="question-form" class="vefify-question-form">
-                <?php wp_nonce_field('vefify_question_action', 'vefify_question_nonce'); ?>
-                <input type="hidden" name="vefify_question_action" value="save_question">
-                <?php if ($question_id): ?>
-                    <input type="hidden" name="question_id" value="<?php echo $question_id; ?>">
-                <?php endif; ?>
-                
-                <table class="form-table">
-                    <tr>
-                        <th scope="row">Campaign</th>
-                        <td>
-                            <select name="campaign_id" class="widefat">
-                                <option value="">Select Campaign (Optional)</option>
-                                <?php foreach ($campaigns as $campaign): ?>
-                                    <option value="<?php echo $campaign->id; ?>" <?php selected($question->campaign_id ?? '', $campaign->id); ?>>
-                                        <?php echo esc_html($campaign->name); ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </td>
-                    </tr>
-                    
-                    <tr>
-                        <th scope="row">Question Text</th>
-                        <td>
-                            <textarea id="question_text" name="question_text" rows="4" class="widefat" required><?php echo esc_textarea($question->question_text ?? ''); ?></textarea>
-                        </td>
-                    </tr>
-                    
-                    <tr>
-                        <th scope="row">Question Type</th>
-                        <td>
-                            <select id="question_type" name="question_type" class="widefat">
-                                <option value="single_select" <?php selected($question->question_type ?? 'single_select', 'single_select'); ?>>Single Choice</option>
-                                <option value="multiple_select" <?php selected($question->question_type ?? '', 'multiple_select'); ?>>Multiple Choice</option>
-                                <option value="true_false" <?php selected($question->question_type ?? '', 'true_false'); ?>>True/False</option>
-                            </select>
-                        </td>
-                    </tr>
-                    
-                    <tr>
-                        <th scope="row">Category</th>
-                        <td>
-                            <input type="text" name="category" value="<?php echo esc_attr($question->category ?? ''); ?>" class="widefat" list="categories" placeholder="Enter category (e.g., nutrition, medication, safety)">
-                            <datalist id="categories">
-                                <?php foreach ($this->model->get_categories() as $category): ?>
-                                    <option value="<?php echo esc_attr($category); ?>">
-                                <?php endforeach; ?>
-                            </datalist>
-                            <p class="description">Enter a category name. You can choose from existing categories or create a new one.</p>
-                        </td>
-                    </tr>
-                    
-                    <tr>
-                        <th scope="row">Difficulty</th>
-                        <td>
-                            <select name="difficulty" class="widefat">
-                                <option value="easy" <?php selected($question->difficulty ?? 'medium', 'easy'); ?>>Easy</option>
-                                <option value="medium" <?php selected($question->difficulty ?? 'medium', 'medium'); ?>>Medium</option>
-                                <option value="hard" <?php selected($question->difficulty ?? 'medium', 'hard'); ?>>Hard</option>
-                            </select>
-                        </td>
-                    </tr>
-                    
-                    <tr>
-                        <th scope="row">Points</th>
-                        <td>
-                            <input type="number" name="points" value="<?php echo esc_attr($question->points ?? 1); ?>" min="1" max="10" class="small-text">
-                        </td>
-                    </tr>
-                    
-                    <tr>
-                        <th scope="row">Explanation</th>
-                        <td>
-                            <textarea name="explanation" rows="3" class="widefat"><?php echo esc_textarea($question->explanation ?? ''); ?></textarea>
-                            <p class="description">Optional explanation shown after answering</p>
-                        </td>
-                    </tr>
-                </table>
-                
-                <h3>Answer Options</h3>
-                <div id="answer-options">
-                    <?php if (empty($options)): ?>
-                        <!-- Default 4 options for new question -->
-                        <?php for ($i = 0; $i < 4; $i++): ?>
-                            <div class="option-row" data-index="<?php echo $i; ?>">
-                                <div class="option-header">
-                                    <div class="option-number"><?php echo chr(65 + $i); ?></div>
-                                    <div class="option-controls">
-                                        <label class="option-correct">
-                                            <input type="checkbox" name="options[<?php echo $i; ?>][is_correct]" value="1" class="option-correct-checkbox">
-                                            <span class="checkmark"></span>
-                                            Correct Answer
-                                        </label>
-                                        <button type="button" class="remove-option" title="Remove this option">×</button>
-                                    </div>
-                                </div>
-                                <div class="option-content">
-                                    <label class="option-label">Answer Option:</label>
-                                    <input type="text" name="options[<?php echo $i; ?>][text]" placeholder="Enter answer option..." class="option-text widefat" required>
-                                    <label class="option-label">Explanation (Optional):</label>
-                                    <textarea name="options[<?php echo $i; ?>][explanation]" placeholder="Optional: Explain why this answer is correct/incorrect..." rows="2" class="option-explanation widefat"></textarea>
-                                </div>
-                            </div>
-                        <?php endfor; ?>
-                    <?php else: ?>
-                        <!-- Existing options -->
-                        <?php foreach ($options as $index => $option): ?>
-                            <div class="option-row" data-index="<?php echo $index; ?>">
-                                <div class="option-header">
-                                    <div class="option-number"><?php echo chr(65 + $index); ?></div>
-                                    <div class="option-controls">
-                                        <label class="option-correct">
-                                            <input type="checkbox" name="options[<?php echo $index; ?>][is_correct]" value="1" class="option-correct-checkbox" <?php checked($option->is_correct, 1); ?>>
-                                            <span class="checkmark"></span>
-                                            Correct Answer
-                                        </label>
-                                        <button type="button" class="remove-option" title="Remove this option">×</button>
-                                    </div>
-                                </div>
-                                <div class="option-content">
-                                    <label class="option-label">Answer Option:</label>
-                                    <input type="text" name="options[<?php echo $index; ?>][text]" value="<?php echo esc_attr($option->option_text); ?>" class="option-text widefat" required>
-                                    <label class="option-label">Explanation (Optional):</label>
-                                    <textarea name="options[<?php echo $index; ?>][explanation]" rows="2" class="option-explanation widefat" placeholder="Optional: Explain why this answer is correct/incorrect..."><?php echo esc_textarea($option->explanation ?? ''); ?></textarea>
-                                </div>
-                            </div>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </div>
-                
-                <div id="add-option-section">
-                    <button type="button" id="add-option" class="button">Add Another Option</button>
-                    <small id="options-help" class="help-text">Select the correct answer(s) for this question</small>
-                </div>
-                
-                <p class="submit">
-                    <input type="submit" class="button-primary" value="<?php echo $question_id ? 'Update Question' : 'Save Question'; ?>">
-                    <a href="<?php echo admin_url('admin.php?page=vefify-questions'); ?>" class="button">Cancel</a>
-                </p>
-            </form>
-        </div>
-        <?php
-    }
-    
-    /**
-     * Render import form
-     */
-    private function render_import_form() {
-        // Get campaigns
-        global $wpdb;
-        $campaigns = $wpdb->get_results(
-            "SELECT id, name FROM {$this->table_prefix}campaigns ORDER BY name"
-        );
-        
-        ?>
-        <div class="wrap">
-            <h1>Import Questions from CSV</h1>
-            
-            <div class="vefify-import-instructions">
-                <h3>CSV Format Instructions</h3>
-                <p>Your CSV file should have the following columns:</p>
-                <ul>
-                    <li><strong>question_text</strong> - The question text</li>
-                    <li><strong>option1</strong> - First answer option</li>
-                    <li><strong>option2</strong> - Second answer option</li>
-                    <li><strong>option3</strong> - Third answer option</li>
-                    <li><strong>option4</strong> - Fourth answer option</li>
-                    <li><strong>correct_options</strong> - Comma-separated list of correct option numbers (e.g., "1,3")</li>
-                    <li><strong>category</strong> - Question category (optional)</li>
-                    <li><strong>difficulty</strong> - easy, medium, or hard (optional)</li>
-                </ul>
-            </div>
-            
-            <form method="post" action="" enctype="multipart/form-data">
-                <?php wp_nonce_field('vefify_question_action', 'vefify_question_nonce'); ?>
-                <input type="hidden" name="vefify_question_action" value="import_csv">
-                
-                <table class="form-table">
-                    <tr>
-                        <th scope="row">Campaign</th>
-                        <td>
-                            <select name="campaign_id">
-                                <option value="">Select Campaign (Optional)</option>
-                                <?php foreach ($campaigns as $campaign): ?>
-                                    <option value="<?php echo $campaign->id; ?>">
-                                        <?php echo esc_html($campaign->name); ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </td>
-                    </tr>
-                    
-                    <tr>
-                        <th scope="row">CSV File</th>
-                        <td>
-                            <input type="file" name="csv_file" accept=".csv" required>
-                            <p class="description">Select a CSV file to import questions from</p>
-                        </td>
-                    </tr>
-                </table>
-                
-                <p class="submit">
-                    <input type="submit" class="button-primary" value="Import Questions">
-                    <a href="<?php echo admin_url('admin.php?page=vefify-questions'); ?>" class="button">Cancel</a>
-                </p>
-            </form>
-        </div>
-        <?php
-    }
-    
-    /**
-     * Render question preview
-     */
-    private function render_question_preview($question) {
-        $options = $question->options ?? array();
-        
-        ?>
-        <div class="vefify-question-preview">
-            <h3><?php echo esc_html($question->question_text); ?></h3>
-            
-            <div class="question-meta">
-                <span class="type">Type: <?php echo esc_html($question->question_type); ?></span>
-                <span class="category">Category: <?php echo esc_html($question->category); ?></span>
-                <span class="difficulty">Difficulty: <?php echo esc_html($question->difficulty); ?></span>
-                <span class="points">Points: <?php echo esc_html($question->points); ?></span>
-            </div>
-            
-            <?php if ($question->question_type === 'true_false'): ?>
-                <div class="true-false-options">
-                    <label><input type="radio" name="preview_answer" value="true"> True</label>
-                    <label><input type="radio" name="preview_answer" value="false"> False</label>
-                </div>
-            <?php else: ?>
-                <div class="multiple-choice-options">
-                    <?php foreach ($options as $option): ?>
-                        <label class="<?php echo $option->is_correct ? 'correct-answer' : ''; ?>">
-                            <input type="radio" name="preview_answer" value="<?php echo $option->id; ?>">
-                            <?php echo esc_html($option->option_text); ?>
-                            <?php if ($option->is_correct): ?>
-                                <span class="correct-indicator">✓</span>
-                            <?php endif; ?>
-                        </label>
-                    <?php endforeach; ?>
-                </div>
-            <?php endif; ?>
-            
-            <?php if ($question->explanation): ?>
-                <div class="explanation">
-                    <strong>Explanation:</strong> <?php echo esc_html($question->explanation); ?>
-                </div>
-            <?php endif; ?>
-        </div>
-        <?php
+        return $this->db->get_row("
+            SELECT 
+                COUNT(*) as total,
+                COUNT(CASE WHEN is_active = 1 THEN 1 END) as active,
+                COUNT(CASE WHEN difficulty = 'easy' THEN 1 END) as easy,
+                COUNT(CASE WHEN difficulty = 'medium' THEN 1 END) as medium,
+                COUNT(CASE WHEN difficulty = 'hard' THEN 1 END) as hard
+            FROM {$questions_table}
+            {$where}
+        ", ARRAY_A);
     }
 }
