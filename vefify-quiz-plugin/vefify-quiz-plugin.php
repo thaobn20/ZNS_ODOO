@@ -655,27 +655,45 @@ class Vefify_Quiz_Plugin {
             $this->display_module_placeholder('Campaigns', 'campaigns');
         }
     }
+    /**
+ * FIXED: Display questions method with proper error handling
+ */
+	public function display_questions() {
+    // Show any stored admin notices first
+    $stored_notice = get_transient('vefify_admin_notice');
+    if ($stored_notice) {
+        delete_transient('vefify_admin_notice');
+        echo '<div class="notice notice-' . esc_attr($stored_notice['type']) . ' is-dismissible">';
+        echo '<p>' . esc_html($stored_notice['message']) . '</p>';
+        echo '</div>';
+    }
     
-    public function display_questions() {
-        if ($this->has_module('questions')) {
-            try {
-                if (method_exists($this->modules['questions'], 'get_bank')) {
-                    $bank = $this->modules['questions']->get_bank();
-                    if ($bank && method_exists($bank, 'admin_page_router')) {
-                        $bank->admin_page_router();
-                    } else {
-                        $this->display_module_placeholder('Questions', 'questions');
-                    }
-                } else {
-                    $this->display_module_placeholder('Questions', 'questions');  
-                }
-            } catch (Exception $e) {
-                $this->display_module_error('Questions', $e->getMessage());
-            }
-        } else {
-            $this->display_module_placeholder('Questions', 'questions');
+    // Try to load question bank
+    if (!class_exists('Vefify_Question_Bank')) {
+        $question_bank_file = plugin_dir_path(__FILE__) . 'modules/questions/class-question-bank.php';
+        if (file_exists($question_bank_file)) {
+            require_once $question_bank_file;
         }
     }
+    
+    if (class_exists('Vefify_Question_Bank')) {
+        $question_bank = new Vefify_Question_Bank();
+        $question_bank->admin_page_router();
+    } else {
+        echo '<div class="wrap">';
+        echo '<h1>Questions</h1>';
+        echo '<div class="notice notice-error">';
+        echo '<p><strong>Question module could not be loaded.</strong></p>';
+        echo '<p>Please check that these files exist and are readable:</p>';
+        echo '<ul>';
+        echo '<li><code>modules/questions/class-question-model.php</code></li>';
+        echo '<li><code>modules/questions/class-question-bank.php</code></li>';
+        echo '</ul>';
+        echo '<p><a href="' . admin_url('admin.php?page=vefify-validation') . '" class="button">Check System Status</a></p>';
+        echo '</div>';
+        echo '</div>';
+    }
+}
     
     public function display_gifts() {
         if ($this->has_module('gifts')) {
