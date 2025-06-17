@@ -1,9 +1,9 @@
 <?php
 /**
- * Streamlined Question Bank Admin
+ * Question Bank Management
  * File: modules/questions/class-question-bank.php
  * 
- * Handles admin interface with unified form for add/edit
+ * Handles admin interface and business logic for question management
  */
 
 if (!defined('ABSPATH')) {
@@ -13,515 +13,599 @@ if (!defined('ABSPATH')) {
 class Vefify_Question_Bank {
     
     private $model;
+    private $wpdb;
+    private $table_prefix;
     
     public function __construct() {
+        global $wpdb;
+        $this->wpdb = $wpdb;
+        $this->table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
+        
+        // Initialize model
         $this->model = new Vefify_Question_Model();
         
         // Hook into WordPress admin
         add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_scripts'));
+        add_action('wp_ajax_vefify_load_question_preview', array($this, 'load_question_preview'));
         add_action('admin_init', array($this, 'handle_form_submissions'));
-        add_action('wp_ajax_vefify_delete_question', array($this, 'ajax_delete_question'));
-        add_action('admin_notices', array($this, 'display_admin_notices'));
     }
     
     /**
-     * Enqueue admin assets
+     * Admin page router
      */
-    public function enqueue_admin_scripts($hook) {
-        // Only load on question pages
-        if (strpos($hook, 'vefify-questions') === false) {
-            return;
-        }
-        
-        wp_enqueue_script(
-            'vefify-questions-admin',
-            plugin_dir_url(__FILE__) . 'assets/questions-admin.js',
-            array('jquery'),
-            VEFIFY_QUIZ_VERSION,
-            true
-        );
-        
-        wp_localize_script('vefify-questions-admin', 'vefifyQuestions', array(
-            'ajaxurl' => admin_url('admin-ajax.php'),
-            'nonce' => wp_create_nonce('vefify_questions_admin'),
-            'strings' => array(
-                'deleteConfirm' => __('Are you sure you want to delete this question?', 'vefify-quiz'),
-                'addOption' => __('Add Option', 'vefify-quiz'),
-                'removeOption' => __('Remove Option', 'vefify-quiz'),
-                'questionRequired' => __('Question text is required', 'vefify-quiz'),
-                'optionsRequired' => __('At least 2 options are required', 'vefify-quiz'),
-                'correctRequired' => __('At least one correct answer is required', 'vefify-quiz')
-            )
-        ));
-        
-        wp_enqueue_style(
-            'vefify-questions-admin',
-            plugin_dir_url(__FILE__) . 'assets/questions-admin.css',
-            array(),
-            VEFIFY_QUIZ_VERSION
-        );
-    }
-    
-    /**
-     * Main admin page router
-     */
-    public function admin_page() {
+    public function admin_page_router() {
         $action = $_GET['action'] ?? 'list';
-        $question_id = intval($_GET['question_id'] ?? 0);
-        
-        echo '<div class="wrap vefify-questions-wrap">';
         
         switch ($action) {
             case 'new':
             case 'edit':
-                $this->render_question_form($question_id);
+                $this->display_question_form();
+                break;
+            case 'import':
+                $this->display_import_page();
+                break;
+            case 'delete':
+                $this->handle_delete_question();
                 break;
             default:
-                $this->render_questions_list();
+                $this->display_questions_list();
                 break;
         }
-        
-        echo '</div>';
     }
     
     /**
-     * Render questions list page
+     * Display questions list
      */
-    private function render_questions_list() {
-        // Get filters
-        $campaign_id = intval($_GET['campaign_id'] ?? 0);
-        $category = sanitize_text_field($_GET['category'] ?? '');
-        $difficulty = sanitize_text_field($_GET['difficulty'] ?? '');
-        $search = sanitize_text_field($_GET['search'] ?? '');
-        $page = max(1, intval($_GET['paged'] ?? 1));
+    private function display_questions_list() {
+        // Get filter parameters
+        $campaign_filter = $_GET['campaign_id'] ?? '';
+        $category_filter = $_GET['category'] ?? '';
+        $difficulty_filter = $_GET['difficulty'] ?? '';
+        $search = $_GET['search'] ?? '';
         
-        // Get questions
+        // Build query args
         $args = array(
-            'page' => $page,
             'per_page' => 20,
-            'search' => $search
+            'page' => $_GET['paged'] ?? 1,
+            'include_options' => false
         );
         
-        if ($campaign_id) $args['campaign_id'] = $campaign_id;
-        if ($category) $args['category'] = $category;
-        if ($difficulty) $args['difficulty'] = $difficulty;
+        if ($campaign_filter) {
+            $args['campaign_id'] = $campaign_filter;
+        }
         
+        if ($category_filter) {
+            $args['category'] = $category_filter;
+        }
+        
+        if ($difficulty_filter) {
+            $args['difficulty'] = $difficulty_filter;
+        }
+        
+        if ($search) {
+            $args['search'] = $search;
+        }
+        
+        // Get questions
         $result = $this->model->get_questions($args);
         $questions = $result['questions'];
+        $total = $result['total'];
+        $total_pages = $result['pages'];
         
         // Get filter options
-        $campaigns = $this->model->get_campaigns();
+        $campaigns = $this->wpdb->get_results("SELECT id, name FROM {$this->table_prefix}campaigns ORDER BY name");
         $categories = $this->model->get_categories();
-        $stats = $this->model->get_statistics();
         
         ?>
-        <h1 class="wp-heading-inline">
-            ❓ Question Bank 
-            <span class="count">(<?php echo number_format($result['total']); ?> questions)</span>
-        </h1>
-        <a href="<?php echo esc_url(add_query_arg('action', 'new')); ?>" class="page-title-action">
-            Add New Question
-        </a>
-        <hr class="wp-header-end">
-        
-        <!-- Quick Stats -->
-        <div class="vefify-stats">
-            <div class="stat-item">
-                <strong><?php echo $stats['active_questions'] ?? 0; ?></strong>
-                <span>Active Questions</span>
+        <div class="wrap">
+            <h1 class="wp-heading-inline">❓ Question Bank</h1>
+            <a href="<?php echo admin_url('admin.php?page=vefify-questions&action=new'); ?>" class="page-title-action">Add New Question</a>
+            <a href="<?php echo admin_url('admin.php?page=vefify-questions&action=import'); ?>" class="page-title-action">Import Questions</a>
+            <hr class="wp-header-end">
+            
+            <!-- Filters -->
+            <div class="questions-filters">
+                <form method="get" action="">
+                    <input type="hidden" name="page" value="vefify-questions">
+                    
+                    <select name="campaign_id" onchange="this.form.submit()">
+                        <option value="">All Campaigns</option>
+                        <?php foreach ($campaigns as $campaign): ?>
+                            <option value="<?php echo $campaign->id; ?>" <?php selected($campaign_filter, $campaign->id); ?>>
+                                <?php echo esc_html($campaign->name); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    
+                    <select name="category" onchange="this.form.submit()">
+                        <option value="">All Categories</option>
+                        <?php foreach ($categories as $category): ?>
+                            <option value="<?php echo esc_attr($category); ?>" <?php selected($category_filter, $category); ?>>
+                                <?php echo esc_html(ucfirst($category)); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    
+                    <select name="difficulty" onchange="this.form.submit()">
+                        <option value="">All Difficulties</option>
+                        <option value="easy" <?php selected($difficulty_filter, 'easy'); ?>>Easy</option>
+                        <option value="medium" <?php selected($difficulty_filter, 'medium'); ?>>Medium</option>
+                        <option value="hard" <?php selected($difficulty_filter, 'hard'); ?>>Hard</option>
+                    </select>
+                    
+                    <input type="text" name="search" value="<?php echo esc_attr($search); ?>" placeholder="Search questions...">
+                    <button type="submit" class="button">Filter</button>
+                    
+                    <?php if ($campaign_filter || $category_filter || $difficulty_filter || $search): ?>
+                        <a href="<?php echo admin_url('admin.php?page=vefify-questions'); ?>" class="button">Clear Filters</a>
+                    <?php endif; ?>
+                </form>
             </div>
-            <div class="stat-item">
-                <strong><?php echo $stats['total_categories'] ?? 0; ?></strong>
-                <span>Categories</span>
-            </div>
-            <div class="stat-item">
-                <strong><?php echo ($stats['easy_questions'] ?? 0) + ($stats['medium_questions'] ?? 0) + ($stats['hard_questions'] ?? 0); ?></strong>
-                <span>Total Questions</span>
-            </div>
-        </div>
-        
-        <!-- Filters -->
-        <div class="tablenav top">
-            <form method="get" class="vefify-filters">
-                <input type="hidden" name="page" value="<?php echo esc_attr($_GET['page']); ?>">
-                
-                <select name="campaign_id">
-                    <option value="">All Campaigns</option>
-                    <?php foreach ($campaigns as $campaign): ?>
-                        <option value="<?php echo $campaign->id; ?>" <?php selected($campaign_id, $campaign->id); ?>>
-                            <?php echo esc_html($campaign->name); ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-                
-                <select name="category">
-                    <option value="">All Categories</option>
-                    <?php foreach ($categories as $cat): ?>
-                        <option value="<?php echo esc_attr($cat); ?>" <?php selected($category, $cat); ?>>
-                            <?php echo esc_html(ucfirst($cat)); ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-                
-                <select name="difficulty">
-                    <option value="">All Difficulties</option>
-                    <option value="easy" <?php selected($difficulty, 'easy'); ?>>Easy</option>
-                    <option value="medium" <?php selected($difficulty, 'medium'); ?>>Medium</option>
-                    <option value="hard" <?php selected($difficulty, 'hard'); ?>>Hard</option>
-                </select>
-                
-                <input type="search" name="search" value="<?php echo esc_attr($search); ?>" 
-                       placeholder="Search questions...">
-                
-                <button type="submit" class="button">Filter</button>
-                
-                <?php if ($campaign_id || $category || $difficulty || $search): ?>
-                    <a href="<?php echo esc_url(remove_query_arg(array('campaign_id', 'category', 'difficulty', 'search', 'paged'))); ?>" 
-                       class="button">Clear</a>
-                <?php endif; ?>
-            </form>
-        </div>
-        
-        <!-- Questions Table -->
-        <?php if ($questions): ?>
+            
+            <!-- Questions Table -->
             <table class="wp-list-table widefat fixed striped">
                 <thead>
                     <tr>
-                        <th class="column-question" style="width: 40%;">Question</th>
-                        <th class="column-type" style="width: 15%;">Type</th>
-                        <th class="column-category" style="width: 15%;">Category</th>
-                        <th class="column-difficulty" style="width: 10%;">Difficulty</th>
-                        <th class="column-campaign" style="width: 15%;">Campaign</th>
-                        <th class="column-actions" style="width: 5%;">Actions</th>
+                        <th width="40%">Question</th>
+                        <th>Campaign</th>
+                        <th>Category</th>
+                        <th>Difficulty</th>
+                        <th>Type</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <?php foreach ($questions as $question): ?>
+                    <?php if (empty($questions)): ?>
                         <tr>
-                            <td class="column-question">
-                                <strong>
-                                    <a href="<?php echo esc_url(add_query_arg(array('action' => 'edit', 'question_id' => $question->id))); ?>">
-                                        <?php echo esc_html(wp_trim_words($question->question_text, 10)); ?>
-                                    </a>
-                                </strong>
-                                <div class="question-meta">
-                                    <?php echo $question->points; ?> point<?php echo $question->points != 1 ? 's' : ''; ?> • 
-                                    <?php echo count($question->options); ?> options •
-                                    <?php echo $question->is_active ? '<span style="color: green;">Active</span>' : '<span style="color: red;">Inactive</span>'; ?>
+                            <td colspan="6" style="text-align: center; padding: 40px;">
+                                <h3>No Questions Found</h3>
+                                <p>No questions match your current filters.</p>
+                                <a href="<?php echo admin_url('admin.php?page=vefify-questions&action=new'); ?>" class="button button-primary">Create Your First Question</a>
+                            </td>
+                        </tr>
+                    <?php else: ?>
+                        <?php foreach ($questions as $question): ?>
+                        <tr>
+                            <td>
+                                <strong><?php echo esc_html(wp_trim_words($question->question_text, 12)); ?></strong>
+                                <div class="row-actions">
+                                    <span class="edit">
+                                        <a href="<?php echo admin_url('admin.php?page=vefify-questions&action=edit&id=' . $question->id); ?>">Edit</a> |
+                                    </span>
+                                    <span class="view">
+                                        <a href="#" class="preview-question" data-question-id="<?php echo $question->id; ?>">Preview</a> |
+                                    </span>
+                                    <span class="delete">
+                                        <a href="<?php echo admin_url('admin.php?page=vefify-questions&action=delete&id=' . $question->id); ?>" 
+                                           onclick="return confirm('Are you sure you want to delete this question?')">Delete</a>
+                                    </span>
                                 </div>
                             </td>
-                            <td class="column-type">
-                                <span class="type-badge type-<?php echo esc_attr($question->question_type); ?>">
-                                    <?php echo esc_html($this->format_question_type($question->question_type)); ?>
-                                </span>
-                            </td>
-                            <td class="column-category">
+                            <td><?php echo esc_html($question->campaign_name ?: 'Global'); ?></td>
+                            <td>
                                 <?php if ($question->category): ?>
-                                    <span class="category-badge"><?php echo esc_html(ucfirst($question->category)); ?></span>
+                                    <span class="category-badge category-<?php echo esc_attr($question->category); ?>">
+                                        <?php echo esc_html(ucfirst($question->category)); ?>
+                                    </span>
                                 <?php else: ?>
-                                    <span class="no-category">—</span>
+                                    -
                                 <?php endif; ?>
                             </td>
-                            <td class="column-difficulty">
+                            <td>
                                 <span class="difficulty-badge difficulty-<?php echo esc_attr($question->difficulty); ?>">
                                     <?php echo esc_html(ucfirst($question->difficulty)); ?>
                                 </span>
                             </td>
-                            <td class="column-campaign">
-                                <?php if ($question->campaign_name): ?>
-                                    <?php echo esc_html($question->campaign_name); ?>
-                                <?php else: ?>
-                                    <span class="no-campaign">General</span>
-                                <?php endif; ?>
+                            <td>
+                                <?php 
+                                $type_labels = array(
+                                    'multiple_choice' => 'Single Choice',
+                                    'multiple_select' => 'Multiple Choice',
+                                    'true_false' => 'True/False'
+                                );
+                                echo $type_labels[$question->question_type] ?? $question->question_type;
+                                ?>
                             </td>
-                            <td class="column-actions">
-                                <div class="row-actions">
-                                    <span class="edit">
-                                        <a href="<?php echo esc_url(add_query_arg(array('action' => 'edit', 'question_id' => $question->id))); ?>">
-                                            Edit
-                                        </a> |
-                                    </span>
-                                    <span class="delete">
-                                        <a href="#" class="delete-question submitdelete" data-question-id="<?php echo $question->id; ?>">
-                                            Delete
-                                        </a>
-                                    </span>
+                            <td>
+                                <button class="button button-small toggle-preview" data-question-id="<?php echo $question->id; ?>">
+                                    Preview
+                                </button>
+                            </td>
+                        </tr>
+                        <tr class="question-preview" id="preview-<?php echo $question->id; ?>" style="display: none;">
+                            <td colspan="6">
+                                <div class="question-preview-content">
+                                    <div class="preview-loading">Loading...</div>
                                 </div>
                             </td>
                         </tr>
-                    <?php endforeach; ?>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
                 </tbody>
             </table>
             
             <!-- Pagination -->
-            <?php if ($result['pages'] > 1): ?>
-                <div class="tablenav bottom">
+            <?php if ($total_pages > 1): ?>
+                <div class="tablenav">
                     <div class="tablenav-pages">
                         <?php
                         echo paginate_links(array(
                             'base' => add_query_arg('paged', '%#%'),
                             'format' => '',
-                            'prev_text' => '&laquo; Previous',
-                            'next_text' => 'Next &raquo;',
-                            'total' => $result['pages'],
-                            'current' => $page
+                            'prev_text' => '&laquo;',
+                            'next_text' => '&raquo;',
+                            'current' => $args['page'],
+                            'total' => $total_pages,
                         ));
                         ?>
                     </div>
                 </div>
             <?php endif; ?>
             
-        <?php else: ?>
-            <div class="vefify-empty-state">
-                <h3>No questions found</h3>
-                <p>Start building your question bank by adding your first question.</p>
-                <a href="<?php echo esc_url(add_query_arg('action', 'new')); ?>" class="button button-primary">
-                    Add First Question
-                </a>
+            <!-- Statistics -->
+            <div class="questions-stats">
+                <h3>📊 Question Bank Statistics</h3>
+                <?php
+                $stats = $this->model->get_question_stats();
+                ?>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <strong><?php echo number_format($stats['total']); ?></strong>
+                        <span>Total Questions</span>
+                    </div>
+                    <div class="stat-item">
+                        <strong><?php echo number_format($stats['active']); ?></strong>
+                        <span>Active</span>
+                    </div>
+                    <div class="stat-item">
+                        <strong><?php echo number_format($stats['easy']); ?></strong>
+                        <span>Easy</span>
+                    </div>
+                    <div class="stat-item">
+                        <strong><?php echo number_format($stats['medium']); ?></strong>
+                        <span>Medium</span>
+                    </div>
+                    <div class="stat-item">
+                        <strong><?php echo number_format($stats['hard']); ?></strong>
+                        <span>Hard</span>
+                    </div>
+                </div>
             </div>
-        <?php endif; ?>
+        </div>
+        
+        <style>
+        .questions-filters {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        
+        .questions-filters form {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .category-badge, .difficulty-badge {
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            color: white;
+            font-weight: bold;
+        }
+        
+        .category-badge.category-medication { background: #2196f3; }
+        .category-badge.category-nutrition { background: #4caf50; }
+        .category-badge.category-safety { background: #ff9800; }
+        .category-badge.category-hygiene { background: #9c27b0; }
+        .category-badge.category-wellness { background: #00bcd4; }
+        .category-badge.category-pharmacy { background: #795548; }
+        
+        .difficulty-badge.difficulty-easy { background: #4caf50; }
+        .difficulty-badge.difficulty-medium { background: #ff9800; }
+        .difficulty-badge.difficulty-hard { background: #f44336; }
+        
+        .question-preview-content {
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        
+        .questions-stats {
+            margin-top: 30px;
+            padding: 20px;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        
+        .stat-item {
+            text-align: center;
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 4px;
+        }
+        
+        .stat-item strong {
+            display: block;
+            font-size: 24px;
+            color: #2271b1;
+            margin-bottom: 5px;
+        }
+        
+        .stat-item span {
+            font-size: 12px;
+            color: #666;
+        }
+        </style>
         <?php
     }
     
     /**
-     * Render unified question form (for both add and edit)
+     * Display question form (new/edit)
      */
-    private function render_question_form($question_id = null) {
-        $is_edit = (bool) $question_id;
+    private function display_question_form() {
+        $question_id = $_GET['id'] ?? 0;
+        $is_edit = !empty($question_id);
         $question = null;
         
         if ($is_edit) {
             $question = $this->model->get_question($question_id);
             if (!$question) {
-                echo '<div class="notice notice-error"><p>Question not found.</p></div>';
-                return;
+                wp_die('Question not found');
             }
         }
         
-        $campaigns = $this->model->get_campaigns();
-        $categories = $this->model->get_categories();
+        // Get campaigns for dropdown
+        $campaigns = $this->wpdb->get_results("SELECT id, name FROM {$this->table_prefix}campaigns ORDER BY name");
         
         ?>
-        <h1 class="wp-heading-inline">
-            <?php echo $is_edit ? 'Edit Question' : 'Add New Question'; ?>
-        </h1>
-        <a href="<?php echo esc_url(remove_query_arg(array('action', 'question_id'))); ?>" class="page-title-action">
-            ← Back to Questions
-        </a>
-        <hr class="wp-header-end">
-        
-        <form method="post" action="" class="vefify-question-form" id="question-form">
-            <?php wp_nonce_field('vefify_save_question', 'vefify_question_nonce'); ?>
-            <input type="hidden" name="action" value="<?php echo $is_edit ? 'update_question' : 'create_question'; ?>">
-            <?php if ($is_edit): ?>
-                <input type="hidden" name="question_id" value="<?php echo $question->id; ?>">
-            <?php endif; ?>
+        <div class="wrap">
+            <h1><?php echo $is_edit ? 'Edit Question' : 'Add New Question'; ?></h1>
             
-            <div class="form-layout">
-                <!-- Main Content -->
-                <div class="form-main">
-                    <table class="form-table" role="presentation">
-                        <tr>
-                            <th scope="row">
-                                <label for="question_text">Question Text *</label>
-                            </th>
-                            <td>
-                                <textarea id="question_text" name="question_text" rows="4" class="large-text" required 
-                                         placeholder="Enter your question here..."><?php echo $is_edit ? esc_textarea($question->question_text) : ''; ?></textarea>
-                                <p class="description">The main question that participants will answer.</p>
-                            </td>
-                        </tr>
-                        
-                        <tr>
-                            <th scope="row">
-                                <label for="question_type">Question Type *</label>
-                            </th>
-                            <td>
-                                <select id="question_type" name="question_type" required>
-                                    <option value="multiple_choice" <?php echo $is_edit && $question->question_type === 'multiple_choice' ? 'selected' : ''; ?>>
-                                        Multiple Choice (Single Answer)
-                                    </option>
-                                    <option value="multiple_select" <?php echo $is_edit && $question->question_type === 'multiple_select' ? 'selected' : ''; ?>>
-                                        Multiple Select (Multiple Answers)
-                                    </option>
-                                    <option value="true_false" <?php echo $is_edit && $question->question_type === 'true_false' ? 'selected' : ''; ?>>
-                                        True/False
-                                    </option>
-                                </select>
-                                <p class="description">Choose how participants can answer this question.</p>
-                            </td>
-                        </tr>
-                        
-                        <tr>
-                            <th scope="row">
-                                <label>Answer Options *</label>
-                            </th>
-                            <td>
-                                <div id="question-options" class="question-options">
-                                    <?php if ($is_edit && $question->options): ?>
-                                        <?php foreach ($question->options as $index => $option): ?>
-                                            <div class="option-row" data-index="<?php echo $index; ?>">
-                                                <label class="option-correct-label">
-                                                    <input type="checkbox" name="options[<?php echo $index; ?>][is_correct]" 
-                                                           value="1" <?php checked($option->is_correct, 1); ?> 
-                                                           class="option-correct">
-                                                    Correct
-                                                </label>
-                                                <input type="text" name="options[<?php echo $index; ?>][option_text]" 
-                                                       value="<?php echo esc_attr($option->option_text); ?>" 
-                                                       class="option-text regular-text" placeholder="Option text..." required>
-                                                <button type="button" class="remove-option button">Remove</button>
-                                            </div>
-                                        <?php endforeach; ?>
-                                    <?php else: ?>
-                                        <div class="option-row" data-index="0">
-                                            <label class="option-correct-label">
-                                                <input type="checkbox" name="options[0][is_correct]" value="1" class="option-correct">
-                                                Correct
-                                            </label>
-                                            <input type="text" name="options[0][option_text]" class="option-text regular-text" 
-                                                   placeholder="Option text..." required>
-                                            <button type="button" class="remove-option button">Remove</button>
-                                        </div>
-                                        <div class="option-row" data-index="1">
-                                            <label class="option-correct-label">
-                                                <input type="checkbox" name="options[1][is_correct]" value="1" class="option-correct">
-                                                Correct
-                                            </label>
-                                            <input type="text" name="options[1][option_text]" class="option-text regular-text" 
-                                                   placeholder="Option text..." required>
-                                            <button type="button" class="remove-option button">Remove</button>
-                                        </div>
-                                    <?php endif; ?>
-                                </div>
-                                <button type="button" id="add-option" class="button">Add Option</button>
-                                <p class="description">
-                                    Check the box next to correct answer(s). For multiple choice, select one. 
-                                    For multiple select, you can select several.
-                                </p>
-                            </td>
-                        </tr>
-                        
-                        <tr>
-                            <th scope="row">
-                                <label for="explanation">Explanation</label>
-                            </th>
-                            <td>
-                                <textarea id="explanation" name="explanation" rows="3" class="large-text"
-                                         placeholder="Optional explanation shown after answering..."><?php echo $is_edit ? esc_textarea($question->explanation) : ''; ?></textarea>
-                                <p class="description">Optional explanation displayed to participants after they answer.</p>
-                            </td>
-                        </tr>
-                    </table>
-                </div>
+            <form method="post" action="" id="question-form">
+                <?php wp_nonce_field('vefify_question_save'); ?>
+                <input type="hidden" name="action" value="save_question">
+                <?php if ($is_edit): ?>
+                    <input type="hidden" name="question_id" value="<?php echo $question->id; ?>">
+                <?php endif; ?>
                 
-                <!-- Sidebar -->
-                <div class="form-sidebar">
-                    <div class="submitdiv">
-                        <div class="submitbox">
-                            <div class="major-publishing-actions">
-                                <div class="publishing-action">
-                                    <input type="submit" name="save_question" id="save-question" 
-                                           class="button button-primary button-large" 
-                                           value="<?php echo $is_edit ? 'Update Question' : 'Save Question'; ?>">
-                                </div>
-                                <div class="clear"></div>
-                            </div>
-                        </div>
+                <div class="question-form-container">
+                    <div class="form-section">
+                        <h3>Question Details</h3>
+                        
+                        <table class="form-table">
+                            <tr>
+                                <th scope="row"><label for="campaign_id">Campaign</label></th>
+                                <td>
+                                    <select id="campaign_id" name="campaign_id">
+                                        <option value="">Global (All Campaigns)</option>
+                                        <?php foreach ($campaigns as $campaign): ?>
+                                            <option value="<?php echo $campaign->id; ?>" 
+                                                    <?php selected($is_edit ? $question->campaign_id : '', $campaign->id); ?>>
+                                                <?php echo esc_html($campaign->name); ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </td>
+                            </tr>
+                            
+                            <tr>
+                                <th scope="row"><label for="question_text">Question Text *</label></th>
+                                <td>
+                                    <textarea id="question_text" name="question_text" rows="3" class="large-text" required><?php echo $is_edit ? esc_textarea($question->question_text) : ''; ?></textarea>
+                                </td>
+                            </tr>
+                            
+                            <tr>
+                                <th scope="row">Settings</th>
+                                <td>
+                                    <fieldset>
+                                        <label>
+                                            Type: 
+                                            <select name="question_type" id="question_type">
+                                                <option value="multiple_choice" <?php selected($is_edit ? $question->question_type : 'multiple_choice', 'multiple_choice'); ?>>
+                                                    Single Choice
+                                                </option>
+                                                <option value="multiple_select" <?php selected($is_edit ? $question->question_type : '', 'multiple_select'); ?>>
+                                                    Multiple Choice
+                                                </option>
+                                                <option value="true_false" <?php selected($is_edit ? $question->question_type : '', 'true_false'); ?>>
+                                                    True/False
+                                                </option>
+                                            </select>
+                                        </label><br><br>
+                                        
+                                        <label>
+                                            Category: 
+                                            <select name="category">
+                                                <option value="">Select Category</option>
+                                                <option value="medication" <?php selected($is_edit ? $question->category : '', 'medication'); ?>>Medication</option>
+                                                <option value="nutrition" <?php selected($is_edit ? $question->category : '', 'nutrition'); ?>>Nutrition</option>
+                                                <option value="safety" <?php selected($is_edit ? $question->category : '', 'safety'); ?>>Safety</option>
+                                                <option value="hygiene" <?php selected($is_edit ? $question->category : '', 'hygiene'); ?>>Hygiene</option>
+                                                <option value="wellness" <?php selected($is_edit ? $question->category : '', 'wellness'); ?>>Wellness</option>
+                                                <option value="pharmacy" <?php selected($is_edit ? $question->category : '', 'pharmacy'); ?>>Pharmacy</option>
+                                            </select>
+                                        </label><br><br>
+                                        
+                                        <label>
+                                            Difficulty: 
+                                            <select name="difficulty">
+                                                <option value="easy" <?php selected($is_edit ? $question->difficulty : 'medium', 'easy'); ?>>Easy</option>
+                                                <option value="medium" <?php selected($is_edit ? $question->difficulty : 'medium', 'medium'); ?>>Medium</option>
+                                                <option value="hard" <?php selected($is_edit ? $question->difficulty : 'medium', 'hard'); ?>>Hard</option>
+                                            </select>
+                                        </label><br><br>
+                                        
+                                        <label>
+                                            Points: 
+                                            <input type="number" name="points" value="<?php echo $is_edit ? $question->points : 1; ?>" 
+                                                   min="1" max="10" class="small-text">
+                                        </label>
+                                    </fieldset>
+                                </td>
+                            </tr>
+                            
+                            <tr>
+                                <th scope="row">Explanation (Optional)</th>
+                                <td>
+                                    <textarea name="explanation" rows="2" class="large-text"><?php echo $is_edit ? esc_textarea($question->explanation) : ''; ?></textarea>
+                                    <p class="description">Explain why certain answers are correct</p>
+                                </td>
+                            </tr>
+                        </table>
                     </div>
                     
-                    <!-- Question Settings -->
-                    <div class="postbox">
-                        <div class="postbox-header">
-                            <h2>Question Settings</h2>
+                    <div class="form-section">
+                        <h3>Answer Options</h3>
+                        <div id="answer-options">
+                            <?php
+                            if ($is_edit && $question->options) {
+                                foreach ($question->options as $index => $option) {
+                                    $this->render_option_row($index, $option->option_text, $option->is_correct, $option->explanation);
+                                }
+                            } else {
+                                // Default 4 options for new questions
+                                for ($i = 0; $i < 4; $i++) {
+                                    $this->render_option_row($i, '', false, '');
+                                }
+                            }
+                            ?>
                         </div>
-                        <div class="inside">
-                            <table class="form-table" role="presentation">
-                                <tr>
-                                    <th scope="row">
-                                        <label for="campaign_id">Campaign</label>
-                                    </th>
-                                    <td>
-                                        <select id="campaign_id" name="campaign_id">
-                                            <option value="">General (No Campaign)</option>
-                                            <?php foreach ($campaigns as $campaign): ?>
-                                                <option value="<?php echo $campaign->id; ?>" 
-                                                       <?php echo $is_edit && $question->campaign_id == $campaign->id ? 'selected' : ''; ?>>
-                                                    <?php echo esc_html($campaign->name); ?>
-                                                </option>
-                                            <?php endforeach; ?>
-                                        </select>
-                                    </td>
-                                </tr>
-                                
-                                <tr>
-                                    <th scope="row">
-                                        <label for="category">Category</label>
-                                    </th>
-                                    <td>
-                                        <input type="text" id="category" name="category" list="category-list"
-                                               value="<?php echo $is_edit ? esc_attr($question->category) : ''; ?>" 
-                                               placeholder="e.g., Health, Science">
-                                        <datalist id="category-list">
-                                            <?php foreach ($categories as $cat): ?>
-                                                <option value="<?php echo esc_attr($cat); ?>">
-                                            <?php endforeach; ?>
-                                        </datalist>
-                                    </td>
-                                </tr>
-                                
-                                <tr>
-                                    <th scope="row">
-                                        <label for="difficulty">Difficulty</label>
-                                    </th>
-                                    <td>
-                                        <select id="difficulty" name="difficulty">
-                                            <option value="easy" <?php echo $is_edit && $question->difficulty === 'easy' ? 'selected' : ''; ?>>Easy</option>
-                                            <option value="medium" <?php echo $is_edit && $question->difficulty === 'medium' ? 'selected' : ''; ?>>Medium</option>
-                                            <option value="hard" <?php echo $is_edit && $question->difficulty === 'hard' ? 'selected' : ''; ?>>Hard</option>
-                                        </select>
-                                    </td>
-                                </tr>
-                                
-                                <tr>
-                                    <th scope="row">
-                                        <label for="points">Points</label>
-                                    </th>
-                                    <td>
-                                        <input type="number" id="points" name="points" min="1" max="10" 
-                                               value="<?php echo $is_edit ? $question->points : 1; ?>">
-                                    </td>
-                                </tr>
-                                
-                                <tr>
-                                    <th scope="row">Status</th>
-                                    <td>
-                                        <label>
-                                            <input type="checkbox" name="is_active" value="1" 
-                                                   <?php echo !$is_edit || $question->is_active ? 'checked' : ''; ?>>
-                                            Active (question will appear in quizzes)
-                                        </label>
-                                    </td>
-                                </tr>
-                            </table>
-                        </div>
+                        
+                        <p>
+                            <button type="button" id="add-option" class="button">Add Another Option</button>
+                            <span class="description">You need at least 2 options, and at least 1 must be marked as correct.</span>
+                        </p>
                     </div>
                 </div>
-            </div>
-        </form>
+                
+                <?php submit_button($is_edit ? 'Update Question' : 'Save Question'); ?>
+            </form>
+        </div>
         
-        <!-- Option Template -->
-        <script type="text/template" id="option-template">
-            <div class="option-row" data-index="{{index}}">
-                <label class="option-correct-label">
-                    <input type="checkbox" name="options[{{index}}][is_correct]" value="1" class="option-correct">
-                    Correct
-                </label>
-                <input type="text" name="options[{{index}}][option_text]" class="option-text regular-text" 
-                       placeholder="Option text..." required>
-                <button type="button" class="remove-option button">Remove</button>
-            </div>
+        <style>
+        .question-form-container {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 20px;
+            max-width: 1000px;
+        }
+        
+        .form-section {
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .form-section h3 {
+            margin: 0 0 15px 0;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .option-row {
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 10px;
+            position: relative;
+        }
+        
+        .option-row.correct {
+            border-left: 4px solid #00a32a;
+            background: #f0f8f0;
+        }
+        </style>
+        
+        <script>
+        jQuery(document).ready(function($) {
+            let optionCount = $('#answer-options .option-row').length;
+            
+            // Add new option
+            $('#add-option').click(function() {
+                // Implementation for adding options
+                optionCount++;
+            });
+            
+            // Handle correct answer selection
+            $(document).on('change', '.option-correct-checkbox', function() {
+                const questionType = $('#question_type').val();
+                if (questionType === 'multiple_choice' && this.checked) {
+                    $('.option-correct-checkbox').not(this).prop('checked', false);
+                    $('.option-row').removeClass('correct');
+                }
+                $(this).closest('.option-row').toggleClass('correct', this.checked);
+            });
+        });
         </script>
+        <?php
+    }
+    
+    /**
+     * Render option row HTML
+     */
+    private function render_option_row($index, $text = '', $is_correct = false, $explanation = '') {
+        ?>
+        <div class="option-row <?php echo $is_correct ? 'correct' : ''; ?>">
+            <div class="option-header">
+                <span class="option-number"><?php echo $index + 1; ?></span>
+                <label class="option-correct">
+                    <input type="checkbox" name="options[<?php echo $index; ?>][is_correct]" 
+                           value="1" class="option-correct-checkbox" <?php checked($is_correct); ?>>
+                    Correct Answer
+                </label>
+            </div>
+            
+            <input type="text" name="options[<?php echo $index; ?>][text]" 
+                   value="<?php echo esc_attr($text); ?>" 
+                   placeholder="Enter answer option..." 
+                   class="option-text large-text" required>
+            
+            <textarea name="options[<?php echo $index; ?>][explanation]" 
+                      placeholder="Optional: Explain why this answer is correct/incorrect..."
+                      rows="2" class="option-explanation large-text"><?php echo esc_textarea($explanation); ?></textarea>
+        </div>
+        <?php
+    }
+    
+    /**
+     * Display import page
+     */
+    private function display_import_page() {
+        ?>
+        <div class="wrap">
+            <h1>Import Questions</h1>
+            <p>Upload a CSV file containing questions and answers.</p>
+            
+            <div class="import-instructions">
+                <h3>CSV Format</h3>
+                <p>Your CSV file should have these columns:</p>
+                <ul>
+                    <li><strong>question_text</strong> - The question text</li>
+                    <li><strong>option_1</strong> - First answer option</li>
+                    <li><strong>option_2</strong> - Second answer option</li>
+                    <li><strong>option_3</strong> - Third answer option (optional)</li>
+                    <li><strong>option_4</strong> - Fourth answer option (optional)</li>
+                    <li><strong>correct_answers</strong> - Correct option numbers (1,2 for multiple correct)</li>
+                    <li><strong>category</strong> - Question category (optional)</li>
+                    <li><strong>difficulty</strong> - easy, medium, or hard (optional)</li>
+                </ul>
+            </div>
+        </div>
         <?php
     }
     
@@ -529,200 +613,94 @@ class Vefify_Question_Bank {
      * Handle form submissions
      */
     public function handle_form_submissions() {
-        if (!isset($_POST['action']) || !wp_verify_nonce($_POST['vefify_question_nonce'] ?? '', 'vefify_save_question')) {
-            return;
-        }
-        
-        $action = $_POST['action'];
-        
-        switch ($action) {
-            case 'create_question':
-                $this->handle_create_question();
-                break;
-            case 'update_question':
-                $this->handle_update_question();
-                break;
-        }
-    }
-    
-    /**
-     * Handle create question
-     */
-    private function handle_create_question() {
-        $data = $this->sanitize_question_data($_POST);
-        $result = $this->model->create_question($data);
-        
-        if (is_wp_error($result)) {
-            $this->add_admin_notice($result->get_error_message(), 'error');
-        } else {
-            $this->add_admin_notice('Question created successfully!', 'success');
-            
-            $redirect_url = add_query_arg(array(
-                'action' => 'edit',
-                'question_id' => $result,
-                'message' => 'created'
-            ), remove_query_arg(array('action')));
-            
-            wp_redirect($redirect_url);
-            exit;
-        }
-    }
-    
-    /**
-     * Handle update question
-     */
-    private function handle_update_question() {
-        $question_id = intval($_POST['question_id']);
-        $data = $this->sanitize_question_data($_POST);
-        $result = $this->model->update_question($question_id, $data);
-        
-        if (is_wp_error($result)) {
-            $this->add_admin_notice($result->get_error_message(), 'error');
-        } else {
-            $this->add_admin_notice('Question updated successfully!', 'success');
-            
-            wp_redirect(add_query_arg('message', 'updated'));
-            exit;
-        }
-    }
-    
-    /**
-     * Sanitize question data from form
-     */
-    private function sanitize_question_data($data) {
-        $sanitized = array(
-            'question_text' => sanitize_textarea_field($data['question_text'] ?? ''),
-            'question_type' => sanitize_text_field($data['question_type'] ?? 'multiple_choice'),
-            'category' => sanitize_text_field($data['category'] ?? ''),
-            'difficulty' => sanitize_text_field($data['difficulty'] ?? 'medium'),
-            'points' => intval($data['points'] ?? 1),
-            'explanation' => sanitize_textarea_field($data['explanation'] ?? ''),
-            'is_active' => isset($data['is_active']) ? 1 : 0,
-            'campaign_id' => !empty($data['campaign_id']) ? intval($data['campaign_id']) : null,
-            'options' => array()
-        );
-        
-        // Sanitize options
-        if (!empty($data['options']) && is_array($data['options'])) {
-            foreach ($data['options'] as $option) {
-                if (!empty($option['option_text'])) {
-                    $sanitized['options'][] = array(
-                        'option_text' => sanitize_textarea_field($option['option_text']),
-                        'is_correct' => !empty($option['is_correct']) ? 1 : 0
-                    );
-                }
+        if (isset($_POST['action']) && $_POST['action'] === 'save_question') {
+            if (!wp_verify_nonce($_POST['_wpnonce'], 'vefify_question_save')) {
+                wp_die('Security check failed');
             }
+            
+            if (!current_user_can('manage_options')) {
+                wp_die('Unauthorized');
+            }
+            
+            // Process form submission
+            // Implementation would go here
         }
-        
-        return $sanitized;
     }
     
     /**
-     * AJAX: Delete question
+     * Handle question deletion
      */
-    public function ajax_delete_question() {
-        if (!wp_verify_nonce($_POST['nonce'] ?? '', 'vefify_questions_admin')) {
-            wp_send_json_error('Security check failed');
-        }
+    private function handle_delete_question() {
+        $question_id = $_GET['id'] ?? 0;
         
-        $question_id = intval($_POST['question_id'] ?? 0);
-        
-        if (!$question_id) {
-            wp_send_json_error('Invalid question ID');
+        if (!$question_id || !current_user_can('manage_options')) {
+            wp_redirect(admin_url('admin.php?page=vefify-questions'));
+            exit;
         }
         
         $result = $this->model->delete_question($question_id);
         
-        if ($result) {
-            wp_send_json_success('Question deleted successfully');
+        if (is_wp_error($result)) {
+            $message = 'Error: ' . $result->get_error_message();
+            $type = 'error';
         } else {
-            wp_send_json_error('Failed to delete question');
+            $message = 'Question deleted successfully.';
+            $type = 'success';
         }
-    }
-    
-    /**
-     * Add admin notice
-     */
-    private function add_admin_notice($message, $type = 'info') {
-        set_transient('vefify_admin_notice', array(
-            'message' => $message,
-            'type' => $type
-        ), 30);
-    }
-    
-    /**
-     * Display admin notices
-     */
-    public function display_admin_notices() {
-        $notice = get_transient('vefify_admin_notice');
         
-        if ($notice) {
-            delete_transient('vefify_admin_notice');
-            
-            $class = 'notice notice-' . $notice['type'] . ' is-dismissible';
-            echo '<div class="' . $class . '"><p>' . esc_html($notice['message']) . '</p></div>';
-        }
+        add_settings_error('vefify_questions', 'question_deleted', $message, $type);
+        wp_redirect(admin_url('admin.php?page=vefify-questions'));
+        exit;
     }
     
     /**
-     * Format question type for display
+     * Enqueue admin scripts
      */
-    private function format_question_type($type) {
-        switch ($type) {
-            case 'multiple_choice':
-                return 'Multiple Choice';
-            case 'multiple_select':
-                return 'Multiple Select';
-            case 'true_false':
-                return 'True/False';
-            default:
-                return ucfirst(str_replace('_', ' ', $type));
+    public function enqueue_admin_scripts($hook) {
+        if (strpos($hook, 'vefify-questions') === false) {
+            return;
         }
-    }
-    
-    /**
-     * Get analytics summary for centralized dashboard
-     */
-    public function get_analytics_summary() {
-        $stats = $this->model->get_statistics();
         
-        return array(
-            'title' => 'Question Bank',
-            'icon' => '❓',
-            'stats' => array(
-                'total_questions' => array(
-                    'label' => 'Total Questions',
-                    'value' => $stats['total_questions'] ?? 0,
-                    'trend' => 'Active: ' . ($stats['active_questions'] ?? 0)
-                ),
-                'categories' => array(
-                    'label' => 'Categories',
-                    'value' => $stats['total_categories'] ?? 0,
-                    'trend' => 'Well organized'
-                ),
-                'difficulty_mix' => array(
-                    'label' => 'Difficulty Balance',
-                    'value' => 'Mixed',
-                    'trend' => sprintf(
-                        'Easy: %d, Medium: %d, Hard: %d',
-                        $stats['easy_questions'] ?? 0,
-                        $stats['medium_questions'] ?? 0,
-                        $stats['hard_questions'] ?? 0
-                    )
-                )
-            ),
-            'quick_actions' => array(
-                array(
-                    'label' => 'Add Question',
-                    'url' => admin_url('admin.php?page=vefify-questions&action=new'),
-                    'icon' => '➕'
-                ),
-                array(
-                    'label' => 'View All',
-                    'url' => admin_url('admin.php?page=vefify-questions'),
-                    'icon' => '👁️'
-                )
-            )
+        wp_enqueue_script('vefify-question-bank', 
+            plugin_dir_url(__FILE__) . 'assets/question-bank.js', 
+            array('jquery'), 
+            '1.0.0', 
+            true
         );
+        
+        wp_localize_script('vefify-question-bank', 'vefifyQuestionBank', array(
+            'ajaxurl' => admin_url('admin-ajax.php'),
+            'nonce' => wp_create_nonce('vefify_question_bank'),
+        ));
+    }
+    
+    /**
+     * AJAX handler for question preview
+     */
+    public function load_question_preview() {
+        if (!wp_verify_nonce($_POST['nonce'], 'vefify_question_bank')) {
+            wp_die('Security check failed');
+        }
+        
+        $question_id = intval($_POST['question_id']);
+        $question = $this->model->get_question($question_id);
+        
+        if (!$question) {
+            wp_send_json_error('Question not found');
+        }
+        
+        ob_start();
+        ?>
+        <div class="preview-question"><?php echo esc_html($question->question_text); ?></div>
+        <div class="preview-options">
+            <?php foreach ($question->options as $option): ?>
+                <div class="preview-option <?php echo $option->is_correct ? 'correct' : 'incorrect'; ?>">
+                    <?php echo $option->is_correct ? '✓' : '✗'; ?> <?php echo esc_html($option->option_text); ?>
+                </div>
+            <?php endforeach; ?>
+        </div>
+        <?php
+        
+        wp_send_json_success(ob_get_clean());
     }
 }
