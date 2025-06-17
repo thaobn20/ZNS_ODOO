@@ -1,9 +1,9 @@
 <?php
 /**
- * Streamlined Question Module Controller
+ * Enhanced Question Module Controller
  * File: modules/questions/class-question-module.php
  * 
- * Main controller that integrates with centralized menu and database
+ * Main controller that loads and orchestrates all question-related functionality
  */
 
 if (!defined('ABSPATH')) {
@@ -41,10 +41,10 @@ class Vefify_Question_Module {
     private function load_dependencies() {
         $module_path = plugin_dir_path(__FILE__);
         
-        // Load model (always needed)
+        // Core components
         require_once $module_path . 'class-question-model.php';
         
-        // Load admin components only in admin
+        // Admin components (only in admin)
         if (is_admin()) {
             require_once $module_path . 'class-question-bank.php';
         }
@@ -54,7 +54,7 @@ class Vefify_Question_Module {
      * Initialize components
      */
     private function init_components() {
-        // Initialize model (needed for both frontend and admin)
+        // Always initialize model (needed for frontend and admin)
         $this->model = new Vefify_Question_Model();
         
         // Initialize admin interface only in admin area
@@ -67,30 +67,30 @@ class Vefify_Question_Module {
      * Initialize WordPress hooks
      */
     private function init_hooks() {
-        // Register with centralized menu system
-        add_filter('vefify_quiz_admin_menu_items', array($this, 'register_menu_item'));
+        // Admin hooks
+        if (is_admin()) {
+            add_action('admin_menu', array($this, 'add_admin_menu'));
+            add_filter('vefify_quiz_admin_menu_items', array($this, 'register_admin_menu_item'));
+        }
         
-        // Register analytics with centralized dashboard
-        add_filter('vefify_quiz_analytics_modules', array($this, 'register_analytics'));
+        // Frontend hooks
+        add_shortcode('vefify_quiz_question', array($this, 'render_single_question_shortcode'));
         
-        // Frontend AJAX handlers
+        // AJAX handlers (both admin and frontend)
         add_action('wp_ajax_vefify_get_quiz_questions', array($this, 'ajax_get_quiz_questions'));
         add_action('wp_ajax_nopriv_vefify_get_quiz_questions', array($this, 'ajax_get_quiz_questions'));
         
         add_action('wp_ajax_vefify_validate_quiz_answers', array($this, 'ajax_validate_quiz_answers'));
         add_action('wp_ajax_nopriv_vefify_validate_quiz_answers', array($this, 'ajax_validate_quiz_answers'));
         
-        // Shortcode support
-        add_shortcode('vefify_quiz_question', array($this, 'render_single_question_shortcode'));
-        
-        // Enqueue frontend scripts
+        // Enqueue scripts
         add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_scripts'));
     }
     
     /**
-     * Register menu item with centralized menu system
+     * Register admin menu item with the main plugin
      */
-    public function register_menu_item($menu_items) {
+    public function register_admin_menu_item($menu_items) {
         $menu_items[] = array(
             'page_title' => 'Question Bank',
             'menu_title' => '❓ Questions',
@@ -104,14 +104,31 @@ class Vefify_Question_Module {
     }
     
     /**
-     * Register analytics with centralized dashboard
+     * Add admin menu (fallback if main plugin doesn't handle it)
      */
-    public function register_analytics($modules) {
-        if ($this->bank) {
-            $modules['questions'] = $this->bank->get_analytics_summary();
+    public function add_admin_menu() {
+        // Only add if parent menu doesn't exist
+        if (!menu_page_url('vefify-quiz', false)) {
+            add_menu_page(
+                'Vefify Quiz',
+                'Vefify Quiz',
+                'manage_options',
+                'vefify-quiz',
+                '',
+                'dashicons-forms',
+                30
+            );
         }
         
-        return $modules;
+        // Add questions submenu
+        add_submenu_page(
+            'vefify-quiz',
+            'Question Bank',
+            '❓ Questions',
+            'manage_options',
+            'vefify-questions',
+            array($this, 'admin_page_callback')
+        );
     }
     
     /**
@@ -119,7 +136,7 @@ class Vefify_Question_Module {
      */
     public function admin_page_callback() {
         if ($this->bank) {
-            $this->bank->admin_page();
+            $this->bank->admin_page_router();
         } else {
             echo '<div class="wrap"><h1>Question Bank</h1><p>Admin interface not available.</p></div>';
         }
@@ -160,7 +177,11 @@ class Vefify_Question_Module {
                     'error' => __('An error occurred. Please try again.', 'vefify-quiz'),
                     'submit' => __('Submit Answer', 'vefify-quiz'),
                     'next' => __('Next Question', 'vefify-quiz'),
-                    'finish' => __('Finish Quiz', 'vefify-quiz')
+                    'previous' => __('Previous Question', 'vefify-quiz'),
+                    'finish' => __('Finish Quiz', 'vefify-quiz'),
+                    'correct' => __('Correct!', 'vefify-quiz'),
+                    'incorrect' => __('Incorrect', 'vefify-quiz'),
+                    'timeUp' => __('Time is up!', 'vefify-quiz')
                 )
             ));
         }
@@ -190,7 +211,8 @@ class Vefify_Question_Module {
                 'campaign_id' => $campaign_id,
                 'is_active' => 1,
                 'per_page' => $count * 2, // Get more for randomization
-                'page' => 1
+                'page' => 1,
+                'include_options' => true
             );
             
             if ($difficulty) {
@@ -253,6 +275,7 @@ class Vefify_Question_Module {
         }
         
         $answers = $_POST['answers'] ?? array();
+        $session_id = sanitize_text_field($_POST['session_id'] ?? '');
         
         if (!is_array($answers) || empty($answers)) {
             wp_send_json_error('Invalid answers format');
@@ -320,7 +343,8 @@ class Vefify_Question_Module {
                     'incorrect_answers' => $total_questions - $correct_count,
                     'total_score' => $total_score,
                     'max_possible_score' => $max_possible_score,
-                    'percentage' => $percentage
+                    'percentage' => $percentage,
+                    'grade' => $this->calculate_grade($percentage)
                 )
             ));
             
@@ -379,6 +403,10 @@ class Vefify_Question_Module {
                             <span class="option-marker"><?php echo chr(65 + $index); ?>.</span>
                             <span class="option-text"><?php echo esc_html($option->option_text); ?></span>
                         <?php endif; ?>
+                        
+                        <?php if ($atts['show_correct'] && $option->explanation): ?>
+                            <div class="option-explanation"><?php echo esc_html($option->explanation); ?></div>
+                        <?php endif; ?>
                     </div>
                 <?php endforeach; ?>
             </div>
@@ -418,7 +446,7 @@ class Vefify_Question_Module {
     }
     
     /**
-     * Public API: Get questions for a campaign
+     * Utility: Get questions for a campaign
      */
     public function get_campaign_questions($campaign_id, $count = 5, $options = array()) {
         $defaults = array(
@@ -434,7 +462,8 @@ class Vefify_Question_Module {
             'campaign_id' => $campaign_id,
             'is_active' => 1,
             'per_page' => $options['randomize'] ? $count * 2 : $count,
-            'page' => 1
+            'page' => 1,
+            'include_options' => true
         );
         
         if ($options['difficulty']) {
@@ -487,5 +516,77 @@ class Vefify_Question_Module {
         }
         
         return $formatted_questions;
+    }
+    
+    /**
+     * Calculate grade based on percentage
+     */
+    private function calculate_grade($percentage) {
+        if ($percentage >= 90) return 'A';
+        if ($percentage >= 80) return 'B';
+        if ($percentage >= 70) return 'C';
+        if ($percentage >= 60) return 'D';
+        return 'F';
+    }
+    
+    /**
+     * Public API methods for other modules
+     */
+    
+    /**
+     * Get statistics for analytics dashboard
+     */
+    public function get_analytics_summary() {
+        $stats = $this->model->get_statistics();
+        
+        return array(
+            'title' => 'Question Bank',
+            'description' => 'Manage questions with multiple types and rich content support',
+            'icon' => '❓',
+            'stats' => array(
+                'total_questions' => array(
+                    'label' => 'Active Questions',
+                    'value' => $stats['active_questions'] ?? 0,
+                    'trend' => '+' . ($stats['total_questions'] - $stats['active_questions']) . ' inactive'
+                ),
+                'question_types' => array(
+                    'label' => 'Question Types',
+                    'value' => '3 Types',
+                    'trend' => 'Multiple choice, True/False, Multi-select'
+                ),
+                'categories' => array(
+                    'label' => 'Categories',
+                    'value' => $stats['total_categories'] ?? 0,
+                    'trend' => 'Well organized'
+                ),
+                'difficulty_mix' => array(
+                    'label' => 'Difficulty Balance',
+                    'value' => 'Balanced',
+                    'trend' => sprintf(
+                        'Easy: %d, Medium: %d, Hard: %d',
+                        $stats['easy_questions'] ?? 0,
+                        $stats['medium_questions'] ?? 0,
+                        $stats['hard_questions'] ?? 0
+                    )
+                )
+            ),
+            'quick_actions' => array(
+                array(
+                    'label' => 'Add Question',
+                    'url' => admin_url('admin.php?page=vefify-questions&action=new'),
+                    'icon' => '➕'
+                ),
+                array(
+                    'label' => 'Import CSV',
+                    'url' => admin_url('admin.php?page=vefify-questions&action=import'),
+                    'icon' => '📥'
+                ),
+                array(
+                    'label' => 'View All',
+                    'url' => admin_url('admin.php?page=vefify-questions'),
+                    'icon' => '👁️'
+                )
+            )
+        );
     }
 }

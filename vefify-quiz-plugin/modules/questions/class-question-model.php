@@ -10,7 +10,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-class Vefify_Question_Module {
+class Vefify_Question_Model {
     
     private $model;
     private $bank;
