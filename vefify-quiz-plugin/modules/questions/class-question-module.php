@@ -622,31 +622,4 @@ class Vefify_Question_Module {
         if ($percentage >= 60) return 'D';
         return 'F';
     }
-	public function get_module_analytics() {
-        global $wpdb;
-        $questions_table = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX . 'questions';
-        
-        $total_questions = $wpdb->get_var("SELECT COUNT(*) FROM {$questions_table} WHERE is_active = 1");
-        
-        return array(
-            'title' => 'Question Bank',
-            'description' => 'Manage questions with multiple types and HTML support',
-            'icon' => '❓',
-            'stats' => array(
-                'total_questions' => array(
-                    'label' => 'Active Questions',
-                    'value' => $total_questions,
-                    'trend' => '+8 added this week'
-                )
-                // Add more stats...
-            ),
-            'quick_actions' => array(
-                array(
-                    'label' => 'Add Question',
-                    'url' => admin_url('admin.php?page=vefify-questions&action=new'),
-                    'class' => 'button-primary'
-                )
-            )
-        );
-    }
 }
