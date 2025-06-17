@@ -1,0 +1,203 @@
+/**
+ * Ultra-Lightweight Campaign Module CSS
+ * File: assets/css/campaign-lite.css
+ * 
+ * Minimal styles for optimal performance
+ */
+
+/* Campaign Summary Bar */
+.campaign-summary {
+    background: #f9f9f9;
+    border: 1px solid #e1e1e1;
+    border-radius: 4px;
+    padding: 12px 16px;
+    margin: 20px 0;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    font-size: 14px;
+}
+
+.summary-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.summary-item strong {
+    color: #0073aa;
+    font-weight: 600;
+}
+
+/* Status Indicators */
+.status-active {
+    color: #46b450;
+    font-weight: 500;
+}
+
+.status-inactive {
+    color: #dc3232;
+    font-weight: 500;
+}
+
+/* Lightweight Table Styles */
+.wp-list-table.campaigns th {
+    font-weight: 600;
+    background: #f9f9f9;
+}
+
+.wp-list-table.campaigns td {
+    vertical-align: middle;
+}
+
+.wp-list-table.campaigns .button {
+    margin-right: 4px;
+}
+
+/* Form Optimizations */
+.form-table th {
+    width: 180px;
+    font-weight: 500;
+}
+
+.form-table td input[type="text"],
+.form-table td input[type="date"],
+.form-table td input[type="number"],
+.form-table td textarea {
+    max-width: 400px;
+}
+
+/* Responsive Design - Mobile First */
+@media (max-width: 782px) {
+    .campaign-summary {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    
+    .summary-item {
+        min-width: 120px;
+    }
+    
+    .wp-list-table.campaigns th,
+    .wp-list-table.campaigns td {
+        padding: 8px 4px;
+        font-size: 13px;
+    }
+}
+
+/* Performance Indicators */
+.memory-indicator {
+    font-family: 'Courier New', monospace;
+    background: #f0f0f0;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 12px;
+}
+
+.memory-good { background: #d4edda; color: #155724; }
+.memory-warning { background: #fff3cd; color: #856404; }
+.memory-danger { background: #f8d7da; color: #721c24; }
+
+/* Loading States */
+.loading-indicator {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid #f3f3f3;
+    border-top: 2px solid #0073aa;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-right: 8px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Minimal Notices */
+.notice.vefify-lite {
+    border-left-width: 4px;
+    padding: 12px;
+    margin: 16px 0;
+}
+
+.notice.vefify-lite p {
+    margin: 0;
+    font-size: 14px;
+}
+
+/* Quick Action Buttons */
+.campaign-quick-actions {
+    margin: 16px 0;
+}
+
+.campaign-quick-actions .button {
+    margin-right: 8px;
+}
+
+/* Memory Usage Display */
+.memory-usage {
+    font-size: 12px;
+    color: #666;
+    font-family: monospace;
+}
+
+/* Minimal Pagination */
+.tablenav {
+    margin: 16px 0;
+}
+
+.tablenav .page-numbers {
+    display: inline-block;
+    padding: 4px 8px;
+    margin: 0 2px;
+    text-decoration: none;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+}
+
+.tablenav .page-numbers.current {
+    background: #0073aa;
+    color: white;
+    border-color: #0073aa;
+}
+
+/* Accessibility Improvements */
+.screen-reader-text {
+    position: absolute;
+    left: -9999px;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+}
+
+/* Focus States */
+.button:focus,
+input:focus,
+textarea:focus,
+select:focus {
+    outline: 2px solid #0073aa;
+    outline-offset: 1px;
+}
+
+/* Print Styles */
+@media print {
+    .campaign-summary,
+    .tablenav,
+    .button,
+    .page-title-action {
+        display: none;
+    }
+    
+    .wp-list-table {
+        border-collapse: collapse;
+    }
+    
+    .wp-list-table th,
+    .wp-list-table td {
+        border: 1px solid #000;
+        padding: 4px;
+    }
+}
