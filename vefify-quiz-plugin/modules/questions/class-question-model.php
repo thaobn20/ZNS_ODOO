@@ -1,403 +1,461 @@
 <?php
 /**
- * Streamlined Question Model
- * File: modules/questions/class-question-model.php
+ * Question Module Loader
+ * File: modules/questions/class-question-module.php
  * 
- * Handles all question database operations using centralized database
+ * FIXED VERSION - Main class that loads and initializes all question-related functionality
  */
 
 if (!defined('ABSPATH')) {
     exit;
 }
 
-class Vefify_Question_Model {
+class Vefify_Question_Module {
     
-    private $database;
-    private $wpdb;
+    private $model;
+    private $bank;
+    private $endpoints;
+    private static $instance = null;
     
-    public function __construct() {
-        global $wpdb;
-        $this->wpdb = $wpdb;
-        
-        // Use centralized database
-        $this->database = new Vefify_Quiz_Database();
+    /**
+     * Singleton instance
+     */
+    public static function get_instance() {
+        if (self::$instance === null) {
+            self::$instance = new self();
+        }
+        return self::$instance;
     }
     
     /**
-     * Get questions with filtering and pagination
+     * Constructor
      */
-    public function get_questions($args = array()) {
-        $defaults = array(
-            'campaign_id' => null,
-            'category' => null,
-            'difficulty' => null,
-            'is_active' => 1,
-            'per_page' => 20,
-            'page' => 1,
-            'search' => null,
-            'order_by' => 'created_at',
-            'order' => 'DESC'
-        );
-        
-        $args = wp_parse_args($args, $defaults);
-        
-        $questions_table = $this->database->get_table_name('questions');
-        $options_table = $this->database->get_table_name('question_options');
-        $campaigns_table = $this->database->get_table_name('campaigns');
-        
-        // Build WHERE conditions
-        $where_conditions = array('q.is_active = %d');
-        $params = array($args['is_active']);
-        
-        if ($args['campaign_id']) {
-            $where_conditions[] = 'q.campaign_id = %d';
-            $params[] = $args['campaign_id'];
-        }
-        
-        if ($args['category']) {
-            $where_conditions[] = 'q.category = %s';
-            $params[] = $args['category'];
-        }
-        
-        if ($args['difficulty']) {
-            $where_conditions[] = 'q.difficulty = %s';
-            $params[] = $args['difficulty'];
-        }
-        
-        if ($args['search']) {
-            $where_conditions[] = 'q.question_text LIKE %s';
-            $params[] = '%' . $this->wpdb->esc_like($args['search']) . '%';
-        }
-        
-        $where_clause = 'WHERE ' . implode(' AND ', $where_conditions);
-        
-        // Get total count
-        $total_query = "SELECT COUNT(*) FROM {$questions_table} q {$where_clause}";
-        $total = $this->wpdb->get_var($this->wpdb->prepare($total_query, $params));
-        
-        // Get questions with pagination
-        $offset = ($args['page'] - 1) * $args['per_page'];
-        $order_clause = sprintf('ORDER BY q.%s %s', 
-            sanitize_sql_orderby($args['order_by']), 
-            $args['order'] === 'DESC' ? 'DESC' : 'ASC'
-        );
-        
-        $limit_params = $params;
-        $limit_params[] = $args['per_page'];
-        $limit_params[] = $offset;
-        
-        $questions_query = "
-            SELECT q.*, c.name as campaign_name
-            FROM {$questions_table} q
-            LEFT JOIN {$campaigns_table} c ON q.campaign_id = c.id
-            {$where_clause}
-            {$order_clause}
-            LIMIT %d OFFSET %d
-        ";
-        
-        $questions = $this->wpdb->get_results($this->wpdb->prepare($questions_query, $limit_params));
-        
-        // Get options for each question
-        foreach ($questions as &$question) {
-            $question->options = $this->wpdb->get_results($this->wpdb->prepare(
-                "SELECT * FROM {$options_table} WHERE question_id = %d ORDER BY order_index",
-                $question->id
-            ));
-        }
-        
-        return array(
-            'questions' => $questions,
-            'total' => intval($total),
-            'pages' => ceil($total / $args['per_page']),
-            'current_page' => $args['page']
-        );
+    private function __construct() {
+        $this->load_dependencies();
+        $this->init_components();
     }
     
     /**
-     * Get single question with options
+     * Load required files
      */
-    public function get_question($question_id) {
-        $questions_table = $this->database->get_table_name('questions');
-        $options_table = $this->database->get_table_name('question_options');
-        $campaigns_table = $this->database->get_table_name('campaigns');
+    private function load_dependencies() {
+        $module_path = plugin_dir_path(__FILE__);
         
-        $question = $this->wpdb->get_row($this->wpdb->prepare(
-            "SELECT q.*, c.name as campaign_name
-             FROM {$questions_table} q
-             LEFT JOIN {$campaigns_table} c ON q.campaign_id = c.id
-             WHERE q.id = %d",
-            $question_id
-        ));
+        // Load core components - check if files exist first
+        $files_to_load = array(
+            'class-question-model.php',
+            'class-question-bank.php', 
+            'question-endpoints.php'
+        );
         
-        if ($question) {
-            $question->options = $this->wpdb->get_results($this->wpdb->prepare(
-                "SELECT * FROM {$options_table} WHERE question_id = %d ORDER BY order_index",
-                $question_id
-            ));
+        foreach ($files_to_load as $file) {
+            $file_path = $module_path . $file;
+            if (file_exists($file_path)) {
+                require_once $file_path;
+                error_log("Vefify Quiz: Loaded question module file: {$file}");
+            } else {
+                error_log("Vefify Quiz: Missing question module file: {$file}");
+            }
         }
-        
-        return $question;
     }
     
     /**
-     * Create new question
+     * Initialize components
      */
-    public function create_question($data) {
-        // Validate data
-        $validation = $this->validate_question_data($data);
-        if (is_wp_error($validation)) {
-            return $validation;
-        }
-        
-        $questions_table = $this->database->get_table_name('questions');
-        $options_table = $this->database->get_table_name('question_options');
-        
-        // Start transaction
-        $this->wpdb->query('START TRANSACTION');
-        
+    private function init_components() {
         try {
-            // Insert question
-            $question_data = array(
-                'campaign_id' => !empty($data['campaign_id']) ? intval($data['campaign_id']) : null,
-                'question_text' => sanitize_textarea_field($data['question_text']),
-                'question_type' => sanitize_text_field($data['question_type']),
-                'category' => sanitize_text_field($data['category'] ?? ''),
-                'difficulty' => sanitize_text_field($data['difficulty'] ?? 'medium'),
-                'points' => intval($data['points'] ?? 1),
-                'explanation' => sanitize_textarea_field($data['explanation'] ?? ''),
-                'is_active' => isset($data['is_active']) ? 1 : 0,
-                'order_index' => intval($data['order_index'] ?? 0),
-                'created_at' => current_time('mysql'),
-                'updated_at' => current_time('mysql')
-            );
-            
-            $result = $this->wpdb->insert($questions_table, $question_data);
-            
-            if ($result === false) {
-                throw new Exception('Failed to create question: ' . $this->wpdb->last_error);
+            // Initialize model (data handling)
+            if (class_exists('Vefify_Question_Model')) {
+                $this->model = new Vefify_Question_Model();
+                error_log("Vefify Quiz: Question Model loaded successfully");
+            } else {
+                error_log("Vefify Quiz: Question Model not available - using fallback");
+                $this->model = $this->create_fallback_model();
             }
             
-            $question_id = $this->wpdb->insert_id;
-            
-            // Insert options
-            if (!empty($data['options'])) {
-                $this->save_question_options($question_id, $data['options']);
-            }
-            
-            $this->wpdb->query('COMMIT');
-            return $question_id;
-            
-        } catch (Exception $e) {
-            $this->wpdb->query('ROLLBACK');
-            return new WP_Error('db_error', $e->getMessage());
-        }
-    }
-    
-    /**
-     * Update existing question
-     */
-    public function update_question($question_id, $data) {
-        // Validate data
-        $validation = $this->validate_question_data($data);
-        if (is_wp_error($validation)) {
-            return $validation;
-        }
-        
-        $questions_table = $this->database->get_table_name('questions');
-        $options_table = $this->database->get_table_name('question_options');
-        
-        // Start transaction
-        $this->wpdb->query('START TRANSACTION');
-        
-        try {
-            // Update question
-            $question_data = array(
-                'campaign_id' => !empty($data['campaign_id']) ? intval($data['campaign_id']) : null,
-                'question_text' => sanitize_textarea_field($data['question_text']),
-                'question_type' => sanitize_text_field($data['question_type']),
-                'category' => sanitize_text_field($data['category'] ?? ''),
-                'difficulty' => sanitize_text_field($data['difficulty'] ?? 'medium'),
-                'points' => intval($data['points'] ?? 1),
-                'explanation' => sanitize_textarea_field($data['explanation'] ?? ''),
-                'is_active' => isset($data['is_active']) ? 1 : 0,
-                'order_index' => intval($data['order_index'] ?? 0),
-                'updated_at' => current_time('mysql')
-            );
-            
-            $result = $this->wpdb->update(
-                $questions_table,
-                $question_data,
-                array('id' => $question_id)
-            );
-            
-            if ($result === false) {
-                throw new Exception('Failed to update question: ' . $this->wpdb->last_error);
-            }
-            
-            // Delete existing options
-            $this->wpdb->delete($options_table, array('question_id' => $question_id));
-            
-            // Insert new options
-            if (!empty($data['options'])) {
-                $this->save_question_options($question_id, $data['options']);
-            }
-            
-            $this->wpdb->query('COMMIT');
-            return true;
-            
-        } catch (Exception $e) {
-            $this->wpdb->query('ROLLBACK');
-            return new WP_Error('db_error', $e->getMessage());
-        }
-    }
-    
-    /**
-     * Delete question (soft delete)
-     */
-    public function delete_question($question_id) {
-        $questions_table = $this->database->get_table_name('questions');
-        
-        $result = $this->wpdb->update(
-            $questions_table,
-            array('is_active' => 0, 'updated_at' => current_time('mysql')),
-            array('id' => $question_id)
-        );
-        
-        return $result !== false;
-    }
-    
-    /**
-     * Save question options
-     */
-    private function save_question_options($question_id, $options) {
-        $options_table = $this->database->get_table_name('question_options');
-        
-        foreach ($options as $index => $option) {
-            if (empty($option['option_text'])) {
-                continue;
-            }
-            
-            $option_data = array(
-                'question_id' => $question_id,
-                'option_text' => sanitize_textarea_field($option['option_text']),
-                'is_correct' => !empty($option['is_correct']) ? 1 : 0,
-                'explanation' => sanitize_textarea_field($option['explanation'] ?? ''),
-                'order_index' => $index,
-                'created_at' => current_time('mysql')
-            );
-            
-            $result = $this->wpdb->insert($options_table, $option_data);
-            
-            if ($result === false) {
-                throw new Exception('Failed to create option: ' . $this->wpdb->last_error);
-            }
-        }
-    }
-    
-    /**
-     * Validate question data
-     */
-    public function validate_question_data($data) {
-        $errors = array();
-        
-        // Required fields
-        if (empty($data['question_text'])) {
-            $errors[] = 'Question text is required';
-        }
-        
-        if (empty($data['question_type'])) {
-            $errors[] = 'Question type is required';
-        }
-        
-        // Valid question types
-        $valid_types = array('multiple_choice', 'multiple_select', 'true_false');
-        if (!empty($data['question_type']) && !in_array($data['question_type'], $valid_types)) {
-            $errors[] = 'Invalid question type';
-        }
-        
-        // Valid difficulty
-        $valid_difficulties = array('easy', 'medium', 'hard');
-        if (!empty($data['difficulty']) && !in_array($data['difficulty'], $valid_difficulties)) {
-            $errors[] = 'Invalid difficulty level';
-        }
-        
-        // Validate options
-        if (!empty($data['options'])) {
-            $valid_options = array_filter($data['options'], function($option) {
-                return !empty($option['option_text']);
-            });
-            
-            if (count($valid_options) < 2) {
-                $errors[] = 'At least 2 options are required';
-            }
-            
-            // Check for correct answers
-            $has_correct = false;
-            foreach ($valid_options as $option) {
-                if (!empty($option['is_correct'])) {
-                    $has_correct = true;
-                    break;
+            // Initialize admin interface (only in admin)
+            if (is_admin()) {
+                if (class_exists('Vefify_Question_Bank')) {
+                    $this->bank = new Vefify_Question_Bank();
+                    error_log("Vefify Quiz: Question Bank loaded successfully");
+                } else {
+                    error_log("Vefify Quiz: Question Bank not available - using fallback");
+                    $this->bank = $this->create_fallback_bank();
                 }
             }
             
-            if (!$has_correct) {
-                $errors[] = 'At least one correct answer is required';
+            // Initialize REST API endpoints
+            if (class_exists('Vefify_Question_Endpoints')) {
+                $this->endpoints = new Vefify_Question_Endpoints();
+                error_log("Vefify Quiz: Question Endpoints loaded successfully");
+            } else {
+                error_log("Vefify Quiz: Question Endpoints not available - using fallback");
+                $this->endpoints = $this->create_fallback_endpoints();
+            }
+            
+            // Hook into WordPress
+            $this->init_hooks();
+            
+            error_log("Vefify Quiz: Question module components initialized");
+            
+        } catch (Exception $e) {
+            error_log("Vefify Quiz: Error initializing question module: " . $e->getMessage());
+            
+            // Create fallback components for admin
+            if (is_admin()) {
+                $this->bank = $this->create_fallback_bank();
+            }
+            $this->model = $this->create_fallback_model();
+            $this->endpoints = $this->create_fallback_endpoints();
+        }
+    }
+    
+    /**
+     * Create fallback model when actual model is not available
+     */
+    private function create_fallback_model() {
+        return new class {
+            public function get_question($id) { 
+                global $wpdb;
+                $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
+                return $wpdb->get_row($wpdb->prepare(
+                    "SELECT * FROM {$table_prefix}questions WHERE id = %d", 
+                    $id
+                ));
+            }
+            
+            public function create_question($data) { 
+                error_log("Vefify Quiz: create_question called but model not loaded");
+                return false; 
+            }
+            
+            public function update_question($id, $data) { 
+                error_log("Vefify Quiz: update_question called but model not loaded");
+                return false; 
+            }
+            
+            public function delete_question($id) { 
+                error_log("Vefify Quiz: delete_question called but model not loaded");
+                return false; 
+            }
+            
+            public function get_questions($args = array()) { 
+                global $wpdb;
+                $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
+                $limit = isset($args['limit']) ? intval($args['limit']) : 20;
+                return $wpdb->get_results($wpdb->prepare(
+                    "SELECT * FROM {$table_prefix}questions WHERE is_active = 1 ORDER BY created_at DESC LIMIT %d", 
+                    $limit
+                ));
+            }
+            
+            public function validate_question_data($data) { 
+                return array('valid' => false, 'errors' => array('Model not fully loaded'));
+            }
+        };
+    }
+    
+    /**
+     * Create fallback endpoints when actual endpoints are not available
+     */
+    private function create_fallback_endpoints() {
+        return new class {
+            public function __construct() {
+                error_log("Vefify Quiz: Using fallback endpoints - API functionality limited");
+            }
+        };
+    }
+    
+    /**
+     * Create fallback admin interface
+     */
+    private function create_fallback_bank() {
+        return new class {
+            public function admin_page_router() {
+                $this->display_fallback_interface();
+            }
+            
+            private function display_fallback_interface() {
+                global $wpdb;
+                $table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
+                
+                echo '<div class="wrap">';
+                echo '<h1 class="wp-heading-inline">❓ Questions</h1>';
+                echo '<a href="' . admin_url('admin.php?page=vefify-questions&action=new') . '" class="page-title-action">Add New Question</a>';
+                echo '<hr class="wp-header-end">';
+                
+                echo '<div class="notice notice-warning">';
+                echo '<p><strong>⚠️ Question Module Partially Loaded</strong></p>';
+                echo '<p>The question module is working with basic functionality. Some features may be limited.</p>';
+                echo '</div>';
+                
+                // Get questions from database directly
+                $questions = $wpdb->get_results("
+                    SELECT q.*, c.name as campaign_name
+                    FROM {$table_prefix}questions q
+                    LEFT JOIN {$table_prefix}campaigns c ON q.campaign_id = c.id
+                    WHERE q.is_active = 1
+                    ORDER BY q.created_at DESC
+                    LIMIT 20
+                ");
+                
+                if ($questions) {
+                    echo '<table class="wp-list-table widefat fixed striped">';
+                    echo '<thead>';
+                    echo '<tr>';
+                    echo '<th>Question</th>';
+                    echo '<th>Type</th>';
+                    echo '<th>Category</th>';
+                    echo '<th>Difficulty</th>';
+                    echo '<th>Campaign</th>';
+                    echo '<th>Created</th>';
+                    echo '</tr>';
+                    echo '</thead>';
+                    echo '<tbody>';
+                    
+                    foreach ($questions as $question) {
+                        echo '<tr>';
+                        echo '<td><strong>' . esc_html(wp_trim_words($question->question_text, 8)) . '</strong></td>';
+                        echo '<td>' . esc_html(ucfirst(str_replace('_', ' ', $question->question_type))) . '</td>';
+                        echo '<td>' . esc_html($question->category ?: 'None') . '</td>';
+                        echo '<td><span class="difficulty-badge difficulty-' . esc_attr($question->difficulty) . '">' . esc_html(ucfirst($question->difficulty)) . '</span></td>';
+                        echo '<td>' . esc_html($question->campaign_name ?: 'Global') . '</td>';
+                        echo '<td>' . mysql2date('M j, Y', $question->created_at) . '</td>';
+                        echo '</tr>';
+                    }
+                    
+                    echo '</tbody>';
+                    echo '</table>';
+                } else {
+                    echo '<div class="no-questions">';
+                    echo '<h3>No Questions Found</h3>';
+                    echo '<p>No questions have been created yet. <a href="' . admin_url('admin.php?page=vefify-questions&action=new') . '">Create your first question</a></p>';
+                    echo '</div>';
+                }
+                
+                // Show module status
+                echo '<div class="module-status">';
+                echo '<h3>📊 Module Status</h3>';
+                echo '<ul>';
+                echo '<li>✅ Question Module: Loaded (Basic Mode)</li>';
+                echo '<li>' . (class_exists('Vefify_Question_Model') ? '✅' : '❌') . ' Question Model: ' . (class_exists('Vefify_Question_Model') ? 'Available' : 'Missing') . '</li>';
+                echo '<li>' . (class_exists('Vefify_Question_Bank') ? '✅' : '❌') . ' Question Bank: ' . (class_exists('Vefify_Question_Bank') ? 'Available' : 'Using Fallback') . '</li>';
+                echo '<li>' . (class_exists('Vefify_Question_Endpoints') ? '✅' : '❌') . ' API Endpoints: ' . (class_exists('Vefify_Question_Endpoints') ? 'Available' : 'Missing') . '</li>';
+                echo '</ul>';
+                echo '</div>';
+                
+                echo '</div>';
+                
+                // Add basic styling
+                echo '<style>
+                .difficulty-badge {
+                    padding: 2px 6px;
+                    border-radius: 3px;
+                    font-size: 11px;
+                    color: white;
+                    font-weight: bold;
+                }
+                .difficulty-badge.difficulty-easy { background: #4caf50; }
+                .difficulty-badge.difficulty-medium { background: #ff9800; }
+                .difficulty-badge.difficulty-hard { background: #f44336; }
+                
+                .no-questions {
+                    text-align: center;
+                    padding: 40px 20px;
+                    background: #f9f9f9;
+                    border-radius: 8px;
+                    margin: 20px 0;
+                }
+                
+                .module-status {
+                    background: #fff;
+                    padding: 20px;
+                    border-radius: 8px;
+                    margin-top: 20px;
+                    border-left: 4px solid #4facfe;
+                }
+                
+                .module-status ul {
+                    list-style: none;
+                    padding-left: 0;
+                }
+                
+                .module-status li {
+                    margin: 8px 0;
+                    padding: 5px 0;
+                }
+                </style>';
+            }
+        };
+    }
+    
+    /**
+     * Initialize WordPress hooks
+     */
+    private function init_hooks() {
+        // Legacy function compatibility
+        add_action('init', array($this, 'register_legacy_functions'));
+        
+        // Shortcode support
+        add_shortcode('vefify_quiz_question', array($this, 'render_single_question_shortcode'));
+        
+        // AJAX handlers for public-facing functionality
+        add_action('wp_ajax_vefify_get_quiz_questions', array($this, 'ajax_get_quiz_questions'));
+        add_action('wp_ajax_nopriv_vefify_get_quiz_questions', array($this, 'ajax_get_quiz_questions'));
+        
+        add_action('wp_ajax_vefify_validate_quiz_answers', array($this, 'ajax_validate_quiz_answers'));
+        add_action('wp_ajax_nopriv_vefify_validate_quiz_answers', array($this, 'ajax_validate_quiz_answers'));
+        
+        // Enqueue frontend scripts
+        add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_scripts'));
+    }
+    
+    /**
+     * Get bank instance for compatibility
+     */
+    public function get_bank() {
+        return $this->bank;
+    }
+    
+    /**
+     * Get model instance
+     */
+    public function get_model() {
+        return $this->model;
+    }
+    
+    /**
+     * Register legacy functions for backward compatibility
+     */
+    public function register_legacy_functions() {
+        // These functions maintain compatibility with existing code
+        if (!function_exists('vefify_get_question')) {
+            function vefify_get_question($question_id) {
+                $module = Vefify_Question_Module::get_instance();
+                $model = $module->get_model();
+                return $model ? $model->get_question($question_id) : null;
             }
         }
         
-        if (!empty($errors)) {
-            return new WP_Error('validation_failed', implode(', ', $errors));
+        if (!function_exists('vefify_create_question')) {
+            function vefify_create_question($data) {
+                $module = Vefify_Question_Module::get_instance();
+                $model = $module->get_model();
+                return $model ? $model->create_question($data) : false;
+            }
         }
         
-        return true;
+        if (!function_exists('vefify_update_question')) {
+            function vefify_update_question($question_id, $data) {
+                $module = Vefify_Question_Module::get_instance();
+                $model = $module->get_model();
+                return $model ? $model->update_question($question_id, $data) : false;
+            }
+        }
+        
+        if (!function_exists('vefify_delete_question')) {
+            function vefify_delete_question($question_id) {
+                $module = Vefify_Question_Module::get_instance();
+                $model = $module->get_model();
+                return $model ? $model->delete_question($question_id) : false;
+            }
+        }
+        
+        if (!function_exists('vefify_get_questions')) {
+            function vefify_get_questions($args = array()) {
+                $module = Vefify_Question_Module::get_instance();
+                $model = $module->get_model();
+                return $model ? $model->get_questions($args) : array();
+            }
+        }
+        
+        if (!function_exists('vefify_validate_question_data')) {
+            function vefify_validate_question_data($data) {
+                $module = Vefify_Question_Module::get_instance();
+                $model = $module->get_model();
+                return $model ? $model->validate_question_data($data) : array('valid' => false, 'errors' => array('Module not loaded'));
+            }
+        }
     }
     
     /**
-     * Get available campaigns for dropdown
+     * Render single question shortcode
      */
-    public function get_campaigns() {
-        $campaigns_table = $this->database->get_table_name('campaigns');
+    public function render_single_question_shortcode($atts) {
+        $atts = shortcode_atts(array(
+            'id' => 0,
+            'show_answer' => false
+        ), $atts);
         
-        return $this->wpdb->get_results("
-            SELECT id, name 
-            FROM {$campaigns_table} 
-            WHERE is_active = 1 
-            ORDER BY name ASC
-        ");
+        $question_id = intval($atts['id']);
+        if (!$question_id) {
+            return '<div class="vefify-error">Question ID required</div>';
+        }
+        
+        // Get question using model (fallback or real)
+        $question = null;
+        if ($this->model) {
+            $question = $this->model->get_question($question_id);
+        }
+        
+        if (!$question) {
+            return '<div class="vefify-error">Question not found</div>';
+        }
+        
+        return '<div class="vefify-single-question">' . esc_html($question->question_text) . '</div>';
     }
     
     /**
-     * Get available categories
+     * AJAX handler for getting quiz questions
      */
-    public function get_categories() {
-        $questions_table = $this->database->get_table_name('questions');
-        
-        return $this->wpdb->get_col("
-            SELECT DISTINCT category 
-            FROM {$questions_table} 
-            WHERE category IS NOT NULL AND category != '' AND is_active = 1
-            ORDER BY category ASC
-        ");
+    public function ajax_get_quiz_questions() {
+        // Basic AJAX handler
+        wp_send_json_error('Questions module needs full implementation');
     }
     
     /**
-     * Get question statistics for analytics
+     * AJAX handler for validating quiz answers
      */
-    public function get_statistics($campaign_id = null) {
-        $questions_table = $this->database->get_table_name('questions');
-        
-        $where = $campaign_id ? $this->wpdb->prepare('WHERE campaign_id = %d', $campaign_id) : '';
-        
-        return $this->wpdb->get_row("
-            SELECT 
-                COUNT(*) as total_questions,
-                COUNT(CASE WHEN is_active = 1 THEN 1 END) as active_questions,
-                COUNT(CASE WHEN difficulty = 'easy' THEN 1 END) as easy_questions,
-                COUNT(CASE WHEN difficulty = 'medium' THEN 1 END) as medium_questions,
-                COUNT(CASE WHEN difficulty = 'hard' THEN 1 END) as hard_questions,
-                COUNT(DISTINCT category) as total_categories
-            FROM {$questions_table} 
-            {$where}
-        ", ARRAY_A);
+    public function ajax_validate_quiz_answers() {
+        // Basic AJAX handler
+        wp_send_json_error('Questions module needs full implementation');
     }
+    
+    /**
+     * Enqueue frontend scripts for quiz functionality
+     */
+    public function enqueue_frontend_scripts() {
+        // Only enqueue on pages that might have quiz shortcodes
+        global $post;
+        
+        if (is_a($post, 'WP_Post') && (
+            has_shortcode($post->post_content, 'vefify_quiz') || 
+            has_shortcode($post->post_content, 'vefify_quiz_question')
+        )) {
+            wp_enqueue_script(
+                'vefify-question-frontend',
+                plugin_dir_url(__FILE__) . 'assets/question-frontend.js',
+                array('jquery'),
+                VEFIFY_QUIZ_VERSION,
+                true
+            );
+            
+            wp_enqueue_style(
+                'vefify-question-frontend',
+                plugin_dir_url(__FILE__) . 'assets/question-frontend.css',
+                array(),
+                VEFIFY_QUIZ_VERSION
+            );
+        }
+    }
+}
+
+// Auto-initialize if this file is loaded directly
+if (!class_exists('Vefify_Quiz_Plugin')) {
+    // If main plugin not loaded, create basic initialization
+    add_action('init', function() {
+        if (defined('VEFIFY_QUIZ_VERSION')) {
+            Vefify_Question_Module::get_instance();
+        }
+    });
 }
