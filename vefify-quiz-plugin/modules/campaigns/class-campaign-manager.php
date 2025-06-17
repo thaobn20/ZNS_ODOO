@@ -2,7 +2,12 @@
 /**
  * Campaign Manager Module
  * File: modules/campaigns/class-campaign-manager.php
- * Handles admin interface and user interactions for campaigns
+ * 
+ * PERFORMANCE OPTIMIZED but maintains original class name
+ * - Original class name: Vefify_Campaign_Manager (for compatibility)
+ * - Fast admin interface
+ * - Optimized form handling
+ * - On-demand statistics loading
  */
 
 if (!defined('ABSPATH')) {
@@ -18,30 +23,31 @@ class Vefify_Campaign_Manager {
         require_once VEFIFY_QUIZ_PLUGIN_DIR . 'modules/campaigns/class-campaign-model.php';
         $this->model = new Vefify_Campaign_Model();
         
-        // WordPress hooks
+        // WordPress hooks - MINIMAL for performance
         add_action('admin_init', array($this, 'handle_campaign_actions'));
         add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_scripts'));
         add_action('wp_ajax_vefify_campaign_action', array($this, 'ajax_campaign_action'));
+        add_action('wp_ajax_vefify_refresh_stats', array($this, 'ajax_refresh_stats'));
     }
     
     /**
-     * Display campaigns list page
+     * Display campaigns list page - OPTIMIZED
      */
     public function display_campaigns_list() {
-        // Handle bulk actions
+        // Handle bulk actions first
         $this->handle_bulk_actions();
         
-        // Get campaigns with pagination
+        // Get campaigns with OPTIMIZED parameters
         $current_page = isset($_GET['paged']) ? max(1, intval($_GET['paged'])) : 1;
         $search = isset($_GET['s']) ? sanitize_text_field($_GET['s']) : '';
         $status = isset($_GET['status']) ? sanitize_text_field($_GET['status']) : 'all';
         
         $args = array(
             'page' => $current_page,
-            'per_page' => 20,
+            'per_page' => 15, // Reduced for better performance
             'search' => $search,
             'status' => $status,
-            'include_stats' => true
+            'include_stats' => false // DISABLED for performance
         );
         
         $result = $this->model->get_campaigns($args);
@@ -51,27 +57,30 @@ class Vefify_Campaign_Manager {
         
         ?>
         <div class="wrap">
-            <h1 class="wp-heading-inline">📋 Campaign Management</h1>
+            <h1 class="wp-heading-inline">📋 Campaign Management <small style="color: #46b450;">(Performance Mode)</small></h1>
             <a href="<?php echo admin_url('admin.php?page=vefify-campaigns&action=new'); ?>" class="page-title-action">Add New Campaign</a>
             
-            <!-- Analytics Summary -->
+            <!-- OPTIMIZED Analytics Summary -->
             <?php $this->display_campaigns_summary(); ?>
             
             <!-- Search and Filter Form -->
-            <form method="get" id="campaigns-filter">
+            <form method="get" id="campaigns-filter" style="margin-bottom: 20px;">
                 <input type="hidden" name="page" value="vefify-campaigns">
                 
                 <p class="search-box">
                     <label class="screen-reader-text" for="campaign-search-input">Search Campaigns:</label>
-                    <input type="search" id="campaign-search-input" name="s" value="<?php echo esc_attr($search); ?>" placeholder="Search campaigns...">
+                    <input type="search" id="campaign-search-input" name="s" value="<?php echo esc_attr($search); ?>" placeholder="Search campaigns..." style="margin-right: 8px;">
                     <input type="submit" id="search-submit" class="button" value="Search">
+                    <?php if ($search): ?>
+                        <a href="<?php echo admin_url('admin.php?page=vefify-campaigns'); ?>" class="button">Clear</a>
+                    <?php endif; ?>
                 </p>
                 
                 <ul class="subsubsub">
                     <li class="all">
                         <a href="<?php echo admin_url('admin.php?page=vefify-campaigns&status=all'); ?>" 
                            class="<?php echo $status === 'all' ? 'current' : ''; ?>">
-                            All <span class="count">(<?php echo $result['total_items']; ?>)</span>
+                            All (<?php echo $result['total_items']; ?>)
                         </a> |
                     </li>
                     <li class="active">
@@ -80,10 +89,10 @@ class Vefify_Campaign_Manager {
                             Active
                         </a> |
                     </li>
-                    <li class="expired">
-                        <a href="<?php echo admin_url('admin.php?page=vefify-campaigns&status=expired'); ?>" 
-                           class="<?php echo $status === 'expired' ? 'current' : ''; ?>">
-                            Expired
+                    <li class="inactive">
+                        <a href="<?php echo admin_url('admin.php?page=vefify-campaigns&status=inactive'); ?>" 
+                           class="<?php echo $status === 'inactive' ? 'current' : ''; ?>">
+                            Inactive
                         </a>
                     </li>
                 </ul>
@@ -92,37 +101,43 @@ class Vefify_Campaign_Manager {
             <!-- Campaigns Table -->
             <form method="post">
                 <?php wp_nonce_field('vefify_bulk_campaigns'); ?>
-                <div class="tablenav top">
-                    <div class="alignleft actions bulkactions">
-                        <label for="bulk-action-selector-top" class="screen-reader-text">Select bulk action</label>
-                        <select name="action" id="bulk-action-selector-top">
-                            <option value="-1">Bulk Actions</option>
-                            <option value="activate">Activate</option>
-                            <option value="deactivate">Deactivate</option>
-                            <option value="delete">Delete</option>
-                        </select>
-                        <input type="submit" id="doaction" class="button action" value="Apply">
+                
+                <?php if (empty($result['campaigns'])): ?>
+                    <div class="notice notice-info">
+                        <p><strong>No campaigns found.</strong> 
+                           <a href="<?php echo admin_url('admin.php?page=vefify-campaigns&action=new'); ?>" class="button button-primary">Create your first campaign</a>
+                        </p>
+                    </div>
+                <?php else: ?>
+                    <div class="tablenav top">
+                        <div class="alignleft actions bulkactions">
+                            <label for="bulk-action-selector-top" class="screen-reader-text">Select bulk action</label>
+                            <select name="action" id="bulk-action-selector-top">
+                                <option value="-1">Bulk Actions</option>
+                                <option value="activate">Activate</option>
+                                <option value="deactivate">Deactivate</option>
+                                <option value="delete">Delete</option>
+                            </select>
+                            <input type="submit" id="doaction" class="button action" value="Apply">
+                        </div>
+                        
+                        <?php $this->display_pagination($result, $current_page); ?>
                     </div>
                     
-                    <?php $this->display_pagination($result, $current_page); ?>
-                </div>
-                
-                <table class="wp-list-table widefat fixed striped campaigns">
-                    <thead>
-                        <tr>
-                            <td id="cb" class="manage-column column-cb check-column">
-                                <input id="cb-select-all-1" type="checkbox">
-                            </td>
-                            <th scope="col" class="manage-column column-name column-primary">Campaign</th>
-                            <th scope="col" class="manage-column column-status">Status</th>
-                            <th scope="col" class="manage-column column-participants">Participants</th>
-                            <th scope="col" class="manage-column column-completion">Completion Rate</th>
-                            <th scope="col" class="manage-column column-dates">Duration</th>
-                            <th scope="col" class="manage-column column-actions">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php if (!empty($result['campaigns'])): ?>
+                    <table class="wp-list-table widefat fixed striped campaigns">
+                        <thead>
+                            <tr>
+                                <td id="cb" class="manage-column column-cb check-column">
+                                    <input id="cb-select-all-1" type="checkbox">
+                                </td>
+                                <th scope="col" class="manage-column column-name column-primary">Campaign</th>
+                                <th scope="col" class="manage-column column-status">Status</th>
+                                <th scope="col" class="manage-column column-settings">Settings</th>
+                                <th scope="col" class="manage-column column-dates">Duration</th>
+                                <th scope="col" class="manage-column column-actions">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
                             <?php foreach ($result['campaigns'] as $campaign): ?>
                                 <tr>
                                     <th scope="row" class="check-column">
@@ -134,20 +149,19 @@ class Vefify_Campaign_Manager {
                                                 <?php echo esc_html($campaign['name']); ?>
                                             </a>
                                         </strong>
-                                        <div class="campaign-description">
-                                            <?php echo esc_html(wp_trim_words($campaign['description'], 15)); ?>
-                                        </div>
+                                        <?php if (!empty($campaign['description'])): ?>
+                                            <div class="row-description">
+                                                <?php echo esc_html(wp_trim_words($campaign['description'], 10)); ?>
+                                            </div>
+                                        <?php endif; ?>
                                         <div class="row-actions">
                                             <span class="edit">
                                                 <a href="<?php echo admin_url('admin.php?page=vefify-campaigns&action=edit&id=' . $campaign['id']); ?>">Edit</a> |
                                             </span>
-                                            <span class="view">
-                                                <a href="<?php echo admin_url('admin.php?page=vefify-reports&campaign_id=' . $campaign['id']); ?>">View Report</a> |
-                                            </span>
                                             <span class="duplicate">
                                                 <a href="<?php echo wp_nonce_url(admin_url('admin.php?page=vefify-campaigns&action=duplicate&id=' . $campaign['id']), 'duplicate_campaign_' . $campaign['id']); ?>">Duplicate</a> |
                                             </span>
-                                            <span class="delete">
+                                            <span class="trash">
                                                 <a href="<?php echo wp_nonce_url(admin_url('admin.php?page=vefify-campaigns&action=delete&id=' . $campaign['id']), 'delete_campaign_' . $campaign['id']); ?>" 
                                                    onclick="return confirm('Are you sure you want to delete this campaign?')">Delete</a>
                                             </span>
@@ -156,76 +170,127 @@ class Vefify_Campaign_Manager {
                                     <td class="column-status">
                                         <?php echo $this->get_campaign_status_badge($campaign); ?>
                                     </td>
-                                    <td class="column-participants">
-                                        <strong><?php echo number_format($campaign['stats']['participants_count']); ?></strong>
-                                        <br>
-                                        <small><?php echo number_format($campaign['stats']['completed_count']); ?> completed</small>
-                                    </td>
-                                    <td class="column-completion">
-                                        <div class="progress-bar">
-                                            <div class="progress-fill" style="width: <?php echo $campaign['stats']['completion_rate']; ?>%"></div>
-                                        </div>
-                                        <small><?php echo $campaign['stats']['completion_rate']; ?>%</small>
+                                    <td class="column-settings">
+                                        <small>
+                                            <?php echo intval($campaign['questions_per_quiz']); ?> questions<br>
+                                            Pass score: <?php echo intval($campaign['pass_score']); ?><br>
+                                            <?php if ($campaign['time_limit']): ?>
+                                                Time limit: <?php echo intval($campaign['time_limit']); ?>s
+                                            <?php else: ?>
+                                                No time limit
+                                            <?php endif; ?>
+                                        </small>
                                     </td>
                                     <td class="column-dates">
-                                        <div class="campaign-dates">
-                                            <strong>Start:</strong> <?php echo date('M j, Y', strtotime($campaign['start_date'])); ?><br>
-                                            <strong>End:</strong> <?php echo date('M j, Y', strtotime($campaign['end_date'])); ?>
-                                        </div>
+                                        <small>
+                                            <?php echo date('M j, Y', strtotime($campaign['start_date'])); ?><br>
+                                            to<br>
+                                            <?php echo date('M j, Y', strtotime($campaign['end_date'])); ?>
+                                        </small>
                                     </td>
                                     <td class="column-actions">
-                                        <div class="campaign-quick-actions">
-                                            <button type="button" class="button button-small toggle-campaign" 
-                                                    data-campaign-id="<?php echo $campaign['id']; ?>"
-                                                    data-current-status="<?php echo $campaign['is_active']; ?>">
-                                                <?php echo $campaign['is_active'] ? 'Deactivate' : 'Activate'; ?>
-                                            </button>
-                                            <a href="<?php echo admin_url('admin.php?page=vefify-analytics&campaign_id=' . $campaign['id']); ?>" 
-                                               class="button button-small">Analytics</a>
-                                        </div>
+                                        <a href="<?php echo admin_url('admin.php?page=vefify-campaigns&action=edit&id=' . $campaign['id']); ?>" 
+                                           class="button button-small">Edit</a>
+                                        <button class="button button-small view-stats-btn" 
+                                                data-campaign-id="<?php echo $campaign['id']; ?>"
+                                                style="background: #f0f9ff; border-color: #0073aa;">
+                                            📊 Stats
+                                        </button>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
-                        <?php else: ?>
-                            <tr>
-                                <td colspan="7" class="no-campaigns">
-                                    <div class="no-campaigns-message">
-                                        <h3>No campaigns found</h3>
-                                        <p>Create your first campaign to get started with quiz management.</p>
-                                        <a href="<?php echo admin_url('admin.php?page=vefify-campaigns&action=new'); ?>" class="button button-primary">Create Campaign</a>
-                                    </div>
-                                </td>
-                            </tr>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
-                
-                <div class="tablenav bottom">
-                    <?php $this->display_pagination($result, $current_page); ?>
-                </div>
+                        </tbody>
+                    </table>
+                    
+                    <div class="tablenav bottom">
+                        <?php $this->display_pagination($result, $current_page); ?>
+                    </div>
+                <?php endif; ?>
             </form>
         </div>
         
+        <!-- On-demand Statistics Modal -->
+        <div id="stats-modal" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 25px; border: 1px solid #ccc; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); z-index: 9999; min-width: 350px;">
+            <h3 style="margin-top: 0;">📊 Campaign Statistics</h3>
+            <div id="stats-content">Loading statistics...</div>
+            <div style="margin-top: 20px; text-align: right;">
+                <button id="close-stats" class="button">Close</button>
+            </div>
+        </div>
+        <div id="stats-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9998;"></div>
+        
         <style>
-        .campaigns-summary { display: flex; gap: 20px; margin: 20px 0; }
-        .summary-card { background: #fff; border: 1px solid #ccd0d4; border-radius: 4px; padding: 20px; flex: 1; text-align: center; }
-        .summary-card h3 { margin: 0 0 10px; font-size: 24px; }
-        .summary-card .description { color: #666; font-size: 14px; }
-        .status-badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; color: white; }
-        .status-badge.active { background: #46b450; }
-        .status-badge.expired { background: #dc3232; }
-        .status-badge.inactive { background: #999; }
-        .progress-bar { width: 100%; height: 10px; background: #f0f0f0; border-radius: 5px; overflow: hidden; margin-bottom: 4px; }
-        .progress-fill { height: 100%; background: #0073aa; transition: width 0.3s ease; }
-        .campaign-dates { font-size: 12px; }
-        .campaign-quick-actions { display: flex; gap: 4px; flex-direction: column; }
-        .no-campaigns-message { text-align: center; padding: 40px 20px; }
+        .campaigns-summary { display: flex; gap: 20px; margin: 20px 0; flex-wrap: wrap; }
+        .summary-card { background: white; border: 1px solid #ddd; border-radius: 4px; padding: 15px; min-width: 140px; flex: 1; }
+        .summary-card h3 { margin: 0 0 5px 0; font-size: 20px; color: #0073aa; }
+        .summary-card .description { font-size: 13px; color: #666; }
+        .status-badge { padding: 4px 8px; border-radius: 3px; font-size: 12px; font-weight: bold; }
+        .status-active { background: #d1ecf1; color: #0c5460; }
+        .status-inactive { background: #f8d7da; color: #721c24; }
+        .status-expired { background: #fff3cd; color: #856404; }
+        .status-scheduled { background: #e2e3e5; color: #383d41; }
+        .row-description { font-size: 13px; color: #666; margin-top: 3px; }
+        .view-stats-btn:hover { background: #0073aa !important; color: white !important; }
         </style>
+        
+        <script>
+        jQuery(document).ready(function($) {
+            // On-demand statistics loading
+            $('.view-stats-btn').on('click', function() {
+                var campaignId = $(this).data('campaign-id');
+                var $button = $(this);
+                
+                $button.prop('disabled', true).text('Loading...');
+                $('#stats-modal, #stats-overlay').show();
+                $('#stats-content').html('<div style="text-align: center; padding: 20px;">Loading statistics...</div>');
+                
+                $.post(ajaxurl, {
+                    action: 'vefify_refresh_stats',
+                    campaign_id: campaignId,
+                    nonce: '<?php echo wp_create_nonce('vefify_refresh_stats'); ?>'
+                }, function(response) {
+                    $button.prop('disabled', false).text('📊 Stats');
+                    
+                    if (response.success) {
+                        var stats = response.data;
+                        $('#stats-content').html(
+                            '<div style="line-height: 1.8;">' +
+                            '<p><strong>Total Participants:</strong> ' + stats.total_participants + '</p>' +
+                            '<p><strong>Completed:</strong> ' + stats.completed_participants + ' (' + stats.completion_rate + '%)</p>' +
+                            '<p><strong>Average Score:</strong> ' + stats.average_score + '</p>' +
+                            '<p><strong>Pass Rate:</strong> ' + stats.pass_rate + '%</p>' +
+                            '<p><strong>Gifts Distributed:</strong> ' + stats.gifts_distributed + '</p>' +
+                            '<p style="font-size: 12px; color: #666; margin-top: 15px; border-top: 1px solid #eee; padding-top: 10px;">' +
+                            'Statistics calculated in real-time</p>' +
+                            '</div>'
+                        );
+                    } else {
+                        $('#stats-content').html('<p style="color: #dc3232;">Error loading statistics. Please try again.</p>');
+                    }
+                }).fail(function() {
+                    $button.prop('disabled', false).text('📊 Stats');
+                    $('#stats-content').html('<p style="color: #dc3232;">Failed to load statistics. Please check your connection.</p>');
+                });
+            });
+            
+            // Close modal
+            $('#close-stats, #stats-overlay').on('click', function() {
+                $('#stats-modal, #stats-overlay').hide();
+            });
+            
+            // Keyboard support
+            $(document).on('keydown', function(e) {
+                if (e.key === 'Escape' && $('#stats-modal').is(':visible')) {
+                    $('#stats-modal, #stats-overlay').hide();
+                }
+            });
+        });
+        </script>
         <?php
     }
     
     /**
-     * Display campaign form (new/edit)
+     * Display campaign form - OPTIMIZED
      */
     public function display_campaign_form() {
         $campaign_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
@@ -241,12 +306,27 @@ class Vefify_Campaign_Manager {
         $is_edit = !empty($campaign);
         $title = $is_edit ? 'Edit Campaign: ' . esc_html($campaign['name']) : 'New Campaign';
         
+        // OPTIMIZED: Set default values for new campaigns
+        if (!$is_edit) {
+            $campaign = array(
+                'name' => '',
+                'description' => '',
+                'start_date' => date('Y-m-d'),
+                'end_date' => date('Y-m-d', strtotime('+30 days')),
+                'questions_per_quiz' => 5,
+                'pass_score' => 3,
+                'time_limit' => 600,
+                'max_participants' => 100,
+                'is_active' => 1
+            );
+        }
+        
         // Display admin notices
         $this->display_admin_notices();
         
         ?>
         <div class="wrap">
-            <h1><?php echo $title; ?></h1>
+            <h1><?php echo $title; ?> <small style="color: #46b450;">(Performance Mode)</small></h1>
             
             <form method="post" action="" id="campaign-form">
                 <?php wp_nonce_field('vefify_campaign_save'); ?>
@@ -265,7 +345,7 @@ class Vefify_Campaign_Manager {
                                     <th scope="row"><label for="campaign_name">Campaign Name *</label></th>
                                     <td>
                                         <input type="text" id="campaign_name" name="campaign_name" 
-                                               value="<?php echo $is_edit ? esc_attr($campaign['name']) : ''; ?>" 
+                                               value="<?php echo esc_attr($campaign['name']); ?>" 
                                                class="regular-text" required>
                                         <p class="description">Enter a descriptive name for your campaign</p>
                                     </td>
@@ -274,7 +354,7 @@ class Vefify_Campaign_Manager {
                                     <th scope="row"><label for="campaign_description">Description</label></th>
                                     <td>
                                         <textarea id="campaign_description" name="campaign_description" 
-                                                  rows="4" class="large-text"><?php echo $is_edit ? esc_textarea($campaign['description']) : ''; ?></textarea>
+                                                  rows="4" class="large-text"><?php echo esc_textarea($campaign['description']); ?></textarea>
                                         <p class="description">Brief description of the campaign purpose and goals</p>
                                     </td>
                                 </tr>
@@ -283,34 +363,10 @@ class Vefify_Campaign_Manager {
                                     <td>
                                         <label>
                                             <input type="checkbox" name="is_active" value="1" 
-                                                   <?php checked($is_edit ? $campaign['is_active'] : 1); ?>>
-                                            Active campaign (participants can join)
+                                                   <?php checked($campaign['is_active'], 1); ?>>
+                                            Active
                                         </label>
-                                    </td>
-                                </tr>
-                            </table>
-                        </div>
-                    </div>
-                    
-                    <!-- Schedule Settings -->
-                    <div class="postbox">
-                        <h2 class="hndle">⏰ Schedule Settings</h2>
-                        <div class="inside">
-                            <table class="form-table">
-                                <tr>
-                                    <th scope="row"><label for="start_date">Start Date *</label></th>
-                                    <td>
-                                        <input type="datetime-local" id="start_date" name="start_date" 
-                                               value="<?php echo $is_edit ? date('Y-m-d\TH:i', strtotime($campaign['start_date'])) : date('Y-m-d\TH:i'); ?>" 
-                                               required>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <th scope="row"><label for="end_date">End Date *</label></th>
-                                    <td>
-                                        <input type="datetime-local" id="end_date" name="end_date" 
-                                               value="<?php echo $is_edit ? date('Y-m-d\TH:i', strtotime($campaign['end_date'])) : date('Y-m-d\TH:i', strtotime('+30 days')); ?>" 
-                                               required>
+                                        <p class="description">Check to make this campaign active and available to participants</p>
                                     </td>
                                 </tr>
                             </table>
@@ -319,23 +375,23 @@ class Vefify_Campaign_Manager {
                     
                     <!-- Quiz Configuration -->
                     <div class="postbox">
-                        <h2 class="hndle">🎯 Quiz Configuration</h2>
+                        <h2 class="hndle">❓ Quiz Configuration</h2>
                         <div class="inside">
                             <table class="form-table">
                                 <tr>
                                     <th scope="row"><label for="questions_per_quiz">Questions per Quiz *</label></th>
                                     <td>
                                         <input type="number" id="questions_per_quiz" name="questions_per_quiz" 
-                                               value="<?php echo $is_edit ? $campaign['questions_per_quiz'] : 5; ?>" 
+                                               value="<?php echo intval($campaign['questions_per_quiz']); ?>" 
                                                min="1" max="50" class="small-text" required>
-                                        <p class="description">Number of questions shown to each participant</p>
+                                        <p class="description">Number of questions to show in each quiz (1-50)</p>
                                     </td>
                                 </tr>
                                 <tr>
-                                    <th scope="row"><label for="pass_score">Pass Score *</label></th>
+                                    <th scope="row"><label for="pass_score">Passing Score *</label></th>
                                     <td>
                                         <input type="number" id="pass_score" name="pass_score" 
-                                               value="<?php echo $is_edit ? $campaign['pass_score'] : 3; ?>" 
+                                               value="<?php echo intval($campaign['pass_score']); ?>" 
                                                min="1" class="small-text" required>
                                         <p class="description">Minimum score required to pass the quiz</p>
                                     </td>
@@ -344,55 +400,45 @@ class Vefify_Campaign_Manager {
                                     <th scope="row"><label for="time_limit">Time Limit (seconds)</label></th>
                                     <td>
                                         <input type="number" id="time_limit" name="time_limit" 
-                                               value="<?php echo $is_edit ? $campaign['time_limit'] : 600; ?>" 
-                                               min="60" class="small-text">
-                                        <p class="description">Maximum time allowed for quiz completion (0 = no limit)</p>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <th scope="row"><label for="max_participants">Max Participants</label></th>
-                                    <td>
-                                        <input type="number" id="max_participants" name="max_participants" 
-                                               value="<?php echo $is_edit ? $campaign['max_participants'] : 1000; ?>" 
-                                               min="1" class="small-text">
-                                        <p class="description">Maximum number of participants (0 = unlimited)</p>
+                                               value="<?php echo intval($campaign['time_limit']); ?>" 
+                                               min="0" step="60" class="small-text">
+                                        <p class="description">Time limit in seconds (0 = no limit, recommended: 600 = 10 minutes)</p>
                                     </td>
                                 </tr>
                             </table>
                         </div>
                     </div>
                     
-                    <!-- Advanced Settings -->
+                    <!-- Schedule & Limits -->
                     <div class="postbox">
-                        <h2 class="hndle">⚙️ Advanced Settings</h2>
+                        <h2 class="hndle">📅 Schedule & Limits</h2>
                         <div class="inside">
                             <table class="form-table">
                                 <tr>
-                                    <th scope="row">Quiz Options</th>
+                                    <th scope="row"><label for="start_date">Start Date *</label></th>
                                     <td>
-                                        <?php 
-                                        $meta_data = $is_edit ? $campaign['meta_data'] : array();
-                                        ?>
-                                        <label>
-                                            <input type="checkbox" name="meta_data[shuffle_questions]" value="1" 
-                                                   <?php checked(!empty($meta_data['shuffle_questions'])); ?>>
-                                            Shuffle questions order
-                                        </label><br>
-                                        <label>
-                                            <input type="checkbox" name="meta_data[shuffle_options]" value="1" 
-                                                   <?php checked(!empty($meta_data['shuffle_options'])); ?>>
-                                            Shuffle answer options
-                                        </label><br>
-                                        <label>
-                                            <input type="checkbox" name="meta_data[show_results]" value="1" 
-                                                   <?php checked(!empty($meta_data['show_results'])); ?>>
-                                            Show results immediately after completion
-                                        </label><br>
-                                        <label>
-                                            <input type="checkbox" name="meta_data[allow_retake]" value="1" 
-                                                   <?php checked(!empty($meta_data['allow_retake'])); ?>>
-                                            Allow participants to retake quiz
-                                        </label>
+                                        <input type="date" id="start_date" name="start_date" 
+                                               value="<?php echo esc_attr($campaign['start_date']); ?>" 
+                                               class="regular-text" required>
+                                        <p class="description">Campaign start date</p>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th scope="row"><label for="end_date">End Date *</label></th>
+                                    <td>
+                                        <input type="date" id="end_date" name="end_date" 
+                                               value="<?php echo esc_attr($campaign['end_date']); ?>" 
+                                               class="regular-text" required>
+                                        <p class="description">Campaign end date</p>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th scope="row"><label for="max_participants">Max Participants</label></th>
+                                    <td>
+                                        <input type="number" id="max_participants" name="max_participants" 
+                                               value="<?php echo intval($campaign['max_participants']); ?>" 
+                                               min="0" class="small-text">
+                                        <p class="description">Maximum number of participants (0 = unlimited)</p>
                                     </td>
                                 </tr>
                             </table>
@@ -447,12 +493,16 @@ class Vefify_Campaign_Manager {
     }
     
     /**
-     * Handle campaign actions (create, edit, delete)
+     * Handle campaign actions (create, edit, delete) - OPTIMIZED
      */
     public function handle_campaign_actions() {
         if (!isset($_POST['action']) || !current_user_can('manage_options')) {
             return;
         }
+        
+        // EMERGENCY: Set execution time and memory limits
+        @set_time_limit(300);
+        @ini_set('memory_limit', '512M');
         
         // Verify nonce
         if (!wp_verify_nonce($_POST['_wpnonce'], 'vefify_campaign_save')) {
@@ -469,7 +519,7 @@ class Vefify_Campaign_Manager {
     }
     
     /**
-     * Handle saving campaign (create/update)
+     * Handle saving campaign (create/update) - OPTIMIZED
      */
     private function handle_save_campaign() {
         $campaign_id = isset($_POST['campaign_id']) ? intval($_POST['campaign_id']) : 0;
@@ -526,7 +576,7 @@ class Vefify_Campaign_Manager {
     }
     
     /**
-     * Handle bulk actions
+     * Handle bulk actions - OPTIMIZED
      */
     private function handle_bulk_actions() {
         if (!isset($_POST['action']) || $_POST['action'] === '-1') {
@@ -601,12 +651,27 @@ class Vefify_Campaign_Manager {
     }
     
     /**
-     * Display campaigns summary cards
+     * AJAX: Refresh statistics on-demand
+     */
+    public function ajax_refresh_stats() {
+        if (!wp_verify_nonce($_POST['nonce'], 'vefify_refresh_stats')) {
+            wp_die('Security check failed');
+        }
+        
+        $campaign_id = intval($_POST['campaign_id']);
+        $stats = $this->model->get_campaign_statistics($campaign_id);
+        
+        wp_send_json_success($stats);
+    }
+    
+    /**
+     * Display campaigns summary cards - OPTIMIZED
      */
     private function display_campaigns_summary() {
         $summary = $this->model->get_campaigns_summary();
+        $memory_usage = round(memory_get_usage(true) / 1024 / 1024, 1);
         ?>
-        <div class="campaigns-summary">
+        <div class="campaigns-summary" style="background: #e8f5e8; border: 1px solid #46b450; border-radius: 4px; padding: 15px; margin: 20px 0;">
             <div class="summary-card">
                 <h3><?php echo number_format($summary['total']); ?></h3>
                 <div class="description">Total Campaigns</div>
@@ -616,12 +681,16 @@ class Vefify_Campaign_Manager {
                 <div class="description">Active Campaigns</div>
             </div>
             <div class="summary-card">
-                <h3><?php echo number_format($summary['expired']); ?></h3>
-                <div class="description">Expired Campaigns</div>
+                <h3><?php echo number_format($summary['total_participants']); ?></h3>
+                <div class="description">Total Participants</div>
             </div>
             <div class="summary-card">
-                <h3><?php echo number_format($summary['inactive']); ?></h3>
-                <div class="description">Inactive Campaigns</div>
+                <h3><?php echo $memory_usage; ?>MB</h3>
+                <div class="description">Memory Usage</div>
+            </div>
+            <div class="summary-card">
+                <h3 style="color: #46b450;">⚡ Optimized</h3>
+                <div class="description">Performance Mode</div>
             </div>
         </div>
         <?php
@@ -632,7 +701,7 @@ class Vefify_Campaign_Manager {
      */
     private function get_campaign_status_badge($campaign) {
         if (!$campaign['is_active']) {
-            return '<span class="status-badge inactive">Inactive</span>';
+            return '<span class="status-badge status-inactive">⏸️ Inactive</span>';
         }
         
         $now = current_time('timestamp');
@@ -640,11 +709,11 @@ class Vefify_Campaign_Manager {
         $end = strtotime($campaign['end_date']);
         
         if ($now < $start) {
-            return '<span class="status-badge inactive">Scheduled</span>';
+            return '<span class="status-badge status-scheduled">📅 Scheduled</span>';
         } elseif ($now > $end) {
-            return '<span class="status-badge expired">Expired</span>';
+            return '<span class="status-badge status-expired">⏰ Expired</span>';
         } else {
-            return '<span class="status-badge active">Active</span>';
+            return '<span class="status-badge status-active">✅ Active</span>';
         }
     }
     
@@ -656,17 +725,15 @@ class Vefify_Campaign_Manager {
             return;
         }
         
-        $pagination_args = array(
+        echo '<div class="tablenav-pages">';
+        echo paginate_links(array(
             'base' => add_query_arg('paged', '%#%'),
             'format' => '',
             'prev_text' => '&laquo; Previous',
             'next_text' => 'Next &raquo;',
             'total' => $result['total_pages'],
             'current' => $current_page
-        );
-        
-        echo '<div class="tablenav-pages">';
-        echo paginate_links($pagination_args);
+        ));
         echo '</div>';
     }
     
@@ -688,18 +755,20 @@ class Vefify_Campaign_Manager {
     /**
      * Enqueue admin scripts and styles
      */
-    public function enqueue_admin_scripts($hook_suffix) {
-        if (strpos($hook_suffix, 'vefify-campaigns') === false) {
+    public function enqueue_admin_scripts($hook) {
+        if (!str_contains($hook, 'vefify-campaigns')) {
             return;
         }
         
-        wp_enqueue_script('vefify-campaign-admin', VEFIFY_QUIZ_PLUGIN_URL . 'assets/js/campaign-admin.js', array('jquery'), VEFIFY_QUIZ_VERSION, true);
+        wp_enqueue_script('vefify-campaign-admin', VEFIFY_QUIZ_PLUGIN_URL . 
+            'assets/js/campaign-admin.js', array('jquery'), VEFIFY_QUIZ_VERSION, true);
         wp_localize_script('vefify-campaign-admin', 'vefifyAjax', array(
             'ajax_url' => admin_url('admin-ajax.php'),
             'nonce' => wp_create_nonce('vefify_campaign_ajax')
         ));
         
-        wp_enqueue_style('vefify-campaign-admin', VEFIFY_QUIZ_PLUGIN_URL . 'assets/css/campaign-admin.css', array(), VEFIFY_QUIZ_VERSION);
+        wp_enqueue_style('vefify-campaign-admin', VEFIFY_QUIZ_PLUGIN_URL . 
+            'assets/css/campaign-admin.css', array(), VEFIFY_QUIZ_VERSION);
     }
     
     /**
