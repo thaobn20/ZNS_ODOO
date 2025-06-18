@@ -889,6 +889,7 @@ function vefify_quiz_get_module($module_name) {
 }
 
 add_action('init', function() {
+	remove_shortcode('vefify_quiz');
     // Admin form settings
     if (is_admin()) {
         require_once VEFIFY_QUIZ_PLUGIN_DIR . 'modules/settings/class-form-settings.php';
@@ -899,7 +900,6 @@ add_action('init', function() {
     
     // Frontend enhancements
     if (!is_admin() || (defined('DOING_AJAX') && DOING_AJAX)) {
-        // Enhanced shortcode
         require_once VEFIFY_QUIZ_PLUGIN_DIR . 'frontend/class-quiz-shortcode.php';
         if (class_exists('Vefify_Quiz_Shortcode')) {
             new Vefify_Quiz_Shortcode();
