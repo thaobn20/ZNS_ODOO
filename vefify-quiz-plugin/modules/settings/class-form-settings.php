@@ -184,7 +184,7 @@ class Vefify_Form_Settings {
                         <!-- Quiz Behavior -->
                         <tr>
                             <th scope="row">
-                                <label>Quiz Behavior</label>
+                                <label>Quiz Behavior </label>
                             </th>
                             <td>
                                 <fieldset>
