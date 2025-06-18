@@ -1,0 +1,558 @@
+<?php
+/**
+ * EMERGENCY FIX: Campaign Manager Module
+ * File: modules/campaigns/class-campaign-manager.php
+ * 
+ * FIXES FOR MEMORY EXHAUSTION:
+ * 1. Prevents infinite loops
+ * 2. Adds memory safety checks
+ * 3. Simplified loading to prevent recursion
+ * 4. Safe hook registration
+ */
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+// EMERGENCY: Prevent duplicate class definition
+if (class_exists('Vefify_Campaign_Manager')) {
+    return;
+}
+
+class Vefify_Campaign_Manager {
+    
+    private $model;
+    private static $hooks_registered = false;
+    private static $instance_count = 0;
+    
+    public function __construct() {
+        // EMERGENCY: Prevent multiple instances that could cause memory issues
+        self::$instance_count++;
+        if (self::$instance_count > 1) {
+            error_log('Vefify Quiz: Warning - Multiple Campaign Manager instances detected');
+            return;
+        }
+        
+        // EMERGENCY: Memory check before initialization
+        $memory_usage = memory_get_usage(true);
+        $memory_limit = wp_convert_hr_to_bytes(ini_get('memory_limit'));
+        if ($memory_usage > ($memory_limit * 0.8)) {
+            error_log('Vefify Quiz: Memory warning - Usage at ' . round(($memory_usage / $memory_limit) * 100) . '%');
+            return;
+        }
+        
+        $this->safe_init();
+    }
+    
+    /**
+     * EMERGENCY: Safe initialization to prevent infinite loops
+     */
+    private function safe_init() {
+        try {
+            // Load model safely
+            $this->load_model();
+            
+            // Register hooks only once
+            if (!self::$hooks_registered) {
+                $this->register_hooks();
+                self::$hooks_registered = true;
+            }
+            
+        } catch (Exception $e) {
+            error_log('Vefify Quiz Campaign Manager Error: ' . $e->getMessage());
+        }
+    }
+    
+    /**
+     * EMERGENCY: Safe model loading
+     */
+    private function load_model() {
+        $model_file = VEFIFY_QUIZ_PLUGIN_DIR . 'modules/campaigns/class-campaign-model.php';
+        
+        if (!class_exists('Vefify_Campaign_Model') && file_exists($model_file)) {
+            require_once $model_file;
+        }
+        
+        if (class_exists('Vefify_Campaign_Model')) {
+            $this->model = new Vefify_Campaign_Model();
+        } else {
+            error_log('Vefify Quiz: Campaign Model class not found');
+        }
+    }
+    
+    /**
+     * EMERGENCY: Safe hook registration
+     */
+    private function register_hooks() {
+        // Only register essential hooks to prevent conflicts
+        add_action('admin_init', array($this, 'handle_campaign_actions'), 20);
+        add_action('wp_ajax_vefify_campaign_action', array($this, 'ajax_campaign_action'));
+    }
+    
+    /**
+     * SIMPLIFIED: Display campaigns list page
+     */
+    public function display_campaigns_list() {
+        // EMERGENCY: Memory check before processing
+        if (!$this->check_memory_safety()) {
+            echo '<div class="notice notice-error"><p>Memory limit reached. Please increase PHP memory limit.</p></div>';
+            return;
+        }
+        
+        // Handle bulk actions safely
+        $this->safe_handle_bulk_actions();
+        
+        // Get campaigns with basic pagination
+        $current_page = isset($_GET['paged']) ? max(1, intval($_GET['paged'])) : 1;
+        $per_page = 10; // Reduced from 20 to save memory
+        
+        $args = array(
+            'page' => $current_page,
+            'per_page' => $per_page,
+            'include_stats' => false // Disable stats to save memory
+        );
+        
+        $result = $this->safe_get_campaigns($args);
+        
+        // Display admin notices
+        $this->display_admin_notices();
+        
+        ?>
+        <div class="wrap">
+            <h1 class="wp-heading-inline">📋 Campaign Management</h1>
+            <a href="<?php echo admin_url('admin.php?page=vefify-campaigns&action=new'); ?>" class="page-title-action">Add New Campaign</a>
+            
+            <!-- SIMPLIFIED: Basic campaign summary -->
+            <?php $this->display_simple_summary(); ?>
+            
+            <!-- SIMPLIFIED: Campaigns Table -->
+            <form method="post">
+                <?php wp_nonce_field('vefify_bulk_campaigns'); ?>
+                
+                <?php if (empty($result['campaigns'])): ?>
+                    <div class="notice notice-info">
+                        <p><strong>No campaigns found.</strong> 
+                           <a href="<?php echo admin_url('admin.php?page=vefify-campaigns&action=new'); ?>" class="button button-primary">Create your first campaign</a>
+                        </p>
+                    </div>
+                <?php else: ?>
+                    <table class="wp-list-table widefat fixed striped campaigns">
+                        <thead>
+                            <tr>
+                                <td class="manage-column column-cb check-column">
+                                    <input type="checkbox" id="cb-select-all">
+                                </td>
+                                <th class="manage-column column-name column-primary">Campaign</th>
+                                <th class="manage-column column-status">Status</th>
+                                <th class="manage-column column-dates">Duration</th>
+                                <th class="manage-column column-actions">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($result['campaigns'] as $campaign): ?>
+                                <tr>
+                                    <th class="check-column">
+                                        <input type="checkbox" name="campaign[]" value="<?php echo intval($campaign['id']); ?>">
+                                    </th>
+                                    <td class="column-name column-primary">
+                                        <strong>
+                                            <a href="<?php echo admin_url('admin.php?page=vefify-campaigns&action=edit&id=' . intval($campaign['id'])); ?>">
+                                                <?php echo esc_html($campaign['name']); ?>
+                                            </a>
+                                        </strong>
+                                        <div class="row-actions">
+                                            <span class="edit">
+                                                <a href="<?php echo admin_url('admin.php?page=vefify-campaigns&action=edit&id=' . intval($campaign['id'])); ?>">Edit</a>
+                                            </span>
+                                        </div>
+                                    </td>
+                                    <td class="column-status">
+                                        <span class="status-badge status-<?php echo $campaign['is_active'] ? 'active' : 'inactive'; ?>">
+                                            <?php echo $campaign['is_active'] ? 'Active' : 'Inactive'; ?>
+                                        </span>
+                                    </td>
+                                    <td class="column-dates">
+                                        <?php echo esc_html($campaign['start_date']); ?> - 
+                                        <?php echo esc_html($campaign['end_date']); ?>
+                                    </td>
+                                    <td class="column-actions">
+                                        <a href="<?php echo admin_url('admin.php?page=vefify-campaigns&action=edit&id=' . intval($campaign['id'])); ?>" 
+                                           class="button button-small">Edit</a>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                <?php endif; ?>
+            </form>
+        </div>
+        
+        <style>
+        .status-badge { padding: 4px 8px; border-radius: 3px; font-size: 12px; font-weight: bold; }
+        .status-active { background: #d1ecf1; color: #0c5460; }
+        .status-inactive { background: #f8d7da; color: #721c24; }
+        .summary-cards { display: flex; gap: 15px; margin: 15px 0; }
+        .summary-card { background: white; border: 1px solid #ddd; border-radius: 4px; padding: 15px; min-width: 120px; }
+        .summary-card h3 { margin: 0 0 5px 0; font-size: 20px; color: #0073aa; }
+        .summary-card .description { font-size: 13px; color: #666; }
+        </style>
+        <?php
+    }
+    
+    /**
+     * SIMPLIFIED: Display campaign form with minimal memory usage
+     */
+    public function display_campaign_form() {
+        // EMERGENCY: Memory check
+        if (!$this->check_memory_safety()) {
+            echo '<div class="notice notice-error"><p>Memory limit reached. Please increase PHP memory limit or try again.</p></div>';
+            return;
+        }
+        
+        $campaign_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
+        $campaign = null;
+        
+        if ($campaign_id && $this->model) {
+            $campaign = $this->model->get_campaign($campaign_id);
+        }
+        
+        $is_edit = !empty($campaign);
+        $title = $is_edit ? 'Edit Campaign: ' . esc_html($campaign['name']) : 'New Campaign';
+        
+        // EMERGENCY: Set safe defaults
+        if (!$is_edit) {
+            $campaign = array(
+                'name' => '',
+                'description' => '',
+                'start_date' => date('Y-m-d'),
+                'end_date' => date('Y-m-d', strtotime('+30 days')),
+                'questions_per_quiz' => 5,
+                'pass_score' => 3,
+                'time_limit' => 600,
+                'max_participants' => 100,
+                'is_active' => 1
+            );
+        }
+        
+        // Display admin notices
+        $this->display_admin_notices();
+        
+        ?>
+        <div class="wrap">
+            <h1><?php echo esc_html($title); ?></h1>
+            
+            <form method="post" action="" id="campaign-form">
+                <?php wp_nonce_field('vefify_campaign_save', 'campaign_nonce'); ?>
+                <input type="hidden" name="action" value="save_campaign">
+                <?php if ($is_edit): ?>
+                    <input type="hidden" name="campaign_id" value="<?php echo intval($campaign['id']); ?>">
+                <?php endif; ?>
+                
+                <table class="form-table">
+                    <tr>
+                        <th scope="row"><label for="campaign_name">Campaign Name *</label></th>
+                        <td>
+                            <input type="text" id="campaign_name" name="campaign_name" 
+                                   value="<?php echo esc_attr($campaign['name']); ?>" 
+                                   class="regular-text" required>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="campaign_description">Description</label></th>
+                        <td>
+                            <textarea id="campaign_description" name="campaign_description" 
+                                      rows="4" class="large-text"><?php echo esc_textarea($campaign['description']); ?></textarea>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="start_date">Start Date *</label></th>
+                        <td>
+                            <input type="date" id="start_date" name="start_date" 
+                                   value="<?php echo esc_attr($campaign['start_date']); ?>" required>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="end_date">End Date *</label></th>
+                        <td>
+                            <input type="date" id="end_date" name="end_date" 
+                                   value="<?php echo esc_attr($campaign['end_date']); ?>" required>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="questions_per_quiz">Questions per Quiz</label></th>
+                        <td>
+                            <input type="number" id="questions_per_quiz" name="questions_per_quiz" 
+                                   value="<?php echo intval($campaign['questions_per_quiz']); ?>" 
+                                   min="1" max="50" class="small-text">
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="pass_score">Pass Score</label></th>
+                        <td>
+                            <input type="number" id="pass_score" name="pass_score" 
+                                   value="<?php echo intval($campaign['pass_score']); ?>" 
+                                   min="1" class="small-text">
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Status</th>
+                        <td>
+                            <label>
+                                <input type="checkbox" name="is_active" value="1" 
+                                       <?php checked($campaign['is_active'], 1); ?>>
+                                Active
+                            </label>
+                        </td>
+                    </tr>
+                </table>
+                
+                <p class="submit">
+                    <input type="submit" name="submit" id="submit" class="button button-primary" 
+                           value="<?php echo $is_edit ? 'Update Campaign' : 'Create Campaign'; ?>">
+                    <a href="<?php echo admin_url('admin.php?page=vefify-campaigns'); ?>" class="button">Cancel</a>
+                </p>
+            </form>
+        </div>
+        <?php
+    }
+    
+    /**
+     * EMERGENCY: Safe campaign action handling
+     */
+    public function handle_campaign_actions() {
+        if (!isset($_POST['action']) || !current_user_can('manage_options')) {
+            return;
+        }
+        
+        // EMERGENCY: Memory and time limits
+        if (!$this->check_memory_safety()) {
+            error_log('Vefify Quiz: Skipping campaign action due to memory limit');
+            return;
+        }
+        
+        $action = sanitize_text_field($_POST['action']);
+        
+        // EMERGENCY: Verify nonce with multiple fallbacks
+        $nonce_verified = false;
+        
+        if (isset($_POST['campaign_nonce'])) {
+            $nonce_verified = wp_verify_nonce($_POST['campaign_nonce'], 'vefify_campaign_save');
+        } elseif (isset($_POST['_wpnonce'])) {
+            $nonce_verified = wp_verify_nonce($_POST['_wpnonce'], 'vefify_campaign_save');
+        }
+        
+        if (!$nonce_verified) {
+            set_transient('vefify_admin_notice', array(
+                'type' => 'error',
+                'message' => 'Security check failed. Please try again.'
+            ), 30);
+            wp_redirect(admin_url('admin.php?page=vefify-campaigns'));
+            exit;
+        }
+        
+        switch ($action) {
+            case 'save_campaign':
+                $this->safe_save_campaign();
+                break;
+        }
+    }
+    
+    /**
+     * EMERGENCY: Safe campaign saving
+     */
+    private function safe_save_campaign() {
+        if (!$this->model) {
+            set_transient('vefify_admin_notice', array(
+                'type' => 'error',
+                'message' => 'Campaign model not available'
+            ), 30);
+            return;
+        }
+        
+        $campaign_id = isset($_POST['campaign_id']) ? intval($_POST['campaign_id']) : 0;
+        
+        // EMERGENCY: Basic data with safe defaults
+        $campaign_data = array(
+            'name' => sanitize_text_field($_POST['campaign_name'] ?? ''),
+            'description' => sanitize_textarea_field($_POST['campaign_description'] ?? ''),
+            'start_date' => sanitize_text_field($_POST['start_date'] ?? date('Y-m-d')),
+            'end_date' => sanitize_text_field($_POST['end_date'] ?? date('Y-m-d', strtotime('+30 days'))),
+            'questions_per_quiz' => max(1, intval($_POST['questions_per_quiz'] ?? 5)),
+            'pass_score' => max(1, intval($_POST['pass_score'] ?? 3)),
+            'time_limit' => max(0, intval($_POST['time_limit'] ?? 600)),
+            'max_participants' => max(0, intval($_POST['max_participants'] ?? 100)),
+            'is_active' => isset($_POST['is_active']) ? 1 : 0
+        );
+        
+        // EMERGENCY: Basic validation only
+        if (empty($campaign_data['name'])) {
+            set_transient('vefify_admin_notice', array(
+                'type' => 'error',
+                'message' => 'Campaign name is required'
+            ), 30);
+            return;
+        }
+        
+        try {
+            if ($campaign_id) {
+                $result = $this->model->update_campaign($campaign_id, $campaign_data);
+                $message = 'Campaign updated successfully';
+                $redirect_id = $campaign_id;
+            } else {
+                $result = $this->model->create_campaign($campaign_data);
+                $message = 'Campaign created successfully';
+                $redirect_id = $result;
+            }
+            
+            if (is_wp_error($result)) {
+                throw new Exception($result->get_error_message());
+            }
+            
+            set_transient('vefify_admin_notice', array(
+                'type' => 'success',
+                'message' => $message
+            ), 30);
+            
+            wp_redirect(admin_url('admin.php?page=vefify-campaigns&action=edit&id=' . $redirect_id));
+            exit;
+            
+        } catch (Exception $e) {
+            set_transient('vefify_admin_notice', array(
+                'type' => 'error',
+                'message' => 'Error saving campaign: ' . $e->getMessage()
+            ), 30);
+        }
+    }
+    
+    /**
+     * EMERGENCY: Memory safety check
+     */
+    private function check_memory_safety() {
+        $memory_usage = memory_get_usage(true);
+        $memory_limit = wp_convert_hr_to_bytes(ini_get('memory_limit'));
+        return ($memory_usage < ($memory_limit * 0.85));
+    }
+    
+    /**
+     * SIMPLIFIED: Get campaigns safely
+     */
+    private function safe_get_campaigns($args) {
+        if (!$this->model) {
+            return array('campaigns' => array(), 'total' => 0, 'total_pages' => 0);
+        }
+        
+        try {
+            return $this->model->get_campaigns($args);
+        } catch (Exception $e) {
+            error_log('Vefify Quiz: Error getting campaigns: ' . $e->getMessage());
+            return array('campaigns' => array(), 'total' => 0, 'total_pages' => 0);
+        }
+    }
+    
+    /**
+     * SIMPLIFIED: Basic summary
+     */
+    private function display_simple_summary() {
+        if (!$this->model) {
+            return;
+        }
+        
+        try {
+            $summary = $this->model->get_campaigns_summary();
+            ?>
+            <div class="summary-cards">
+                <div class="summary-card">
+                    <h3><?php echo intval($summary['total'] ?? 0); ?></h3>
+                    <div class="description">Total Campaigns</div>
+                </div>
+                <div class="summary-card">
+                    <h3><?php echo intval($summary['active'] ?? 0); ?></h3>
+                    <div class="description">Active Campaigns</div>
+                </div>
+            </div>
+            <?php
+        } catch (Exception $e) {
+            error_log('Vefify Quiz: Error displaying summary: ' . $e->getMessage());
+        }
+    }
+    
+    /**
+     * EMERGENCY: Safe bulk actions
+     */
+    private function safe_handle_bulk_actions() {
+        if (!isset($_POST['action']) || $_POST['action'] === '-1' || !$this->model) {
+            return;
+        }
+        
+        if (!wp_verify_nonce($_POST['_wpnonce'] ?? '', 'vefify_bulk_campaigns')) {
+            return;
+        }
+        
+        $action = sanitize_text_field($_POST['action']);
+        $campaign_ids = isset($_POST['campaign']) ? array_map('intval', $_POST['campaign']) : array();
+        
+        if (empty($campaign_ids)) {
+            return;
+        }
+        
+        $count = 0;
+        try {
+            foreach ($campaign_ids as $campaign_id) {
+                switch ($action) {
+                    case 'activate':
+                        $this->model->update_campaign($campaign_id, array('is_active' => 1));
+                        $count++;
+                        break;
+                    case 'deactivate':
+                        $this->model->update_campaign($campaign_id, array('is_active' => 0));
+                        $count++;
+                        break;
+                    case 'delete':
+                        $this->model->delete_campaign($campaign_id);
+                        $count++;
+                        break;
+                }
+            }
+            
+            set_transient('vefify_admin_notice', array(
+                'type' => 'success',
+                'message' => sprintf('%d campaigns %s successfully', $count, $action === 'delete' ? 'deleted' : $action . 'd')
+            ), 30);
+        } catch (Exception $e) {
+            error_log('Vefify Quiz: Bulk action error: ' . $e->getMessage());
+        }
+    }
+    
+    /**
+     * Display admin notices
+     */
+    private function display_admin_notices() {
+        $notice = get_transient('vefify_admin_notice');
+        if ($notice) {
+            delete_transient('vefify_admin_notice');
+            printf(
+                '<div class="notice notice-%s is-dismissible"><p>%s</p></div>',
+                esc_attr($notice['type']),
+                esc_html($notice['message'])
+            );
+        }
+    }
+    
+    /**
+     * AJAX handler for campaign actions
+     */
+    public function ajax_campaign_action() {
+        if (!wp_verify_nonce($_POST['nonce'] ?? '', 'vefify_campaign_ajax')) {
+            wp_die('Security check failed');
+        }
+        
+        wp_send_json_success(array('message' => 'Feature temporarily disabled for memory safety'));
+    }
+    
+    /**
+     * Get model instance
+     */
+    public function get_model() {
+        return $this->model;
+    }
+}
