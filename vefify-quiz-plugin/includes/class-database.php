@@ -1,758 +1,531 @@
 <?php
 /**
- * FIXED Database Management Class
- * File: includes/class-database.php
- * Updated to match analytics expected column names
+ * Database Installer and Migration Script
+ * File: includes/class-database-installer.php
+ * 
+ * This script handles database installation and migration for the enhanced quiz plugin
  */
 
 if (!defined('ABSPATH')) {
     exit;
 }
 
-class Vefify_Quiz_Database {
+class Vefify_Database_Installer {
     
     private $wpdb;
     private $table_prefix;
-    private $tables;
     
     public function __construct() {
         global $wpdb;
         $this->wpdb = $wpdb;
-        $this->table_prefix = $wpdb->prefix . VEFIFY_QUIZ_TABLE_PREFIX;
-        $this->define_tables();
-    }
-    
-    private function define_tables() {
-        $this->tables = array(
-            'campaigns' => $this->table_prefix . 'campaigns',
-            'questions' => $this->table_prefix . 'questions',
-            'question_options' => $this->table_prefix . 'question_options',
-            'gifts' => $this->table_prefix . 'gifts',
-            'participants' => $this->table_prefix . 'participants',
-            'quiz_sessions' => $this->table_prefix . 'quiz_sessions',
-            'analytics' => $this->table_prefix . 'analytics'
-        );
+        $this->table_prefix = $wpdb->prefix . 'vefify_';
     }
     
     /**
-     * FIXED: Create all database tables with correct column names
+     * Install all database tables
      */
-    public function create_tables() {
-    require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
-    
-    $charset_collate = $this->wpdb->get_charset_collate();
-    $table_prefix = $this->table_prefix;
-    
-    // First, let's check and drop existing tables to avoid conflicts
-    $this->drop_existing_tables_if_needed();
-    
-    // IMPORTANT: Create tables in correct order to avoid foreign key issues
-    $tables = array();
-    
-    // 1. Campaigns table (referenced by others)
-    $tables['campaigns'] = "CREATE TABLE {$table_prefix}campaigns (
-        id int(11) NOT NULL AUTO_INCREMENT,
-        name varchar(255) NOT NULL,
-        slug varchar(255) NOT NULL,
-        description text,
-        start_date datetime NOT NULL,
-        end_date datetime NOT NULL,
-        is_active tinyint(1) DEFAULT 1,
-        max_participants int(11) DEFAULT NULL,
-        allow_retake tinyint(1) DEFAULT 0,
-        questions_per_quiz int(11) DEFAULT 5,
-        time_limit int(11) DEFAULT NULL,
-        pass_score int(11) DEFAULT 3,
-        meta_data longtext,
-        created_at datetime DEFAULT CURRENT_TIMESTAMP,
-        updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        PRIMARY KEY (id),
-        UNIQUE KEY unique_slug (slug),
-        KEY idx_active_campaigns (is_active, start_date, end_date)
-    ) $charset_collate;";
-    
-    // 2. Questions table (referenced by question_options)
-    $tables['questions'] = "CREATE TABLE {$table_prefix}questions (
-        id int(11) NOT NULL AUTO_INCREMENT,
-        campaign_id int(11) DEFAULT NULL,
-        question_text text NOT NULL,
-        question_type enum('multiple_choice', 'multiple_select', 'true_false') DEFAULT 'multiple_choice',
-        category varchar(100) DEFAULT NULL,
-        difficulty enum('easy', 'medium', 'hard') DEFAULT 'medium',
-        points int(11) DEFAULT 1,
-        explanation text,
-        is_active tinyint(1) DEFAULT 1,
-        order_index int(11) DEFAULT 0,
-        meta_data longtext,
-        created_at datetime DEFAULT CURRENT_TIMESTAMP,
-        updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        PRIMARY KEY (id),
-        KEY idx_campaign_questions (campaign_id, is_active),
-        KEY idx_category (category),
-        KEY idx_difficulty (difficulty)
-    ) $charset_collate;";
-    
-    // 3. Question Options table
-    $tables['question_options'] = "CREATE TABLE {$table_prefix}question_options (
-        id int(11) NOT NULL AUTO_INCREMENT,
-        question_id int(11) NOT NULL,
-        option_text text NOT NULL,
-        is_correct tinyint(1) DEFAULT 0,
-        explanation text,
-        order_index int(11) DEFAULT 0,
-        created_at datetime DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (id),
-        KEY idx_question_options (question_id),
-        KEY idx_correct_options (is_correct)
-    ) $charset_collate;";
-    
-    // 4. Gifts table
-    $tables['gifts'] = "CREATE TABLE {$table_prefix}gifts (
-        id int(11) NOT NULL AUTO_INCREMENT,
-        campaign_id int(11) NOT NULL,
-        gift_name varchar(255) NOT NULL,
-        gift_type enum('voucher', 'discount', 'product', 'points') NOT NULL,
-        gift_value varchar(100) NOT NULL,
-        gift_description text,
-        min_score int(11) NOT NULL DEFAULT 0,
-        max_score int(11) DEFAULT NULL,
-        max_quantity int(11) DEFAULT NULL,
-        used_count int(11) DEFAULT 0,
-        gift_code_prefix varchar(20) DEFAULT NULL,
-        api_endpoint varchar(255) DEFAULT NULL,
-        api_params longtext,
-        is_active tinyint(1) DEFAULT 1,
-        created_at datetime DEFAULT CURRENT_TIMESTAMP,
-        updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        PRIMARY KEY (id),
-        KEY idx_campaign_gifts (campaign_id, is_active),
-        KEY idx_score_range (min_score, max_score)
-    ) $charset_collate;";
-    
-    // 5. Participants table - FIXED WITH CORRECT COLUMN NAMES
-    $tables['participants'] = "CREATE TABLE {$table_prefix}participants (
-        id int(11) NOT NULL AUTO_INCREMENT,
-        campaign_id int(11) NOT NULL,
-        session_id varchar(100) NOT NULL,
-        participant_name varchar(255),
-        participant_email varchar(255),
-        participant_phone varchar(50),
-        province varchar(100) DEFAULT NULL,
-        pharmacy_code varchar(50) DEFAULT NULL,
-        quiz_status enum('started','in_progress','completed','abandoned') DEFAULT 'started',
-        start_time datetime DEFAULT CURRENT_TIMESTAMP,
-        end_time datetime DEFAULT NULL,
-        final_score int(11) DEFAULT 0,
-        total_questions int(11) DEFAULT 0,
-        completion_time int(11) DEFAULT NULL,
-        answers_data longtext,
-        gift_id int(11) DEFAULT NULL,
-        gift_code varchar(100) DEFAULT NULL,
-        gift_status enum('none', 'assigned', 'claimed', 'expired') DEFAULT 'none',
-        gift_response longtext,
-        ip_address varchar(45),
-        user_agent text,
-        created_at datetime DEFAULT CURRENT_TIMESTAMP,
-        updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        PRIMARY KEY (id),
-        UNIQUE KEY unique_campaign_phone (campaign_id, participant_phone),
-        KEY idx_session (session_id),
-        KEY idx_campaign_participants (campaign_id),
-        KEY idx_quiz_status (quiz_status),
-        KEY idx_participant_email (participant_email),
-        KEY idx_gift_code (gift_code)
-    ) $charset_collate;";
-    
-    // 6. Quiz Sessions table
-    $tables['quiz_sessions'] = "CREATE TABLE {$table_prefix}quiz_sessions (
-        id int(11) NOT NULL AUTO_INCREMENT,
-        session_id varchar(100) NOT NULL,
-        participant_id int(11) NOT NULL,
-        campaign_id int(11) NOT NULL,
-        current_question int(11) DEFAULT 0,
-        questions_data longtext,
-        answers_data longtext,
-        time_remaining int(11) DEFAULT NULL,
-        is_completed tinyint(1) DEFAULT 0,
-        created_at datetime DEFAULT CURRENT_TIMESTAMP,
-        updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        PRIMARY KEY (id),
-        UNIQUE KEY unique_session (session_id),
-        KEY idx_participant_session (participant_id, session_id),
-        KEY idx_campaign_session (campaign_id)
-    ) $charset_collate;";
-    
-    // 7. Analytics table
-    $tables['analytics'] = "CREATE TABLE {$table_prefix}analytics (
-        id int(11) NOT NULL AUTO_INCREMENT,
-        campaign_id int(11) NOT NULL,
-        event_type enum('view', 'start', 'question_answer', 'complete', 'gift_claim') NOT NULL,
-        participant_id int(11) DEFAULT NULL,
-        session_id varchar(100) DEFAULT NULL,
-        question_id int(11) DEFAULT NULL,
-        event_data longtext,
-        ip_address varchar(45) DEFAULT NULL,
-        user_agent text,
-        created_at datetime DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (id),
-        KEY idx_campaign_analytics (campaign_id, event_type),
-        KEY idx_event_tracking (event_type, created_at)
-    ) $charset_collate;";
-    
-    // Create tables using dbDelta (WordPress way)
-    foreach ($tables as $table_name => $sql) {
-        error_log("Creating table: {$table_name}");
-        $result = dbDelta($sql);
+    public function install() {
+        $this->create_participants_table();
+        $this->create_quiz_sessions_table();
+        $this->create_campaigns_table();
+        $this->create_questions_table();
+        $this->create_question_options_table();
+        $this->create_gifts_table();
+        $this->create_analytics_table();
+        $this->create_form_settings_table();
         
-        if ($this->wpdb->last_error) {
-            error_log("Vefify Quiz: Error creating table {$table_name}: " . $this->wpdb->last_error);
-            // Don't throw exception, continue with other tables
-        }
-    }
-    
-    return true;
-}
-
-/**
- * Helper method to drop existing tables safely
- */
-    private function drop_existing_tables_if_needed() {
-    // Check if we need to recreate due to structure conflicts
-    $participants_table = $this->tables['participants'];
-    
-    // Check if table exists and has wrong structure
-    $table_exists = $this->wpdb->get_var("SHOW TABLES LIKE '{$participants_table}'");
-    
-    if ($table_exists) {
-        // Check if it has the old column structure
-        $columns = $this->wpdb->get_results("SHOW COLUMNS FROM {$participants_table}");
-        $has_old_structure = false;
+        $this->insert_sample_data();
+        $this->create_indexes();
         
-        foreach ($columns as $column) {
-            if ($column->Field === 'full_name' || $column->Field === 'phone_number') {
-                $has_old_structure = true;
-                break;
-            }
-        }
+        // Update version
+        update_option('vefify_quiz_db_version', '2.0.0');
+        update_option('vefify_quiz_version', '2.0.0');
         
-        if ($has_old_structure) {
-            error_log("Vefify Quiz: Dropping existing tables with old structure");
-            
-            // Drop tables in reverse order to handle foreign keys
-            $tables_to_drop = array_reverse($this->tables);
-            
-            foreach ($tables_to_drop as $table_name) {
-                $this->wpdb->query("DROP TABLE IF EXISTS {$table_name}");
-            }
-        }
-    }
-}
-    /**
-     * FIXED: Add foreign key constraints separately to avoid dependency issues
-     */
-    private function add_foreign_key_constraints() {
-        $constraints = array();
-        
-        // Only add constraints if they don't already exist
-        $existing_constraints = $this->get_existing_foreign_keys();
-        
-        // Questions -> Campaigns
-        if (!in_array('fk_questions_campaign', $existing_constraints)) {
-            $constraints[] = "ALTER TABLE {$this->tables['questions']} 
-                           ADD CONSTRAINT fk_questions_campaign 
-                           FOREIGN KEY (campaign_id) REFERENCES {$this->tables['campaigns']}(id) 
-                           ON DELETE CASCADE";
-        }
-        
-        // Question Options -> Questions  
-        if (!in_array('fk_options_question', $existing_constraints)) {
-            $constraints[] = "ALTER TABLE {$this->tables['question_options']} 
-                           ADD CONSTRAINT fk_options_question 
-                           FOREIGN KEY (question_id) REFERENCES {$this->tables['questions']}(id) 
-                           ON DELETE CASCADE";
-        }
-        
-        // Gifts -> Campaigns
-        if (!in_array('fk_gifts_campaign', $existing_constraints)) {
-            $constraints[] = "ALTER TABLE {$this->tables['gifts']} 
-                           ADD CONSTRAINT fk_gifts_campaign 
-                           FOREIGN KEY (campaign_id) REFERENCES {$this->tables['campaigns']}(id) 
-                           ON DELETE CASCADE";
-        }
-        
-        // Participants -> Campaigns
-        if (!in_array('fk_participants_campaign', $existing_constraints)) {
-            $constraints[] = "ALTER TABLE {$this->tables['participants']} 
-                           ADD CONSTRAINT fk_participants_campaign 
-                           FOREIGN KEY (campaign_id) REFERENCES {$this->tables['campaigns']}(id) 
-                           ON DELETE CASCADE";
-        }
-        
-        // Participants -> Gifts (optional)
-        if (!in_array('fk_participants_gift', $existing_constraints)) {
-            $constraints[] = "ALTER TABLE {$this->tables['participants']} 
-                           ADD CONSTRAINT fk_participants_gift 
-                           FOREIGN KEY (gift_id) REFERENCES {$this->tables['gifts']}(id) 
-                           ON DELETE SET NULL";
-        }
-        
-        // Quiz Sessions -> Participants
-        if (!in_array('fk_sessions_participant', $existing_constraints)) {
-            $constraints[] = "ALTER TABLE {$this->tables['quiz_sessions']} 
-                           ADD CONSTRAINT fk_sessions_participant 
-                           FOREIGN KEY (participant_id) REFERENCES {$this->tables['participants']}(id) 
-                           ON DELETE CASCADE";
-        }
-        
-        // Quiz Sessions -> Campaigns
-        if (!in_array('fk_sessions_campaign', $existing_constraints)) {
-            $constraints[] = "ALTER TABLE {$this->tables['quiz_sessions']} 
-                           ADD CONSTRAINT fk_sessions_campaign 
-                           FOREIGN KEY (campaign_id) REFERENCES {$this->tables['campaigns']}(id) 
-                           ON DELETE CASCADE";
-        }
-        
-        // Analytics -> Campaigns
-        if (!in_array('fk_analytics_campaign', $existing_constraints)) {
-            $constraints[] = "ALTER TABLE {$this->tables['analytics']} 
-                           ADD CONSTRAINT fk_analytics_campaign 
-                           FOREIGN KEY (campaign_id) REFERENCES {$this->tables['campaigns']}(id) 
-                           ON DELETE CASCADE";
-        }
-        
-        // Execute constraints
-        foreach ($constraints as $constraint_sql) {
-            $result = $this->wpdb->query($constraint_sql);
-            
-            if ($result === false) {
-                error_log("Vefify Quiz: Foreign key constraint failed: " . $this->wpdb->last_error);
-                error_log("SQL: " . $constraint_sql);
-                // Don't throw exception for foreign keys - they're optional for functionality
-            }
-        }
+        return true;
     }
     
     /**
-     * Get existing foreign key constraints
+     * Check if tables need to be updated
      */
-    private function get_existing_foreign_keys() {
-        $constraints = array();
+    public function needs_update() {
+        $current_version = get_option('vefify_quiz_db_version', '0.0.0');
+        return version_compare($current_version, '2.0.0', '<');
+    }
+    
+    /**
+     * Create participants table
+     */
+    private function create_participants_table() {
+        $table_name = $this->table_prefix . 'participants';
         
-        foreach ($this->tables as $table_name) {
-            $results = $this->wpdb->get_results("
-                SELECT CONSTRAINT_NAME
-                FROM information_schema.REFERENTIAL_CONSTRAINTS 
-                WHERE CONSTRAINT_SCHEMA = DATABASE()
-                AND TABLE_NAME = '{$table_name}'
-            ");
-            
-            foreach ($results as $row) {
-                $constraints[] = $row->CONSTRAINT_NAME;
-            }
+        $sql = "CREATE TABLE IF NOT EXISTS `{$table_name}` (
+            `id` int(11) NOT NULL AUTO_INCREMENT,
+            `campaign_id` int(11) NOT NULL,
+            `full_name` varchar(255) NOT NULL,
+            `email` varchar(255) NOT NULL,
+            `phone` varchar(20) NOT NULL,
+            `province` varchar(100) NOT NULL,
+            `district` varchar(100) DEFAULT NULL,
+            `pharmacist_code` varchar(50) DEFAULT NULL,
+            `company` varchar(255) DEFAULT NULL,
+            `score` int(11) DEFAULT NULL,
+            `total_questions` int(11) DEFAULT NULL,
+            `percentage` decimal(5,2) DEFAULT NULL,
+            `time_taken` int(11) DEFAULT NULL,
+            `gift_id` int(11) DEFAULT NULL,
+            `gift_code` varchar(100) DEFAULT NULL,
+            `gift_status` enum('none','assigned','claimed') DEFAULT 'none',
+            `status` enum('registered','started','completed','passed','failed') DEFAULT 'registered',
+            `registration_date` datetime NOT NULL,
+            `completion_date` datetime DEFAULT NULL,
+            `ip_address` varchar(45) DEFAULT NULL,
+            `user_agent` text DEFAULT NULL,
+            `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+            `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (`id`),
+            UNIQUE KEY `unique_phone_campaign` (`phone`, `campaign_id`),
+            KEY `idx_campaign_id` (`campaign_id`),
+            KEY `idx_phone` (`phone`),
+            KEY `idx_email` (`email`),
+            KEY `idx_status` (`status`),
+            KEY `idx_registration_date` (`registration_date`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
+        
+        require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+        dbDelta($sql);
+    }
+    
+    /**
+     * Create quiz sessions table
+     */
+    private function create_quiz_sessions_table() {
+        $table_name = $this->table_prefix . 'quiz_sessions';
+        
+        $sql = "CREATE TABLE IF NOT EXISTS `{$table_name}` (
+            `id` int(11) NOT NULL AUTO_INCREMENT,
+            `session_id` varchar(100) NOT NULL UNIQUE,
+            `participant_id` int(11) NOT NULL,
+            `campaign_id` int(11) NOT NULL,
+            `start_time` datetime NOT NULL,
+            `end_time` datetime DEFAULT NULL,
+            `status` enum('active','completed','expired','abandoned') DEFAULT 'active',
+            `ip_address` varchar(45) DEFAULT NULL,
+            `user_agent` text DEFAULT NULL,
+            `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+            `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (`id`),
+            UNIQUE KEY `session_id` (`session_id`),
+            KEY `idx_participant_id` (`participant_id`),
+            KEY `idx_campaign_id` (`campaign_id`),
+            KEY `idx_status` (`status`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
+        
+        require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+        dbDelta($sql);
+    }
+    
+    /**
+     * Create campaigns table
+     */
+    private function create_campaigns_table() {
+        $table_name = $this->table_prefix . 'campaigns';
+        
+        $sql = "CREATE TABLE IF NOT EXISTS `{$table_name}` (
+            `id` int(11) NOT NULL AUTO_INCREMENT,
+            `name` varchar(255) NOT NULL,
+            `description` text DEFAULT NULL,
+            `start_date` datetime NOT NULL,
+            `end_date` datetime NOT NULL,
+            `questions_per_quiz` int(11) DEFAULT 5,
+            `time_limit` int(11) DEFAULT 1800,
+            `pass_score` int(11) DEFAULT 3,
+            `max_attempts` int(11) DEFAULT 1,
+            `show_results` tinyint(1) DEFAULT 1,
+            `allow_restart` tinyint(1) DEFAULT 1,
+            `require_registration` tinyint(1) DEFAULT 1,
+            `is_active` tinyint(1) DEFAULT 1,
+            `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+            `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (`id`),
+            KEY `idx_active` (`is_active`),
+            KEY `idx_dates` (`start_date`, `end_date`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
+        
+        require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+        dbDelta($sql);
+    }
+    
+    /**
+     * Create questions table
+     */
+    private function create_questions_table() {
+        $table_name = $this->table_prefix . 'questions';
+        
+        $sql = "CREATE TABLE IF NOT EXISTS `{$table_name}` (
+            `id` int(11) NOT NULL AUTO_INCREMENT,
+            `campaign_id` int(11) DEFAULT NULL,
+            `question_text` text NOT NULL,
+            `question_type` enum('multiple_choice','true_false','single_choice') DEFAULT 'multiple_choice',
+            `difficulty` enum('easy','medium','hard') DEFAULT 'medium',
+            `category` varchar(100) DEFAULT NULL,
+            `explanation` text DEFAULT NULL,
+            `order_index` int(11) DEFAULT 0,
+            `is_active` tinyint(1) DEFAULT 1,
+            `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+            `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (`id`),
+            KEY `idx_campaign_id` (`campaign_id`),
+            KEY `idx_active` (`is_active`),
+            KEY `idx_difficulty` (`difficulty`),
+            KEY `idx_category` (`category`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
+        
+        require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+        dbDelta($sql);
+    }
+    
+    /**
+     * Create question options table
+     */
+    private function create_question_options_table() {
+        $table_name = $this->table_prefix . 'question_options';
+        
+        $sql = "CREATE TABLE IF NOT EXISTS `{$table_name}` (
+            `id` int(11) NOT NULL AUTO_INCREMENT,
+            `question_id` int(11) NOT NULL,
+            `option_text` text NOT NULL,
+            `is_correct` tinyint(1) DEFAULT 0,
+            `option_order` int(11) DEFAULT 0,
+            `explanation` text DEFAULT NULL,
+            `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+            `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (`id`),
+            KEY `idx_question_id` (`question_id`),
+            KEY `idx_correct` (`is_correct`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
+        
+        require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+        dbDelta($sql);
+    }
+    
+    /**
+     * Create gifts table
+     */
+    private function create_gifts_table() {
+        $table_name = $this->table_prefix . 'gifts';
+        
+        $sql = "CREATE TABLE IF NOT EXISTS `{$table_name}` (
+            `id` int(11) NOT NULL AUTO_INCREMENT,
+            `campaign_id` int(11) NOT NULL,
+            `gift_name` varchar(255) NOT NULL,
+            `gift_description` text DEFAULT NULL,
+            `gift_value` decimal(10,2) DEFAULT NULL,
+            `gift_type` enum('voucher','discount','product','points','cash') DEFAULT 'voucher',
+            `min_score` int(11) DEFAULT 0,
+            `max_score` int(11) DEFAULT NULL,
+            `max_quantity` int(11) DEFAULT NULL,
+            `used_count` int(11) DEFAULT 0,
+            `gift_code_prefix` varchar(20) DEFAULT 'GIFT',
+            `api_endpoint` varchar(500) DEFAULT NULL,
+            `api_params` text DEFAULT NULL,
+            `is_active` tinyint(1) DEFAULT 1,
+            `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+            `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (`id`),
+            KEY `idx_campaign_id` (`campaign_id`),
+            KEY `idx_active` (`is_active`),
+            KEY `idx_score_range` (`min_score`, `max_score`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
+        
+        require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+        dbDelta($sql);
+    }
+    
+    /**
+     * Create analytics table
+     */
+    private function create_analytics_table() {
+        $table_name = $this->table_prefix . 'analytics';
+        
+        $sql = "CREATE TABLE IF NOT EXISTS `{$table_name}` (
+            `id` int(11) NOT NULL AUTO_INCREMENT,
+            `campaign_id` int(11) NOT NULL,
+            `participant_id` int(11) DEFAULT NULL,
+            `event_type` varchar(100) NOT NULL,
+            `event_data` longtext DEFAULT NULL,
+            `session_id` varchar(100) DEFAULT NULL,
+            `ip_address` varchar(45) DEFAULT NULL,
+            `user_agent` text DEFAULT NULL,
+            `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (`id`),
+            KEY `idx_campaign_id` (`campaign_id`),
+            KEY `idx_participant_id` (`participant_id`),
+            KEY `idx_event_type` (`event_type`),
+            KEY `idx_created_at` (`created_at`),
+            KEY `idx_session_id` (`session_id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
+        
+        require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+        dbDelta($sql);
+    }
+    
+    /**
+     * Create form settings table
+     */
+    private function create_form_settings_table() {
+        $table_name = $this->table_prefix . 'form_settings';
+        
+        $sql = "CREATE TABLE IF NOT EXISTS `{$table_name}` (
+            `id` int(11) NOT NULL AUTO_INCREMENT,
+            `setting_name` varchar(100) NOT NULL UNIQUE,
+            `setting_value` longtext DEFAULT NULL,
+            `setting_type` enum('string','number','boolean','json','text') DEFAULT 'string',
+            `description` text DEFAULT NULL,
+            `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+            `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (`id`),
+            UNIQUE KEY `setting_name` (`setting_name`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
+        
+        require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+        dbDelta($sql);
+    }
+    
+    /**
+     * Insert sample data
+     */
+    private function insert_sample_data() {
+        // Check if sample data already exists
+        $campaigns_table = $this->table_prefix . 'campaigns';
+        $existing = $this->wpdb->get_var("SELECT COUNT(*) FROM {$campaigns_table}");
+        
+        if ($existing > 0) {
+            return; // Sample data already exists
         }
         
-        return $constraints;
-    }
-    
-    /**
-     * Get table name by key
-     */
-    public function get_table_name($table_key) {
-        return isset($this->tables[$table_key]) ? $this->tables[$table_key] : null;
-    }
-    
-    /**
-     * Get all table names
-     */
-    public function get_all_tables() {
-        return $this->tables;
-    }
-    
-    /**
-     * Check if tables exist
-     */
-    public function verify_tables() {
-        $missing_tables = array();
-        
-        foreach ($this->tables as $key => $table_name) {
-            $table_exists = $this->wpdb->get_var(
-                $this->wpdb->prepare("SHOW TABLES LIKE %s", $table_name)
-            );
-            
-            if (!$table_exists) {
-                $missing_tables[] = $key;
-            }
-        }
-        
-        return $missing_tables;
-    }
-    
-    /**
-     * Get WordPress database instance
-     */
-    public function get_wpdb() {
-        return $this->wpdb;
-    }
-    
-    /**
-     * Insert sample data after tables are created
-     */
-    public function insert_sample_data() {
-        $this->wpdb->query('START TRANSACTION');
-        
-        try {
-            // Insert sample campaign
-            $campaign_id = $this->insert_sample_campaign();
-            
-            // Insert sample questions with options
-            $question_ids = $this->insert_sample_questions($campaign_id);
-            
-            // Insert sample gifts
-            $this->insert_sample_gifts($campaign_id);
-            
-            // Insert sample participants - USING CORRECT COLUMN NAMES
-            $this->insert_sample_participants($campaign_id);
-            
-            $this->wpdb->query('COMMIT');
-            return true;
-            
-        } catch (Exception $e) {
-            $this->wpdb->query('ROLLBACK');
-            error_log('Sample data insertion failed: ' . $e->getMessage());
-            return false;
-        }
-    }
-    
-    private function insert_sample_campaign() {
-        $campaign_data = array(
-            'name' => 'Health Knowledge Quiz 2024',
-            'slug' => 'health-quiz-2024',
-            'description' => 'Test your health and wellness knowledge',
-            'start_date' => '2024-01-01 00:00:00',
-            'end_date' => '2024-12-31 23:59:59',
-            'is_active' => 1,
-            'max_participants' => 1000,
-            'questions_per_quiz' => 5,
-            'time_limit' => 600,
-            'pass_score' => 3,
-            'created_at' => current_time('mysql')
+        // Insert sample campaign
+        $this->wpdb->insert(
+            $campaigns_table,
+            array(
+                'id' => 1,
+                'name' => 'Pharmacy Knowledge Quiz',
+                'description' => 'Test your knowledge about pharmacy and medication',
+                'start_date' => date('Y-m-d H:i:s', strtotime('-1 day')),
+                'end_date' => date('Y-m-d H:i:s', strtotime('+30 days')),
+                'questions_per_quiz' => 5,
+                'time_limit' => 900,
+                'pass_score' => 3,
+                'is_active' => 1
+            ),
+            array('%d', '%s', '%s', '%s', '%s', '%d', '%d', '%d', '%d')
         );
         
-        $result = $this->wpdb->insert($this->tables['campaigns'], $campaign_data);
-        
-        if ($result === false) {
-            throw new Exception('Failed to insert sample campaign: ' . $this->wpdb->last_error);
-        }
-        
-        return $this->wpdb->insert_id;
-    }
-    
-    private function insert_sample_questions($campaign_id) {
+        // Insert sample questions
+        $questions_table = $this->table_prefix . 'questions';
         $questions = array(
-            array(
-                'question_text' => 'What is the recommended daily water intake for adults?',
-                'question_type' => 'multiple_choice',
-                'category' => 'nutrition',
-                'difficulty' => 'easy',
-                'points' => 1,
-                'explanation' => 'Adults should drink about 8 glasses (2 liters) of water daily.',
-                'options' => array(
-                    array('option_text' => '1 liter', 'is_correct' => 0),
-                    array('option_text' => '2 liters', 'is_correct' => 1),
-                    array('option_text' => '3 liters', 'is_correct' => 0),
-                    array('option_text' => '4 liters', 'is_correct' => 0)
-                )
-            ),
-            array(
-                'question_text' => 'Which vitamin is essential for bone health?',
-                'question_type' => 'multiple_choice', 
-                'category' => 'nutrition',
-                'difficulty' => 'medium',
-                'points' => 2,
-                'explanation' => 'Vitamin D helps the body absorb calcium for strong bones.',
-                'options' => array(
-                    array('option_text' => 'Vitamin A', 'is_correct' => 0),
-                    array('option_text' => 'Vitamin C', 'is_correct' => 0),
-                    array('option_text' => 'Vitamin D', 'is_correct' => 1),
-                    array('option_text' => 'Vitamin E', 'is_correct' => 0)
-                )
-            ),
-            array(
-                'question_text' => 'Exercise is important for maintaining good health.',
-                'question_type' => 'true_false',
-                'category' => 'fitness',
-                'difficulty' => 'easy',
-                'points' => 1,
-                'explanation' => 'Regular exercise is crucial for physical and mental health.',
-                'options' => array(
-                    array('option_text' => 'True', 'is_correct' => 1),
-                    array('option_text' => 'False', 'is_correct' => 0)
-                )
-            )
+            array(1, 'What is the primary use of Aspirin?', 'multiple_choice', 'easy', 'medication'),
+            array(1, 'Which vitamin is essential for bone health?', 'multiple_choice', 'medium', 'nutrition'),
+            array(1, 'What is the recommended storage temperature for insulin?', 'multiple_choice', 'medium', 'medication'),
+            array(1, 'Which of these is an antibiotic?', 'multiple_choice', 'easy', 'medication'),
+            array(1, 'What does OTC stand for in pharmacy?', 'multiple_choice', 'easy', 'general')
         );
         
-        $question_ids = array();
-        
-        foreach ($questions as $question_data) {
-            $options = $question_data['options'];
-            unset($question_data['options']);
-            
-            $question_data['campaign_id'] = $campaign_id;
-            $question_data['is_active'] = 1;
-            $question_data['created_at'] = current_time('mysql');
-            
-            $result = $this->wpdb->insert($this->tables['questions'], $question_data);
-            
-            if ($result === false) {
-                throw new Exception('Failed to insert question: ' . $this->wpdb->last_error);
-            }
-            
-            $question_id = $this->wpdb->insert_id;
-            $question_ids[] = $question_id;
-            
-            // Insert options
-            foreach ($options as $index => $option) {
-                $option['question_id'] = $question_id;
-                $option['order_index'] = $index;
-                $option['created_at'] = current_time('mysql');
-                
-                $result = $this->wpdb->insert($this->tables['question_options'], $option);
-                
-                if ($result === false) {
-                    throw new Exception('Failed to insert option: ' . $this->wpdb->last_error);
-                }
-            }
+        foreach ($questions as $i => $question) {
+            $this->wpdb->insert(
+                $questions_table,
+                array(
+                    'id' => $i + 1,
+                    'campaign_id' => $question[0],
+                    'question_text' => $question[1],
+                    'question_type' => $question[2],
+                    'difficulty' => $question[3],
+                    'category' => $question[4],
+                    'is_active' => 1
+                ),
+                array('%d', '%d', '%s', '%s', '%s', '%s', '%d')
+            );
         }
         
-        return $question_ids;
-    }
-    
-    private function insert_sample_gifts($campaign_id) {
+        // Insert sample question options
+        $options_table = $this->table_prefix . 'question_options';
+        $options = array(
+            // Question 1 options
+            array(1, 'Pain relief and fever reduction', 1, 1),
+            array(1, 'Sleep aid', 0, 2),
+            array(1, 'Anxiety treatment', 0, 3),
+            array(1, 'Appetite suppressant', 0, 4),
+            // Question 2 options
+            array(2, 'Vitamin A', 0, 1),
+            array(2, 'Vitamin C', 0, 2),
+            array(2, 'Vitamin D', 1, 3),
+            array(2, 'Vitamin E', 0, 4),
+            // Question 3 options
+            array(3, 'Room temperature', 0, 1),
+            array(3, '2-8°C (refrigerated)', 1, 2),
+            array(3, 'Frozen (-18°C)', 0, 3),
+            array(3, 'Above 25°C', 0, 4),
+            // Question 4 options
+            array(4, 'Ibuprofen', 0, 1),
+            array(4, 'Amoxicillin', 1, 2),
+            array(4, 'Paracetamol', 0, 3),
+            array(4, 'Aspirin', 0, 4),
+            // Question 5 options
+            array(5, 'Over The Counter', 1, 1),
+            array(5, 'Official Treatment Center', 0, 2),
+            array(5, 'Optimal Treatment Care', 0, 3),
+            array(5, 'Outpatient Treatment Clinic', 0, 4)
+        );
+        
+        foreach ($options as $option) {
+            $this->wpdb->insert(
+                $options_table,
+                array(
+                    'question_id' => $option[0],
+                    'option_text' => $option[1],
+                    'is_correct' => $option[2],
+                    'option_order' => $option[3]
+                ),
+                array('%d', '%s', '%d', '%d')
+            );
+        }
+        
+        // Insert sample gifts
+        $gifts_table = $this->table_prefix . 'gifts';
         $gifts = array(
-            array(
-                'campaign_id' => $campaign_id,
-                'gift_name' => '10% Discount Voucher',
-                'gift_type' => 'discount',
-                'gift_value' => '10%',
-                'gift_description' => '10% discount on next purchase',
-                'min_score' => 3,
-                'max_score' => 4,
-                'max_quantity' => 100,
-                'gift_code_prefix' => 'SAVE10',
-                'is_active' => 1,
-                'created_at' => current_time('mysql')
-            ),
-            array(
-                'campaign_id' => $campaign_id,
-                'gift_name' => '50K VND Voucher',
-                'gift_type' => 'voucher',
-                'gift_value' => '50000 VND',
-                'gift_description' => 'Cash voucher worth 50,000 VND',
-                'min_score' => 5,
-                'max_score' => null,
-                'max_quantity' => 20,
-                'gift_code_prefix' => 'GIFT50K',
-                'is_active' => 1,
-                'created_at' => current_time('mysql')
-            )
+            array(1, '10% Discount Voucher', 'Get 10% off your next purchase', 10.00, 3, 4, 100, 'DISC10'),
+            array(1, '20% Premium Discount', 'Get 20% off premium products', 20.00, 5, 5, 50, 'PREM20'),
+            array(1, 'Free Consultation', 'Free 30-minute pharmacy consultation', 50.00, 4, 5, 25, 'CONSULT')
         );
         
-        foreach ($gifts as $gift_data) {
-            $result = $this->wpdb->insert($this->tables['gifts'], $gift_data);
-            
-            if ($result === false) {
-                throw new Exception('Failed to insert gift: ' . $this->wpdb->last_error);
-            }
+        foreach ($gifts as $i => $gift) {
+            $this->wpdb->insert(
+                $gifts_table,
+                array(
+                    'id' => $i + 1,
+                    'campaign_id' => $gift[0],
+                    'gift_name' => $gift[1],
+                    'gift_description' => $gift[2],
+                    'gift_value' => $gift[3],
+                    'min_score' => $gift[4],
+                    'max_score' => $gift[5],
+                    'max_quantity' => $gift[6],
+                    'gift_code_prefix' => $gift[7],
+                    'is_active' => 1
+                ),
+                array('%d', '%d', '%s', '%s', '%f', '%d', '%d', '%d', '%s', '%d')
+            );
+        }
+        
+        // Insert form settings
+        $settings_table = $this->table_prefix . 'form_settings';
+        $settings = array(
+            array('enable_district_selection', '1', 'boolean', 'Enable district selection dropdown'),
+            array('show_pharmacist_code', '1', 'boolean', 'Show pharmacist code field'),
+            array('require_pharmacist_code', '0', 'boolean', 'Make pharmacist code required'),
+            array('show_email', '1', 'boolean', 'Show email field'),
+            array('require_email', '1', 'boolean', 'Make email required'),
+            array('show_company', '1', 'boolean', 'Show company/organization field'),
+            array('require_company', '0', 'boolean', 'Make company field required'),
+            array('show_gift_preview', '1', 'boolean', 'Show gift preview on registration'),
+            array('gift_preview_text', 'Complete the quiz to win exciting prizes!', 'text', 'Text to show in gift preview'),
+            array('form_theme', 'modern', 'string', 'Form theme (modern, classic, minimal)'),
+            array('enable_phone_validation', '1', 'boolean', 'Enable real-time phone validation')
+        );
+        
+        foreach ($settings as $setting) {
+            $this->wpdb->insert(
+                $settings_table,
+                array(
+                    'setting_name' => $setting[0],
+                    'setting_value' => $setting[1],
+                    'setting_type' => $setting[2],
+                    'description' => $setting[3]
+                ),
+                array('%s', '%s', '%s', '%s')
+            );
         }
     }
     
     /**
-     * Insert sample participants - USING CORRECT COLUMN NAMES
+     * Create additional indexes for performance
      */
-    private function insert_sample_participants($campaign_id) {
-        $participants = array(
-            array(
-                'campaign_id' => $campaign_id,
-                'session_id' => 'sess_' . uniqid(),
-                'participant_name' => 'John Doe',
-                'participant_email' => 'john@example.com',
-                'participant_phone' => '+84901234567',
-                'province' => 'Ho Chi Minh',
-                'pharmacy_code' => 'PH001',
-                'quiz_status' => 'completed',
-                'start_time' => current_time('mysql'),
-                'end_time' => current_time('mysql'),
-                'final_score' => 4,
-                'total_questions' => 5,
-                'completion_time' => 180,
-                'gift_status' => 'assigned',
-                'created_at' => current_time('mysql')
-            ),
-            array(
-                'campaign_id' => $campaign_id,
-                'session_id' => 'sess_' . uniqid(),
-                'participant_name' => 'Jane Smith',
-                'participant_email' => 'jane@example.com',
-                'participant_phone' => '+84901234568',
-                'province' => 'Ha Noi',
-                'pharmacy_code' => 'PH002',
-                'quiz_status' => 'in_progress',
-                'start_time' => current_time('mysql'),
-                'final_score' => 2,
-                'total_questions' => 5,
-                'gift_status' => 'none',
-                'created_at' => current_time('mysql')
-            ),
-            array(
-                'campaign_id' => $campaign_id,
-                'session_id' => 'sess_' . uniqid(),
-                'participant_name' => 'Mike Johnson',
-                'participant_email' => 'mike@example.com',
-                'participant_phone' => '+84901234569',
-                'province' => 'Da Nang',
-                'pharmacy_code' => 'PH003',
-                'quiz_status' => 'completed',
-                'start_time' => date('Y-m-d H:i:s', strtotime('-1 day')),
-                'end_time' => date('Y-m-d H:i:s', strtotime('-1 day')),
-                'final_score' => 5,
-                'total_questions' => 5,
-                'completion_time' => 120,
-                'gift_status' => 'claimed',
-                'created_at' => date('Y-m-d H:i:s', strtotime('-1 day'))
-            )
+    private function create_indexes() {
+        $queries = array(
+            "CREATE INDEX IF NOT EXISTS idx_participants_phone_campaign ON {$this->table_prefix}participants (phone, campaign_id)",
+            "CREATE INDEX IF NOT EXISTS idx_participants_email_campaign ON {$this->table_prefix}participants (email, campaign_id)",
+            "CREATE INDEX IF NOT EXISTS idx_analytics_event_date ON {$this->table_prefix}analytics (event_type, created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_questions_campaign_active ON {$this->table_prefix}questions (campaign_id, is_active)",
+            "CREATE INDEX IF NOT EXISTS idx_gifts_campaign_score ON {$this->table_prefix}gifts (campaign_id, min_score, max_score, is_active)"
         );
         
-        foreach ($participants as $participant_data) {
-            $result = $this->wpdb->insert($this->tables['participants'], $participant_data);
-            
-            if ($result === false) {
-                throw new Exception('Failed to insert participant: ' . $this->wpdb->last_error);
-            }
+        foreach ($queries as $query) {
+            $this->wpdb->query($query);
         }
     }
     
     /**
-     * Clean database
+     * Get installation status
      */
-    public function drop_all_tables() {
-        // Drop in reverse order to handle foreign keys
-        $tables_to_drop = array_reverse($this->tables);
+    public function get_installation_status() {
+        $tables = array(
+            'participants', 'quiz_sessions', 'campaigns', 'questions', 
+            'question_options', 'gifts', 'analytics', 'form_settings'
+        );
         
-        foreach ($tables_to_drop as $table_name) {
+        $status = array();
+        
+        foreach ($tables as $table) {
+            $table_name = $this->table_prefix . $table;
+            $exists = $this->wpdb->get_var("SHOW TABLES LIKE '{$table_name}'") === $table_name;
+            
+            if ($exists) {
+                $count = $this->wpdb->get_var("SELECT COUNT(*) FROM {$table_name}");
+                $status[$table] = array('exists' => true, 'records' => intval($count));
+            } else {
+                $status[$table] = array('exists' => false, 'records' => 0);
+            }
+        }
+        
+        return $status;
+    }
+    
+    /**
+     * Uninstall (remove all tables and data)
+     */
+    public function uninstall() {
+        $tables = array(
+            'analytics', 'quiz_sessions', 'question_options', 'questions', 
+            'gifts', 'participants', 'campaigns', 'form_settings'
+        );
+        
+        foreach ($tables as $table) {
+            $table_name = $this->table_prefix . $table;
             $this->wpdb->query("DROP TABLE IF EXISTS {$table_name}");
         }
-    }
-    
-    /**
-     * Get database statistics
-     */
-    public function get_database_stats() {
-        $stats = array();
         
-        foreach ($this->tables as $key => $table_name) {
-            $count = $this->wpdb->get_var("SELECT COUNT(*) FROM {$table_name}");
-            $stats[$key] = array(
-                'table' => $table_name,
-                'count' => intval($count)
-            );
-        }
+        // Remove options
+        delete_option('vefify_quiz_db_version');
+        delete_option('vefify_quiz_version');
+        delete_option('vefify_quiz_settings');
         
-        return $stats;
+        return true;
     }
-	/**
-     * Database query methods for module compatibility
-     */
-    
-    /**
- * Get results from database - FIXED
- */
-public function get_results($query, $output_type = OBJECT) {
-    // Ensure $output_type is a valid constant, not an array
-    if (is_array($output_type)) {
-        $output_type = OBJECT;
-    }
-    
-    // Valid output types
-    $valid_types = array(OBJECT, OBJECT_K, ARRAY_A, ARRAY_N);
-    if (!in_array($output_type, $valid_types)) {
-        $output_type = OBJECT;
-    }
-    
-    return $this->wpdb->get_results($query, $output_type);
 }
 
-/**
- * Get single row from database - FIXED
- */
-public function get_row($query, $output_type = OBJECT, $row_offset = 0) {
-    // Ensure $output_type is a valid constant
-    if (is_array($output_type)) {
-        $output_type = OBJECT;
-    }
-    
-    $valid_types = array(OBJECT, ARRAY_A, ARRAY_N);
-    if (!in_array($output_type, $valid_types)) {
-        $output_type = OBJECT;
-    }
-    
-    return $this->wpdb->get_row($query, $output_type, $row_offset);
+// Usage example:
+/*
+// Install database
+$installer = new Vefify_Database_Installer();
+
+if ($installer->needs_update()) {
+    $installer->install();
+    echo "Database installed/updated successfully!";
 }
 
-/**
- * Get single variable from database
- */
-public function get_var($query, $column_offset = 0, $row_offset = 0) {
-    return $this->wpdb->get_var($query, $column_offset, $row_offset);
+// Check status
+$status = $installer->get_installation_status();
+foreach ($status as $table => $info) {
+    echo "Table {$table}: " . ($info['exists'] ? "✅ Exists ({$info['records']} records)" : "❌ Missing") . "\n";
 }
-
-/**
- * Insert data into table
- */
-public function insert($table, $data, $format = null) {
-    return $this->wpdb->insert($table, $data, $format);
-}
-
-/**
- * Update data in table
- */
-public function update($table, $data, $where, $format = null, $where_format = null) {
-    return $this->wpdb->update($table, $data, $where, $format, $where_format);
-}
-
-/**
- * Delete data from table
- */
-public function delete($table, $where, $where_format = null) {
-    return $this->wpdb->delete($table, $where, $where_format);
-}
-
-/**
- * Prepare SQL query
- */
-public function prepare($query, ...$args) {
-    return $this->wpdb->prepare($query, ...$args);
-}
-
-/**
- * Execute a query
- */
-public function query($query) {
-    return $this->wpdb->query($query);
-}
-
-/**
- * Get last insert ID
- */
-public function get_insert_id() {
-    return $this->wpdb->insert_id;
-}
-
-/**
- * Get last error
- */
-public function get_last_error() {
-    return $this->wpdb->last_error;
-}
-
-
-}
+*/
+?>
