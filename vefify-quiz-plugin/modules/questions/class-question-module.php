@@ -1,9 +1,10 @@
 <?php
 /**
- * Enhanced Question Module Controller
+ * FIXED Question Module Loader
  * File: modules/questions/class-question-module.php
  * 
- * Main controller that loads and orchestrates all question-related functionality
+ * Main class that loads and initializes all question-related functionality
+ * FIXED: Proper PHP syntax and integration with centralized database
  */
 
 if (!defined('ABSPATH')) {
@@ -32,7 +33,6 @@ class Vefify_Question_Module {
     private function __construct() {
         $this->load_dependencies();
         $this->init_components();
-        $this->init_hooks();
     }
     
     /**
@@ -41,109 +41,98 @@ class Vefify_Question_Module {
     private function load_dependencies() {
         $module_path = plugin_dir_path(__FILE__);
         
-        // Core components
+        // Load core components
         require_once $module_path . 'class-question-model.php';
-        
-        // Admin components (only in admin)
-        if (is_admin()) {
-            require_once $module_path . 'class-question-bank.php';
-        }
+        require_once $module_path . 'class-question-bank.php';
     }
     
     /**
      * Initialize components
      */
     private function init_components() {
-        // Always initialize model (needed for frontend and admin)
+        // Initialize model (data handling)
         $this->model = new Vefify_Question_Model();
         
-        // Initialize admin interface only in admin area
+        // Initialize admin interface (only in admin)
         if (is_admin()) {
             $this->bank = new Vefify_Question_Bank();
         }
+        
+        // Hook into WordPress
+        $this->init_hooks();
     }
     
     /**
      * Initialize WordPress hooks
      */
     private function init_hooks() {
-        // Admin hooks
-        if (is_admin()) {
-            add_action('admin_menu', array($this, 'add_admin_menu'));
-            add_filter('vefify_quiz_admin_menu_items', array($this, 'register_admin_menu_item'));
-        }
+        // Legacy function compatibility
+        add_action('init', array($this, 'register_legacy_functions'));
         
-        // Frontend hooks
+        // Shortcode support
         add_shortcode('vefify_quiz_question', array($this, 'render_single_question_shortcode'));
         
-        // AJAX handlers (both admin and frontend)
+        // AJAX handlers for public-facing functionality
         add_action('wp_ajax_vefify_get_quiz_questions', array($this, 'ajax_get_quiz_questions'));
         add_action('wp_ajax_nopriv_vefify_get_quiz_questions', array($this, 'ajax_get_quiz_questions'));
         
         add_action('wp_ajax_vefify_validate_quiz_answers', array($this, 'ajax_validate_quiz_answers'));
         add_action('wp_ajax_nopriv_vefify_validate_quiz_answers', array($this, 'ajax_validate_quiz_answers'));
         
-        // Enqueue scripts
+        // Enqueue frontend scripts
         add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_scripts'));
     }
     
     /**
-     * Register admin menu item with the main plugin
+     * Register legacy functions for backward compatibility
      */
-    public function register_admin_menu_item($menu_items) {
-        $menu_items[] = array(
-            'page_title' => 'Question Bank',
-            'menu_title' => '❓ Questions',
-            'capability' => 'manage_options',
-            'menu_slug' => 'vefify-questions',
-            'callback' => array($this, 'admin_page_callback'),
-            'position' => 20
-        );
-        
-        return $menu_items;
-    }
-    
-    /**
-     * Add admin menu (fallback if main plugin doesn't handle it)
-     */
-    public function add_admin_menu() {
-        // Only add if parent menu doesn't exist
-        if (!menu_page_url('vefify-quiz', false)) {
-            add_menu_page(
-                'Vefify Quiz',
-                'Vefify Quiz',
-                'manage_options',
-                'vefify-quiz',
-                '',
-                'dashicons-forms',
-                30
-            );
+    public function register_legacy_functions() {
+        // These functions maintain compatibility with existing code
+        if (!function_exists('vefify_get_question')) {
+            function vefify_get_question($question_id) {
+                $module = Vefify_Question_Module::get_instance();
+                return $module->get_model()->get_question($question_id);
+            }
         }
         
-        // Add questions submenu
-        add_submenu_page(
-            'vefify-quiz',
-            'Question Bank',
-            '❓ Questions',
-            'manage_options',
-            'vefify-questions',
-            array($this, 'admin_page_callback')
-        );
-    }
-    
-    /**
-     * Admin page callback
-     */
-    public function admin_page_callback() {
-        if ($this->bank) {
-            $this->bank->admin_page_router();
-        } else {
-            echo '<div class="wrap"><h1>Question Bank</h1><p>Admin interface not available.</p></div>';
+        if (!function_exists('vefify_create_question')) {
+            function vefify_create_question($data) {
+                $module = Vefify_Question_Module::get_instance();
+                return $module->get_model()->create_question($data);
+            }
+        }
+        
+        if (!function_exists('vefify_update_question')) {
+            function vefify_update_question($question_id, $data) {
+                $module = Vefify_Question_Module::get_instance();
+                return $module->get_model()->update_question($question_id, $data);
+            }
+        }
+        
+        if (!function_exists('vefify_delete_question')) {
+            function vefify_delete_question($question_id) {
+                $module = Vefify_Question_Module::get_instance();
+                return $module->get_model()->delete_question($question_id);
+            }
+        }
+        
+        if (!function_exists('vefify_get_questions')) {
+            function vefify_get_questions($args = array()) {
+                $module = Vefify_Question_Module::get_instance();
+                return $module->get_model()->get_questions($args);
+            }
+        }
+        
+        if (!function_exists('vefify_validate_question_data')) {
+            function vefify_validate_question_data($data) {
+                $module = Vefify_Question_Module::get_instance();
+                return $module->get_model()->validate_question_data($data);
+            }
         }
     }
     
     /**
-     * Enqueue frontend scripts
+     * Enqueue frontend scripts for quiz functionality
      */
     public function enqueue_frontend_scripts() {
         // Only enqueue on pages that might have quiz shortcodes
@@ -154,45 +143,43 @@ class Vefify_Question_Module {
             has_shortcode($post->post_content, 'vefify_quiz_question')
         )) {
             wp_enqueue_script(
-                'vefify-questions-frontend',
-                plugin_dir_url(__FILE__) . 'assets/questions-frontend.js',
+                'vefify-question-frontend',
+                plugin_dir_url(__FILE__) . 'assets/question-frontend.js',
                 array('jquery'),
                 VEFIFY_QUIZ_VERSION,
                 true
             );
             
             wp_enqueue_style(
-                'vefify-questions-frontend',
-                plugin_dir_url(__FILE__) . 'assets/questions-frontend.css',
+                'vefify-question-frontend',
+                plugin_dir_url(__FILE__) . 'assets/question-frontend.css',
                 array(),
                 VEFIFY_QUIZ_VERSION
             );
             
-            // Localize script
-            wp_localize_script('vefify-questions-frontend', 'vefifyQuestions', array(
+            // Localize script with API endpoints
+            wp_localize_script('vefify-question-frontend', 'vefifyQuestions', array(
+                'restUrl' => rest_url('vefify/v1/'),
+                'nonce' => wp_create_nonce('wp_rest'),
                 'ajaxUrl' => admin_url('admin-ajax.php'),
-                'nonce' => wp_create_nonce('vefify_questions_frontend'),
                 'strings' => array(
                     'loading' => __('Loading questions...', 'vefify-quiz'),
                     'error' => __('An error occurred. Please try again.', 'vefify-quiz'),
                     'submit' => __('Submit Answer', 'vefify-quiz'),
                     'next' => __('Next Question', 'vefify-quiz'),
                     'previous' => __('Previous Question', 'vefify-quiz'),
-                    'finish' => __('Finish Quiz', 'vefify-quiz'),
-                    'correct' => __('Correct!', 'vefify-quiz'),
-                    'incorrect' => __('Incorrect', 'vefify-quiz'),
-                    'timeUp' => __('Time is up!', 'vefify-quiz')
+                    'finish' => __('Finish Quiz', 'vefify-quiz')
                 )
             ));
         }
     }
     
     /**
-     * AJAX: Get quiz questions for frontend
+     * AJAX handler to get quiz questions
      */
     public function ajax_get_quiz_questions() {
         // Verify nonce
-        if (!wp_verify_nonce($_POST['nonce'] ?? '', 'vefify_questions_frontend')) {
+        if (!wp_verify_nonce($_POST['nonce'] ?? '', 'wp_rest')) {
             wp_send_json_error('Security check failed');
         }
         
@@ -206,13 +193,12 @@ class Vefify_Question_Module {
         }
         
         try {
-            // Get questions
+            // Use the model to get questions
             $args = array(
                 'campaign_id' => $campaign_id,
                 'is_active' => 1,
                 'per_page' => $count * 2, // Get more for randomization
-                'page' => 1,
-                'include_options' => true
+                'page' => 1
             );
             
             if ($difficulty) {
@@ -230,7 +216,7 @@ class Vefify_Question_Module {
             shuffle($questions);
             $questions = array_slice($questions, 0, $count);
             
-            // Format for frontend (remove correct answers for security)
+            // Format for frontend (remove sensitive data)
             $formatted_questions = array();
             foreach ($questions as $question) {
                 $formatted_question = array(
@@ -243,7 +229,7 @@ class Vefify_Question_Module {
                     'options' => array()
                 );
                 
-                // Add options without correct answer information
+                // Get options without correct answers
                 foreach ($question->options as $option) {
                     $formatted_question['options'][] = array(
                         'id' => $option->id,
@@ -266,11 +252,11 @@ class Vefify_Question_Module {
     }
     
     /**
-     * AJAX: Validate quiz answers
+     * AJAX handler to validate quiz answers
      */
     public function ajax_validate_quiz_answers() {
         // Verify nonce
-        if (!wp_verify_nonce($_POST['nonce'] ?? '', 'vefify_questions_frontend')) {
+        if (!wp_verify_nonce($_POST['nonce'] ?? '', 'wp_rest')) {
             wp_send_json_error('Security check failed');
         }
         
@@ -320,7 +306,6 @@ class Vefify_Question_Module {
                 
                 $results[$question_id] = array(
                     'question_id' => $question_id,
-                    'question_text' => $question->question_text,
                     'user_answers' => $user_answers,
                     'correct_answers' => $correct_answers,
                     'is_correct' => $is_correct,
@@ -330,21 +315,18 @@ class Vefify_Question_Module {
                 );
             }
             
-            // Calculate summary
+            // Calculate percentage
             $max_possible_score = array_sum(array_column($results, 'max_points'));
-            $correct_count = count(array_filter($results, function($r) { return $r['is_correct']; }));
             $percentage = $max_possible_score > 0 ? round(($total_score / $max_possible_score) * 100, 2) : 0;
             
             wp_send_json_success(array(
                 'results' => $results,
                 'summary' => array(
                     'total_questions' => $total_questions,
-                    'correct_answers' => $correct_count,
-                    'incorrect_answers' => $total_questions - $correct_count,
+                    'correct_answers' => count(array_filter($results, function($r) { return $r['is_correct']; })),
                     'total_score' => $total_score,
                     'max_possible_score' => $max_possible_score,
-                    'percentage' => $percentage,
-                    'grade' => $this->calculate_grade($percentage)
+                    'percentage' => $percentage
                 )
             ));
             
@@ -370,7 +352,7 @@ class Vefify_Question_Module {
         }
         
         $question = $this->model->get_question($question_id);
-        if (!$question) {
+        if (!$question || is_wp_error($question)) {
             return '<div class="vefify-error">Question not found</div>';
         }
         
@@ -446,7 +428,7 @@ class Vefify_Question_Module {
     }
     
     /**
-     * Utility: Get questions for a campaign
+     * Utility method to get questions for a campaign
      */
     public function get_campaign_questions($campaign_id, $count = 5, $options = array()) {
         $defaults = array(
@@ -462,8 +444,7 @@ class Vefify_Question_Module {
             'campaign_id' => $campaign_id,
             'is_active' => 1,
             'per_page' => $options['randomize'] ? $count * 2 : $count,
-            'page' => 1,
-            'include_options' => true
+            'page' => 1
         );
         
         if ($options['difficulty']) {
@@ -519,6 +500,86 @@ class Vefify_Question_Module {
     }
     
     /**
+     * Validate answers and return detailed results
+     */
+    public function validate_answers($answers, $include_explanations = true) {
+        if (!is_array($answers) || empty($answers)) {
+            return new WP_Error('invalid_answers', 'Invalid answers format');
+        }
+        
+        $results = array();
+        $total_score = 0;
+        $total_questions = count($answers);
+        
+        foreach ($answers as $question_id => $user_answers) {
+            $question_id = intval($question_id);
+            $question = $this->model->get_question($question_id);
+            
+            if (!$question || is_wp_error($question)) {
+                continue;
+            }
+            
+            // Get correct answers
+            $correct_answers = array();
+            foreach ($question->options as $option) {
+                if ($option->is_correct) {
+                    $correct_answers[] = $option->id;
+                }
+            }
+            
+            // Normalize user answers
+            if (!is_array($user_answers)) {
+                $user_answers = array($user_answers);
+            }
+            $user_answers = array_map('intval', $user_answers);
+            
+            // Check if correct
+            $is_correct = (
+                count($correct_answers) === count($user_answers) &&
+                empty(array_diff($correct_answers, $user_answers))
+            );
+            
+            if ($is_correct) {
+                $total_score += $question->points;
+            }
+            
+            $result = array(
+                'question_id' => $question_id,
+                'question_text' => $question->question_text,
+                'user_answers' => $user_answers,
+                'correct_answers' => $correct_answers,
+                'is_correct' => $is_correct,
+                'points_earned' => $is_correct ? $question->points : 0,
+                'max_points' => $question->points
+            );
+            
+            if ($include_explanations && $question->explanation) {
+                $result['explanation'] = $question->explanation;
+            }
+            
+            $results[$question_id] = $result;
+        }
+        
+        // Calculate summary statistics
+        $max_possible_score = array_sum(array_column($results, 'max_points'));
+        $correct_count = count(array_filter($results, function($r) { return $r['is_correct']; }));
+        $percentage = $max_possible_score > 0 ? round(($total_score / $max_possible_score) * 100, 2) : 0;
+        
+        return array(
+            'results' => $results,
+            'summary' => array(
+                'total_questions' => $total_questions,
+                'correct_answers' => $correct_count,
+                'incorrect_answers' => $total_questions - $correct_count,
+                'total_score' => $total_score,
+                'max_possible_score' => $max_possible_score,
+                'percentage' => $percentage,
+                'grade' => $this->calculate_grade($percentage)
+            )
+        );
+    }
+    
+    /**
      * Calculate grade based on percentage
      */
     private function calculate_grade($percentage) {
@@ -527,66 +588,5 @@ class Vefify_Question_Module {
         if ($percentage >= 70) return 'C';
         if ($percentage >= 60) return 'D';
         return 'F';
-    }
-    
-    /**
-     * Public API methods for other modules
-     */
-    
-    /**
-     * Get statistics for analytics dashboard
-     */
-    public function get_analytics_summary() {
-        $stats = $this->model->get_statistics();
-        
-        return array(
-            'title' => 'Question Bank',
-            'description' => 'Manage questions with multiple types and rich content support',
-            'icon' => '❓',
-            'stats' => array(
-                'total_questions' => array(
-                    'label' => 'Active Questions',
-                    'value' => $stats['active_questions'] ?? 0,
-                    'trend' => '+' . ($stats['total_questions'] - $stats['active_questions']) . ' inactive'
-                ),
-                'question_types' => array(
-                    'label' => 'Question Types',
-                    'value' => '3 Types',
-                    'trend' => 'Multiple choice, True/False, Multi-select'
-                ),
-                'categories' => array(
-                    'label' => 'Categories',
-                    'value' => $stats['total_categories'] ?? 0,
-                    'trend' => 'Well organized'
-                ),
-                'difficulty_mix' => array(
-                    'label' => 'Difficulty Balance',
-                    'value' => 'Balanced',
-                    'trend' => sprintf(
-                        'Easy: %d, Medium: %d, Hard: %d',
-                        $stats['easy_questions'] ?? 0,
-                        $stats['medium_questions'] ?? 0,
-                        $stats['hard_questions'] ?? 0
-                    )
-                )
-            ),
-            'quick_actions' => array(
-                array(
-                    'label' => 'Add Question',
-                    'url' => admin_url('admin.php?page=vefify-questions&action=new'),
-                    'icon' => '➕'
-                ),
-                array(
-                    'label' => 'Import CSV',
-                    'url' => admin_url('admin.php?page=vefify-questions&action=import'),
-                    'icon' => '📥'
-                ),
-                array(
-                    'label' => 'View All',
-                    'url' => admin_url('admin.php?page=vefify-questions'),
-                    'icon' => '👁️'
-                )
-            )
-        );
     }
 }

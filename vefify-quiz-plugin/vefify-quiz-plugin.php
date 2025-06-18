@@ -77,7 +77,10 @@ class Vefify_Quiz_Plugin {
             'includes/class-database.php',
             'includes/class-utilities.php', 
             'includes/class-analytics.php',
-            'includes/class-validation-helper.php'
+            'includes/class-validation-helper.php',
+            'includes/class-analytics-summaries.php',
+           # 'includes/class-database-migration.php'
+            'includes/admin/debug-database.php'
         );
         
         foreach ($core_files as $file) {
@@ -656,32 +659,26 @@ class Vefify_Quiz_Plugin {
         }
     }
     
-public function display_questions() {
-    // Check if question module exists
-    if (!class_exists('Vefify_Question_Bank')) {
-        // Try to load the question bank class
-        $question_bank_file = plugin_dir_path(__FILE__) . 'modules/questions/class-question-bank.php';
-        if (file_exists($question_bank_file)) {
-            require_once $question_bank_file;
+    public function display_questions() {
+        if ($this->has_module('questions')) {
+            try {
+                if (method_exists($this->modules['questions'], 'get_bank')) {
+                    $bank = $this->modules['questions']->get_bank();
+                    if ($bank && method_exists($bank, 'admin_page_router')) {
+                        $bank->admin_page_router();
+                    } else {
+                        $this->display_module_placeholder('Questions', 'questions');
+                    }
+                } else {
+                    $this->display_module_placeholder('Questions', 'questions');  
+                }
+            } catch (Exception $e) {
+                $this->display_module_error('Questions', $e->getMessage());
+            }
+        } else {
+            $this->display_module_placeholder('Questions', 'questions');
         }
     }
-    
-    if (class_exists('Vefify_Question_Bank')) {
-        $question_bank = new Vefify_Question_Bank();
-        $question_bank->admin_page_router();
-    } else {
-        echo '<div class="wrap">';
-        echo '<h1>Questions</h1>';
-        echo '<div class="notice notice-error">';
-        echo '<p>Question module could not be loaded. Please check that the following files exist:</p>';
-        echo '<ul>';
-        echo '<li>modules/questions/class-question-model.php</li>';
-        echo '<li>modules/questions/class-question-bank.php</li>';
-        echo '</ul>';
-        echo '</div>';
-        echo '</div>';
-    }
-}
     
     public function display_gifts() {
         if ($this->has_module('gifts')) {
@@ -861,6 +858,7 @@ public function display_questions() {
         }
     }
 }
+
 
 // Initialize the plugin
 function vefify_quiz_init() {

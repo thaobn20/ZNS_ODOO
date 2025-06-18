@@ -290,108 +290,95 @@ class Vefify_Participant_Module {
      * Handle export functionality
      */
     private function handle_export() {
-        if (!current_user_can('manage_options')) {
-            wp_die('Unauthorized');
-        }
-        
-        $participants_table = $this->database->get_table_name('participants');
-        $campaigns_table = $this->database->get_table_name('campaigns');
-        $gifts_table = $this->database->get_table_name('gifts');
-        
-        $data = $this->database->get_results("
-            SELECT 
-                p.full_name, p.phone_number, p.province, p.pharmacy_code,
-                p.score, p.total_questions, p.completion_time,
-                p.created_at, p.completed_at,
-                c.name as campaign_name,
-                g.gift_name, g.gift_value, p.gift_code
-            FROM {$participants_table} p
-            JOIN {$campaigns_table} c ON p.campaign_id = c.id
-            LEFT JOIN {$gifts_table} g ON p.gift_id = g.id
-            ORDER BY p.created_at DESC
-        ");
-        
-        if (empty($data)) {
-            echo '<div class="wrap"><h1>Export Results</h1><p>No data to export.</p></div>';
-            return;
-        }
-        
-        // Convert to array for CSV
-        $csv_data = array();
-        foreach ($data as $row) {
-            $csv_data[] = (array)$row;
-        }
-        
-        $filename = 'vefify_participants_' . date('Y-m-d') . '.csv';
-        
-        header('Content-Type: text/csv');
-        header('Content-Disposition: attachment; filename="' . $filename . '"');
-        
-        $output = fopen('php://output', 'w');
-        
-        // Add headers
-        if (!empty($csv_data)) {
-            fputcsv($output, array_keys($csv_data[0]));
-            
-            foreach ($csv_data as $row) {
-                fputcsv($output, $row);
-            }
-        }
-        
-        fclose($output);
-        exit;
+    if (!current_user_can('manage_options')) {
+        wp_die('Unauthorized');
     }
+    
+    $participants_table = $this->database->get_table_name('participants');
+    $campaigns_table = $this->database->get_table_name('campaigns');
+    $gifts_table = $this->database->get_table_name('gifts');
+    
+    // FIXED: Use correct column names
+    $data = $this->database->get_results("
+        SELECT 
+            p.participant_name, p.participant_phone, p.participant_email,
+            p.province, p.pharmacy_code,
+            p.final_score, p.total_questions, p.completion_time,
+            p.quiz_status, p.start_time, p.end_time,
+            p.created_at, p.updated_at,
+            c.name as campaign_name,
+            g.gift_name, g.gift_value, p.gift_code
+        FROM {$participants_table} p
+        JOIN {$campaigns_table} c ON p.campaign_id = c.id
+        LEFT JOIN {$gifts_table} g ON p.gift_id = g.id
+        ORDER BY p.created_at DESC
+    ");
+    
+    if (empty($data)) {
+        echo '<div class="wrap"><h1>Export Results</h1><p>No data to export.</p></div>';
+        return;
+    }
+    
+    // Convert to array for CSV
+    $csv_data = array();
+    foreach ($data as $row) {
+        $csv_data[] = (array)$row;
+    }
+    
+    $filename = 'vefify_participants_' . date('Y-m-d') . '.csv';
+    
+    header('Content-Type: text/csv');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    
+    $output = fopen('php://output', 'w');
+    
+    // Add headers
+    if (!empty($csv_data)) {
+        fputcsv($output, array_keys($csv_data[0]));
+        
+        foreach ($csv_data as $row) {
+            fputcsv($output, $row);
+        }
+    }
+    
+    fclose($output);
+    exit;
+}
     
     /**
      * Get module analytics for dashboard
      */
-    public function get_module_analytics() {
-        $participants_table = $this->database->get_table_name('participants');
-        
-        $stats = $this->database->get_results("
-            SELECT 
-                COUNT(*) as total_participants,
-                COUNT(CASE WHEN completed_at IS NOT NULL THEN 1 END) as completed,
-                COUNT(CASE WHEN gift_id IS NOT NULL THEN 1 END) as with_gifts,
-                COUNT(CASE WHEN DATE(created_at) = CURDATE() THEN 1 END) as today
-            FROM {$participants_table}
-        ");
-        
-        $stats = $stats[0] ?? (object)array('total_participants' => 0, 'completed' => 0, 'with_gifts' => 0, 'today' => 0);
-        
-        return array(
-            'title' => 'Participant Management',
-            'description' => 'Track and manage quiz participants and their results',
-            'icon' => '👥',
-            'stats' => array(
-                'total_participants' => array(
-                    'label' => 'Total Participants',
-                    'value' => number_format($stats->total_participants),
-                    'trend' => '+' . $stats->today . ' today'
-                ),
-                'completed_quizzes' => array(
-                    'label' => 'Completed Quizzes',
-                    'value' => number_format($stats->completed),
-                    'trend' => round($stats->total_participants > 0 ? ($stats->completed / $stats->total_participants) * 100 : 0, 1) . '% completion rate'
-                ),
-                'gifts_awarded' => array(
-                    'label' => 'Gifts Awarded',
-                    'value' => number_format($stats->with_gifts),
-                    'trend' => round($stats->completed > 0 ? ($stats->with_gifts / $stats->completed) * 100 : 0, 1) . '% gift rate'
-                )
-            ),
-            'quick_actions' => array(
-                array(
-                    'label' => 'View All Participants',
-                    'url' => admin_url('admin.php?page=vefify-participants'),
-                    'class' => 'button-primary'
-                ),
-                array(
-                    'label' => 'Export Data',
-                    'url' => admin_url('admin.php?page=vefify-participants&action=export'),
-                    'class' => 'button-secondary'
-                )
-            )
-        );
-    }
+	public function get_module_analytics() {
+    $participants_table = $this->database->get_table_name('participants');
+    
+    // FIXED: Use correct column names
+    $stats = $this->database->get_results("
+        SELECT 
+            COUNT(*) as total_participants,
+            COUNT(CASE WHEN quiz_status = 'completed' THEN 1 END) as completed,
+            COUNT(CASE WHEN gift_id IS NOT NULL THEN 1 END) as with_gifts,
+            COUNT(CASE WHEN DATE(created_at) = CURDATE() THEN 1 END) as today
+        FROM {$participants_table}
+    ");
+    
+    $stats = $stats[0] ?? (object)array(
+        'total_participants' => 0,
+        'completed' => 0, 
+        'with_gifts' => 0,
+        'today' => 0
+    );
+    
+    $completion_rate = $stats->total_participants > 0 ? 
+        round(($stats->completed / $stats->total_participants) * 100, 1) : 0;
+    
+    return array(
+        'title' => 'Participants Management',
+        'icon' => '👥',
+        'total_participants' => number_format($stats->total_participants),
+        'completion_rate' => $completion_rate . '%',
+        'with_gifts' => number_format($stats->with_gifts),
+        'today_participants' => $stats->today,
+        'status' => $completion_rate >= 70 ? 'Excellent' : ($completion_rate >= 50 ? 'Good' : 'Needs Improvement')
+    );
+}
 }
