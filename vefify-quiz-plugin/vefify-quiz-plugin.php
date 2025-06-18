@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Vefify Quiz Campaign Manager
  * Description: Advanced quiz campaign management with mobile-first design
- * Version: 1.0.0
+ * Version: 1.0.3
  * Author: Vefify Team
  * License: GPL v2 or later
  * Text Domain: vefify-quiz
@@ -77,7 +77,8 @@ class Vefify_Quiz_Plugin {
             'includes/class-database.php',
             'includes/class-utilities.php', 
             'includes/class-analytics.php',
-            'includes/class-validation-helper.php'
+            'includes/class-validation-helper.php',
+            'includes/includes/class-shortcodes.php' #Add field short code
         );
         
         foreach ($core_files as $file) {
@@ -242,7 +243,7 @@ class Vefify_Quiz_Plugin {
         // Check if database tables exist (with null check)
         if ($this->database) {
             try {
-                $missing_tables = $this->database->verify_tables();
+                $tables_exist = $this->database->tables_exist();
                 if (!empty($missing_tables)) {
                     add_action('admin_notices', function() use ($missing_tables) {
                         echo '<div class="notice notice-error"><p>';

@@ -47,16 +47,26 @@ class Vefify_Quiz_Validation_Helper {
         );
         
         // 5. Check database tables
-        if (class_exists('Vefify_Quiz_Database')) {
-            $database = new Vefify_Quiz_Database();
-            $missing_tables = $database->verify_tables();
-            
-            $results['database_tables'] = array(
-                'test' => 'Database Tables',
-                'status' => empty($missing_tables) ? 'PASS' : 'WARN',
-                'details' => empty($missing_tables) ? 'All tables exist' : 'Missing: ' . implode(', ', $missing_tables)
-            );
-        }
+			if (class_exists('Vefify_Quiz_Database')) {
+						$database = new Vefify_Quiz_Database();
+						$missing_tables = $database->verify_tables();
+						
+						// Fix: Handle array properly
+						if (is_array($missing_tables)) {
+							$status = empty($missing_tables) ? 'PASS' : 'WARN';
+							$details = empty($missing_tables) ? 'All tables exist' : 'Missing: ' . implode(', ', $missing_tables);
+						} else {
+							// Fallback for unexpected return type
+							$status = 'WARN';
+							$details = 'Unexpected return type from verify_tables()';
+						}
+						
+						$results['database_tables'] = array(
+							'test' => 'Database Tables',
+							'status' => $status,
+							'details' => $details
+						);
+					}
         
         // 6. Check module files exist
         $module_files = array(
@@ -254,7 +264,7 @@ class Vefify_Quiz_Validation_Helper {
     /**
      * Quick status check for admin notices
      */
-    public static function check_critical_issues() {
+public static function check_critical_issues() {
         $issues = array();
         
         // Check if database tables exist
@@ -262,7 +272,8 @@ class Vefify_Quiz_Validation_Helper {
             $database = new Vefify_Quiz_Database();
             $missing_tables = $database->verify_tables();
             
-            if (!empty($missing_tables)) {
+            // Fix: Handle array properly
+            if (is_array($missing_tables) && !empty($missing_tables)) {
                 $issues[] = 'Missing database tables: ' . implode(', ', $missing_tables);
             }
         }
