@@ -51,7 +51,40 @@ class Vefify_Quiz_Utilities {
         
         return false;
     }
+    /**
+ * Validate phone number uniqueness per campaign
+ * @param string $phone Phone number to check
+ * @param int $campaign_id Campaign ID
+ * @param int $exclude_participant_id Optional participant ID to exclude from check
+ * @return bool True if phone is unique for this campaign
+ */
+public static function validate_unique_phone_per_campaign($phone, $campaign_id, $exclude_participant_id = null) {
+    global $wpdb;
     
+    // Format phone number first
+    $clean_phone = self::format_phone_number($phone);
+    
+    // Validate phone format before checking uniqueness
+    if (!self::validate_phone_number($clean_phone)) {
+        return false;
+    }
+    
+    // Check uniqueness in participants table
+    $query = $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}vefify_participants 
+         WHERE participant_phone = %s AND campaign_id = %d",
+        $clean_phone, $campaign_id
+    );
+    
+    // Exclude specific participant (for updates)
+    if ($exclude_participant_id) {
+        $query .= $wpdb->prepare(" AND id != %d", $exclude_participant_id);
+    }
+    
+    $count = $wpdb->get_var($query);
+    
+    return $count == 0;
+}
     /**
      * Generate unique session ID
      */
@@ -193,36 +226,52 @@ class Vefify_Quiz_Utilities {
         );
     }
     
+		/**
+	 * Enhanced sanitize quiz data with pharmacist code
+	 * @param array $data Raw form data
+	 * @return array Sanitized data
+	 */
+	public static function sanitize_quiz_data($data) {
+		$sanitized = array();
+		
+		if (isset($data['full_name'])) {
+			$sanitized['full_name'] = sanitize_text_field($data['full_name']);
+		}
+		
+		if (isset($data['phone_number'])) {
+			$sanitized['phone_number'] = self::format_phone_number($data['phone_number']);
+		}
+		
+		if (isset($data['province'])) {
+			$provinces = array_keys(self::get_vietnam_provinces());
+			$sanitized['province'] = in_array($data['province'], $provinces) ? $data['province'] : '';
+		}
+		
+		// Updated: pharmacist_code instead of pharmacy_code
+		if (isset($data['pharmacist_code'])) {
+			$sanitized['pharmacist_code'] = strtoupper(sanitize_text_field($data['pharmacist_code']));
+		}
+		
+		if (isset($data['email'])) {
+			$sanitized['email'] = sanitize_email($data['email']);
+		}
+		
+		return $sanitized;
+	}
     /**
-     * Sanitize and validate quiz data
-     */
-    public static function sanitize_quiz_data($data) {
-        $sanitized = array();
-        
-        if (isset($data['full_name'])) {
-            $sanitized['full_name'] = sanitize_text_field($data['full_name']);
-        }
-        
-        if (isset($data['phone_number'])) {
-            $sanitized['phone_number'] = self::format_phone_number($data['phone_number']);
-        }
-        
-        if (isset($data['province'])) {
-            $provinces = array_keys(self::get_vietnam_provinces());
-            $sanitized['province'] = in_array($data['province'], $provinces) ? $data['province'] : '';
-        }
-        
-        if (isset($data['pharmacy_code'])) {
-            $sanitized['pharmacy_code'] = sanitize_text_field($data['pharmacy_code']);
-        }
-        
-        if (isset($data['email'])) {
-            $sanitized['email'] = sanitize_email($data['email']);
-        }
-        
-        return $sanitized;
+ * Validate pharmacist code format
+ * @param string $code Pharmacist code to validate
+ * @return bool True if valid format
+ */
+public static function validate_pharmacist_code($code) {
+    // Vietnamese pharmacist code format: 6-12 alphanumeric characters
+    if (empty($code)) {
+        return true; // Optional field
     }
     
+    $code = strtoupper(trim($code));
+    return preg_match('/^[A-Z0-9]{6,12}$/', $code);
+}
     /**
      * Convert seconds to human readable time
      */

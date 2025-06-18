@@ -96,299 +96,306 @@ class Vefify_Quiz_Shortcode {
     /**
      * Render quiz template based on theme
      */
-    private function render_quiz_template($campaign, $questions, $atts) {
-        $template = $atts['template'];
-        $theme = $atts['theme'];
-        
-        ob_start();
-        ?>
-        <div class="vefify-quiz-wrapper theme-<?php echo esc_attr($theme); ?>">
-            <!-- Quiz Header -->
+	 private function render_quiz_template($campaign, $questions, $atts) {
+    $template = $atts['template'];
+    $theme = $atts['theme'];
+    
+    ob_start();
+    ?>
+    <div class="vefify-quiz-wrapper theme-<?php echo esc_attr($theme); ?>">
+        <!-- Registration Form Screen -->
+        <div class="quiz-screen registration-screen active">
             <div class="quiz-header">
                 <h2 class="quiz-title"><?php echo esc_html($campaign['name']); ?></h2>
                 <?php if (!empty($campaign['description'])): ?>
                     <p class="quiz-description"><?php echo esc_html($campaign['description']); ?></p>
                 <?php endif; ?>
-                
-                <div class="quiz-meta">
-                    <span class="quiz-questions">📝 <?php echo count($questions); ?> Questions</span>
-                    <span class="quiz-time">⏱️ <?php echo $campaign['time_limit']; ?> seconds</span>
-                    <span class="quiz-pass-score">🎯 Pass Score: <?php echo $campaign['pass_score']; ?></span>
-                </div>
             </div>
             
+            <div class="registration-form-container">
+                <form id="vefify-registration-form" class="vefify-registration-form">
+                    <!-- Hidden campaign ID -->
+                    <input type="hidden" name="campaign_id" value="<?php echo $campaign['id']; ?>">
+                    
+                    <!-- Full Name Field -->
+                    <div class="form-group">
+                        <label for="full_name" class="form-label">
+                            <span class="required">*</span> Full Name
+                        </label>
+                        <input 
+                            type="text" 
+                            id="full_name" 
+                            name="full_name"
+                            class="form-input"
+                            placeholder="Enter your full name"
+                            required
+                            autocomplete="name"
+                        >
+                        <div class="form-feedback" id="full_name_feedback"></div>
+                    </div>
+                    
+                    <!-- Phone Number Field with Real-time Validation -->
+                    <div class="form-group">
+                        <label for="phone_number" class="form-label">
+                            <span class="required">*</span> Phone Number
+                        </label>
+                        <input 
+                            type="tel" 
+                            id="phone_number" 
+                            name="phone_number"
+                            class="form-input"
+                            placeholder="0912345678 or +84912345678"
+                            required
+                            autocomplete="tel"
+                            data-validate="phone"
+                        >
+                        <div class="form-feedback" id="phone_number_feedback"></div>
+                        <small class="form-help">Vietnamese mobile number (10 digits starting with 0)</small>
+                    </div>
+                    
+                    <!-- Province Selection -->
+                    <div class="form-group">
+                        <label for="province" class="form-label">
+                            <span class="required">*</span> Province/City
+                        </label>
+                        <select id="province" name="province" class="form-select" required>
+                            <option value="">Select Province/City</option>
+                            <?php foreach (Vefify_Quiz_Utilities::get_vietnam_provinces() as $code => $name): ?>
+                                <option value="<?php echo esc_attr($code); ?>"><?php echo esc_html($name); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <div class="form-feedback" id="province_feedback"></div>
+                    </div>
+                    
+                    <!-- Pharmacist Code Field (Updated from Company/Organization) -->
+                    <div class="form-group">
+                        <label for="pharmacist_code" class="form-label">
+                            Pharmacist License Code
+                        </label>
+                        <input 
+                            type="text" 
+                            id="pharmacist_code" 
+                            name="pharmacist_code"
+                            class="form-input"
+                            placeholder="e.g., PH123456 (6-12 characters)"
+                            pattern="[A-Z0-9]{6,12}"
+                            data-validate="pharmacist"
+                            autocomplete="off"
+                            style="text-transform: uppercase;"
+                        >
+                        <div class="form-feedback" id="pharmacist_code_feedback"></div>
+                        <small class="form-help">Optional: 6-12 alphanumeric characters</small>
+                    </div>
+                    
+                    <!-- Email Field (Optional) -->
+                    <div class="form-group">
+                        <label for="email" class="form-label">
+                            Email Address
+                        </label>
+                        <input 
+                            type="email" 
+                            id="email" 
+                            name="email"
+                            class="form-input"
+                            placeholder="your.email@example.com"
+                            autocomplete="email"
+                        >
+                        <div class="form-feedback" id="email_feedback"></div>
+                        <small class="form-help">Optional: For result notifications</small>
+                    </div>
+                    
+                    <!-- Terms and Conditions -->
+                    <div class="form-group checkbox-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="terms_agreed" name="terms_agreed" required>
+                            <span class="checkmark"></span>
+                            <span class="required">*</span> I agree to the terms and conditions
+                        </label>
+                        <div class="form-feedback" id="terms_feedback"></div>
+                    </div>
+                    
+                    <!-- Submit Button -->
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary btn-start-quiz" disabled>
+                            <span class="btn-text">🚀 Start Quiz</span>
+                            <span class="btn-loader" style="display: none;">⌛ Validating...</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Quiz Content Area (existing screens) -->
+        <div class="quiz-content">
             <!-- Progress Bar -->
-            <div class="quiz-progress">
+            <div class="quiz-progress" style="display: none;">
                 <div class="progress-bar">
                     <div class="progress-fill" style="width: 0%"></div>
                 </div>
                 <div class="progress-text">Question <span class="current-question">0</span> of <span class="total-questions"><?php echo count($questions); ?></span></div>
             </div>
             
-            <!-- Quiz Content Area -->
-            <div class="quiz-content">
-                <!-- Start Screen -->
-                <div class="quiz-screen start-screen active">
-                    <div class="start-content">
-                        <h3>Ready to start?</h3>
-                        <p>You have <strong><?php echo $campaign['time_limit']; ?> seconds</strong> to complete this quiz.</p>
-                        <p>You need <strong><?php echo $campaign['pass_score']; ?> correct answers</strong> to pass.</p>
-                        <button class="btn btn-primary start-quiz-btn">🚀 Start Quiz</button>
-                    </div>
-                </div>
-                
-                <!-- Question Screen -->
-                <div class="quiz-screen question-screen">
-                    <div class="question-container">
-                        <h3 class="question-text"></h3>
-                        <div class="question-options"></div>
-                        <div class="question-actions">
-                            <button class="btn btn-secondary prev-btn" style="display: none;">← Previous</button>
-                            <button class="btn btn-primary next-btn">Next →</button>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Results Screen -->
-                <div class="quiz-screen results-screen">
-                    <div class="results-content">
-                        <h3>Quiz Complete! 🎉</h3>
-                        <div class="score-display">
-                            <div class="score-circle">
-                                <span class="score-number">0</span>
-                                <span class="score-total">/ <?php echo count($questions); ?></span>
-                            </div>
-                        </div>
-                        <div class="results-details">
-                            <p class="result-message"></p>
-                            <div class="result-breakdown"></div>
-                        </div>
-                        <div class="result-actions">
-                            <button class="btn btn-primary restart-btn">🔄 Try Again</button>
-                            <button class="btn btn-secondary share-btn">📤 Share Results</button>
-                        </div>
+            <!-- Question Screen -->
+            <div class="quiz-screen question-screen">
+                <div class="question-container">
+                    <h3 class="question-text"></h3>
+                    <div class="question-options"></div>
+                    <div class="question-actions">
+                        <button class="btn btn-secondary prev-btn" style="display: none;">← Previous</button>
+                        <button class="btn btn-primary next-btn">Next →</button>
                     </div>
                 </div>
             </div>
             
-            <!-- Timer Display -->
-            <div class="quiz-timer">
-                <span class="timer-icon">⏰</span>
-                <span class="timer-text">Time: <span class="time-remaining"><?php echo $campaign['time_limit']; ?></span>s</span>
+            <!-- Results Screen -->
+            <div class="quiz-screen results-screen">
+                <div class="results-content">
+                    <h3>Quiz Complete! 🎉</h3>
+                    <div class="score-display">
+                        <div class="score-circle">
+                            <span class="score-number">0</span>
+                            <span class="score-total">/ <?php echo count($questions); ?></span>
+                        </div>
+                    </div>
+                    <div class="results-details">
+                        <p class="result-message"></p>
+                        <div class="result-breakdown"></div>
+                        <div class="gift-info" style="display: none;">
+                            <div class="gift-card">
+                                <h4>🎁 Congratulations!</h4>
+                                <p class="gift-name"></p>
+                                <div class="gift-code">
+                                    <span class="code-label">Gift Code:</span>
+                                    <span class="code-value"></span>
+                                    <button class="copy-code-btn" onclick="copyGiftCode()">📋 Copy</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="result-actions">
+                        <button class="btn btn-primary restart-btn">🔄 Try Again</button>
+                        <button class="btn btn-secondary share-btn">📤 Share Results</button>
+                    </div>
+                </div>
             </div>
         </div>
         
-        <style>
-        .vefify-quiz-wrapper {
-            max-width: 600px;
-            margin: 20px auto;
-            background: #fff;
-            border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-            overflow: hidden;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        <!-- Timer Display -->
+        <div class="quiz-timer" style="display: none;">
+            <span class="timer-icon">⏰</span>
+            <span class="timer-text">Time: <span class="time-remaining"><?php echo $campaign['time_limit']; ?></span>s</span>
+        </div>
+    </div>
+    <?php
+    
+    return ob_get_clean();
+}
+	 
+	 
+    public function enqueue_frontend_assets() {
+    // Only on pages with shortcodes
+    global $post;
+    
+    if (is_a($post, 'WP_Post') && has_shortcode($post->post_content, 'vefify_quiz')) {
+        
+        wp_enqueue_script('jquery');
+        
+        // Enqueue form validation JavaScript (highest priority)
+        wp_enqueue_script(
+            'vefify-form-validation',
+            VEFIFY_QUIZ_PLUGIN_URL . 'frontend/assets/js/form-validation.js',
+            array('jquery'),
+            VEFIFY_QUIZ_VERSION,
+            true // Load in footer for better performance
+        );
+        
+        // Enqueue quiz JavaScript
+        wp_enqueue_script(
+            'vefify-quiz-frontend',
+            VEFIFY_QUIZ_PLUGIN_URL . 'frontend/assets/js/quiz.js',
+            array('jquery', 'vefify-form-validation'),
+            VEFIFY_QUIZ_VERSION,
+            true
+        );
+        
+        // Enqueue mobile-optimized CSS
+        wp_enqueue_style(
+            'vefify-form-styles',
+            VEFIFY_QUIZ_PLUGIN_URL . 'frontend/assets/css/form-styles.css',
+            array(),
+            VEFIFY_QUIZ_VERSION,
+            'all'
+        );
+        
+        // Enqueue existing quiz CSS (if exists)
+        if (file_exists(VEFIFY_QUIZ_PLUGIN_PATH . 'frontend/assets/css/quiz.css')) {
+            wp_enqueue_style(
+                'vefify-quiz-styles',
+                VEFIFY_QUIZ_PLUGIN_URL . 'frontend/assets/css/quiz.css',
+                array('vefify-form-styles'),
+                VEFIFY_QUIZ_VERSION,
+                'all'
+            );
         }
         
-        .quiz-header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 30px 20px;
-            text-align: center;
-        }
+        // Localize script with enhanced data
+        wp_localize_script('vefify-form-validation', 'vefifyAjax', array(
+            'ajaxUrl' => admin_url('admin-ajax.php'),
+            'nonce' => wp_create_nonce('vefify_quiz_nonce'),
+            'strings' => array(
+                'loading' => 'Loading...',
+                'validating' => 'Validating...',
+                'error' => 'An error occurred',
+                'timeUp' => 'Time is up!',
+                'submitting' => 'Starting quiz...',
+                'phoneRequired' => 'Phone number is required',
+                'phoneInvalid' => 'Please enter a valid Vietnamese phone number',
+                'phoneTaken' => 'This phone number is already registered',
+                'phoneAvailable' => 'Phone number is available',
+                'pharmacistInvalid' => 'Invalid pharmacist code format',
+                'termsRequired' => 'Please accept terms and conditions'
+            ),
+            'config' => array(
+                'validateOnBlur' => true,
+                'validateOnInput' => true,
+                'debounceTime' => 300,
+                'cacheValidation' => true
+            )
+        ));
         
-        .quiz-title {
-            margin: 0 0 10px;
-            font-size: 24px;
-            font-weight: 600;
-        }
+        // Add mobile viewport meta if not present
+        add_action('wp_head', array($this, 'add_mobile_viewport'), 1);
         
-        .quiz-description {
-            margin: 0 0 20px;
-            opacity: 0.9;
-            font-size: 14px;
-        }
-        
-        .quiz-meta {
-            display: flex;
-            justify-content: center;
-            gap: 20px;
-            flex-wrap: wrap;
-            font-size: 13px;
-        }
-        
-        .quiz-progress {
-            padding: 20px;
-            background: #f8f9fa;
-            border-bottom: 1px solid #e9ecef;
-        }
-        
-        .progress-bar {
-            height: 8px;
-            background: #e9ecef;
-            border-radius: 4px;
-            overflow: hidden;
-            margin-bottom: 10px;
-        }
-        
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #4facfe 0%, #00f2fe 100%);
-            transition: width 0.3s ease;
-        }
-        
-        .progress-text {
-            text-align: center;
-            font-size: 14px;
-            color: #666;
-        }
-        
-        .quiz-content {
-            min-height: 300px;
-            position: relative;
-        }
-        
-        .quiz-screen {
-            display: none;
-            padding: 30px 20px;
-        }
-        
-        .quiz-screen.active {
-            display: block;
-        }
-        
-        .start-content {
-            text-align: center;
-        }
-        
-        .question-container h3 {
-            margin-bottom: 20px;
-            font-size: 18px;
-            line-height: 1.5;
-        }
-        
-        .question-options {
-            margin-bottom: 30px;
-        }
-        
-        .option-item {
-            padding: 15px;
-            margin-bottom: 10px;
-            border: 2px solid #e9ecef;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-        
-        .option-item:hover {
-            border-color: #667eea;
-            background: #f8f9ff;
-        }
-        
-        .option-item.selected {
-            border-color: #667eea;
-            background: #667eea;
-            color: white;
-        }
-        
-        .question-actions {
-            display: flex;
-            justify-content: space-between;
-            gap: 10px;
-        }
-        
-        .btn {
-            padding: 12px 24px;
-            border: none;
-            border-radius: 6px;
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-        
-        .btn-primary {
-            background: #667eea;
-            color: white;
-        }
-        
-        .btn-primary:hover {
-            background: #5a6fd8;
-        }
-        
-        .btn-secondary {
-            background: #6c757d;
-            color: white;
-        }
-        
-        .quiz-timer {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            background: rgba(0,0,0,0.8);
-            color: white;
-            padding: 8px 12px;
-            border-radius: 20px;
-            font-size: 12px;
-        }
-        
-        .results-content {
-            text-align: center;
-        }
-        
-        .score-circle {
-            width: 120px;
-            height: 120px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 20px auto;
-            color: white;
-            font-size: 24px;
-            font-weight: bold;
-        }
-        
-        .vefify-error, .vefify-notice {
-            padding: 15px;
-            margin: 20px 0;
-            border-radius: 6px;
-            font-weight: 500;
-        }
-        
-        .vefify-error {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-        
-        .vefify-notice {
-            background: #d1ecf1;
-            color: #0c5460;
-            border: 1px solid #bee5eb;
-        }
-        
-        /* Responsive */
-        @media (max-width: 600px) {
-            .vefify-quiz-wrapper {
-                margin: 10px;
-                border-radius: 8px;
-            }
-            
-            .quiz-meta {
-                flex-direction: column;
-                gap: 10px;
-            }
-            
-            .question-actions {
-                flex-direction: column;
-            }
-        }
-        </style>
-        <?php
-        
-        return ob_get_clean();
+        // Preload critical resources for mobile performance
+        add_action('wp_head', array($this, 'add_resource_hints'));
     }
+}
+
+ /**
+ * Add mobile viewport meta tag
+ */
+public function add_mobile_viewport() {
+    if (!has_action('wp_head', 'wp_site_icon') || !get_site_icon_url()) {
+        echo '<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">' . "\n";
+    }
+}
+
+/**
+ * Add resource hints for better mobile performance
+ */
+public function add_resource_hints() {
+    // Preconnect to improve AJAX performance
+    echo '<link rel="preconnect" href="' . admin_url() . '">' . "\n";
+    
+    // Prefetch province data for faster form loading
+    echo '<script>
+        document.addEventListener("DOMContentLoaded", function() {
+            // Prefetch provinces for faster selection
+            const provinces = ' . json_encode(Vefify_Quiz_Utilities::get_vietnam_provinces()) . ';
+            sessionStorage.setItem("vefify_provinces", JSON.stringify(provinces));
+        });
+    </script>' . "\n";
+}
     
     /**
      * Get campaign data

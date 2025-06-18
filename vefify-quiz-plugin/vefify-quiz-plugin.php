@@ -882,3 +882,80 @@ function vefify_quiz_get_module($module_name) {
     $plugin = Vefify_Quiz_Plugin::get_instance();
     return $plugin->get_module($module_name);
 }
+// Register AJAX handlers for phone validation
+add_action('wp_ajax_vefify_check_phone_uniqueness', 'vefify_handle_phone_uniqueness_check');
+add_action('wp_ajax_nopriv_vefify_check_phone_uniqueness', 'vefify_handle_phone_uniqueness_check');
+
+/**
+ * AJAX handler for phone uniqueness validation
+ */
+function vefify_handle_phone_uniqueness_check() {
+    // Verify nonce for security
+    if (!wp_verify_nonce($_POST['nonce'], 'vefify_quiz_nonce')) {
+        wp_send_json_error(['message' => 'Security check failed']);
+        return;
+    }
+    
+    $phone = sanitize_text_field($_POST['phone'] ?? '');
+    $campaign_id = intval($_POST['campaign_id'] ?? 0);
+    
+    // Validate required data
+    if (empty($phone) || !$campaign_id) {
+        wp_send_json_error(['message' => 'Phone number and campaign ID are required']);
+        return;
+    }
+    
+    // Validate phone format first
+    if (!Vefify_Quiz_Utilities::validate_phone_number($phone)) {
+        wp_send_json_error(['message' => 'Please enter a valid Vietnamese phone number']);
+        return;
+    }
+    
+    // Check uniqueness per campaign
+    $is_unique = Vefify_Quiz_Utilities::validate_unique_phone_per_campaign($phone, $campaign_id);
+    
+    if ($is_unique) {
+        wp_send_json_success([
+            'message' => 'Phone number is available for this campaign',
+            'phone_formatted' => Vefify_Quiz_Utilities::format_phone_number($phone)
+        ]);
+    } else {
+        wp_send_json_error([
+            'message' => 'This phone number is already registered for this campaign'
+        ]);
+    }
+}
+
+// Register AJAX handler for pharmacist code validation
+add_action('wp_ajax_vefify_validate_pharmacist_code', 'vefify_handle_pharmacist_code_validation');
+add_action('wp_ajax_nopriv_vefify_validate_pharmacist_code', 'vefify_handle_pharmacist_code_validation');
+
+/**
+ * AJAX handler for pharmacist code validation
+ */
+function vefify_handle_pharmacist_code_validation() {
+    if (!wp_verify_nonce($_POST['nonce'], 'vefify_quiz_nonce')) {
+        wp_send_json_error(['message' => 'Security check failed']);
+        return;
+    }
+    
+    $pharmacist_code = sanitize_text_field($_POST['pharmacist_code'] ?? '');
+    
+    if (empty($pharmacist_code)) {
+        wp_send_json_success(['message' => 'Pharmacist code is optional']);
+        return;
+    }
+    
+    $is_valid = Vefify_Quiz_Utilities::validate_pharmacist_code($pharmacist_code);
+    
+    if ($is_valid) {
+        wp_send_json_success([
+            'message' => 'Valid pharmacist code format',
+            'code_formatted' => strtoupper($pharmacist_code)
+        ]);
+    } else {
+        wp_send_json_error([
+            'message' => 'Pharmacist code must be 6-12 alphanumeric characters'
+        ]);
+    }
+}
