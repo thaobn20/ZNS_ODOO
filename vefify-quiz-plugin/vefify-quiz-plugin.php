@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Vefify Quiz Campaign Manager
  * Description: Advanced quiz campaign management with mobile-first design
- * Version: 1.0.1
+ * Version: 1.0.0
  * Author: Vefify Team
  * License: GPL v2 or later
  * Text Domain: vefify-quiz
@@ -920,5 +920,23 @@ add_action('wp_enqueue_scripts', function() {
         // Create dynamic CSS file if it doesn't exist
         $css_content = '/* Vefify Quiz Frontend CSS - Auto Generated */';
         wp_add_inline_style('dashicons', $css_content);
+    }
+});
+
+// On plugin activation, update database
+register_activation_hook(__FILE__, 'vefify_quiz_install_enhanced');
+
+function vefify_quiz_install_enhanced() {
+    $installer = new Vefify_Database_Installer();
+    if ($installer->needs_update()) {
+        $installer->install();
+    }
+}
+
+// Check for updates on admin_init
+add_action('admin_init', function() {
+    $installer = new Vefify_Database_Installer();
+    if ($installer->needs_update()) {
+        $installer->install();
     }
 });
