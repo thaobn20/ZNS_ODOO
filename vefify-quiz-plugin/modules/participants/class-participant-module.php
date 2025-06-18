@@ -4,6 +4,7 @@
  * File: modules/participants/class-participant-module.php
  * 
  * Handles participant management and results
+ * FIXED: All column name references to match actual database schema
  */
 
 if (!defined('ABSPATH')) {
@@ -76,10 +77,13 @@ class Vefify_Participant_Module {
             $params[] = $province_filter;
         }
         
+        // FIXED: Use quiz_status instead of completed_at
         if ($status_filter === 'completed') {
-            $where_conditions[] = 'p.completed_at IS NOT NULL';
+            $where_conditions[] = 'p.quiz_status = %s';
+            $params[] = 'completed';
         } elseif ($status_filter === 'incomplete') {
-            $where_conditions[] = 'p.completed_at IS NULL';
+            $where_conditions[] = 'p.quiz_status != %s';
+            $params[] = 'completed';
         }
         
         if ($date_filter === 'today') {
@@ -105,18 +109,8 @@ class Vefify_Participant_Module {
             LIMIT 50
         ", $params);
         
-        // Get summary stats
-        $summary = $this->database->get_results("
-            SELECT 
-                COUNT(*) as total,
-                COUNT(CASE WHEN completed_at IS NOT NULL THEN 1 END) as completed,
-                COUNT(CASE WHEN gift_id IS NOT NULL THEN 1 END) as with_gifts,
-                AVG(CASE WHEN score > 0 THEN score END) as avg_score
-            FROM {$participants_table} p
-            WHERE {$where_clause}
-        ", $params);
-        
-        $summary = $summary[0] ?? (object)array('total' => 0, 'completed' => 0, 'with_gifts' => 0, 'avg_score' => 0);
+        // FIXED: Get summary stats with correct column names
+        $summary = $this->get_participants_summary($where_clause, $params);
         
         // Get filter options
         $campaigns = $this->database->get_results("SELECT id, name FROM {$campaigns_table} ORDER BY name");
@@ -212,15 +206,17 @@ class Vefify_Participant_Module {
                         <?php foreach ($participants as $participant): ?>
                         <tr>
                             <td>
-                                <strong><?php echo esc_html($participant->full_name); ?></strong><br>
-                                <small><?php echo esc_html($participant->phone_number); ?></small>
+                                <!-- FIXED: Use correct column names -->
+                                <strong><?php echo esc_html($participant->participant_name); ?></strong><br>
+                                <small><?php echo esc_html($participant->participant_phone); ?></small>
                             </td>
                             <td><?php echo esc_html($participant->campaign_name); ?></td>
                             <td><?php echo esc_html(ucfirst($participant->province)); ?></td>
                             <td>
-                                <?php if ($participant->completed_at): ?>
-                                    <span class="score-badge score-<?php echo $participant->score; ?>">
-                                        <?php echo $participant->score; ?>/<?php echo $participant->total_questions; ?>
+                                <!-- FIXED: Check quiz_status instead of completed_at -->
+                                <?php if ($participant->quiz_status === 'completed'): ?>
+                                    <span class="score-badge score-<?php echo $participant->final_score; ?>">
+                                        <?php echo $participant->final_score; ?>/<?php echo $participant->total_questions; ?>
                                     </span>
                                 <?php else: ?>
                                     <span class="incomplete-badge">Incomplete</span>
@@ -238,8 +234,9 @@ class Vefify_Participant_Module {
                             </td>
                             <td>
                                 <?php echo mysql2date('M j, Y g:i A', $participant->created_at); ?>
-                                <?php if ($participant->completed_at): ?>
-                                    <br><small>Completed: <?php echo mysql2date('M j, g:i A', $participant->completed_at); ?></small>
+                                <!-- FIXED: Check end_time instead of completed_at -->
+                                <?php if ($participant->end_time): ?>
+                                    <br><small>Completed: <?php echo mysql2date('M j, g:i A', $participant->end_time); ?></small>
                                 <?php endif; ?>
                             </td>
                             <td>
@@ -287,98 +284,148 @@ class Vefify_Participant_Module {
     }
     
     /**
-     * Handle export functionality
+     * FIXED: Get participants summary with correct column names
      */
-    private function handle_export() {
-    if (!current_user_can('manage_options')) {
-        wp_die('Unauthorized');
-    }
-    
-    $participants_table = $this->database->get_table_name('participants');
-    $campaigns_table = $this->database->get_table_name('campaigns');
-    $gifts_table = $this->database->get_table_name('gifts');
-    
-    // FIXED: Use correct column names
-    $data = $this->database->get_results("
-        SELECT 
-            p.participant_name, p.participant_phone, p.participant_email,
-            p.province, p.pharmacy_code,
-            p.final_score, p.total_questions, p.completion_time,
-            p.quiz_status, p.start_time, p.end_time,
-            p.created_at, p.updated_at,
-            c.name as campaign_name,
-            g.gift_name, g.gift_value, p.gift_code
-        FROM {$participants_table} p
-        JOIN {$campaigns_table} c ON p.campaign_id = c.id
-        LEFT JOIN {$gifts_table} g ON p.gift_id = g.id
-        ORDER BY p.created_at DESC
-    ");
-    
-    if (empty($data)) {
-        echo '<div class="wrap"><h1>Export Results</h1><p>No data to export.</p></div>';
-        return;
-    }
-    
-    // Convert to array for CSV
-    $csv_data = array();
-    foreach ($data as $row) {
-        $csv_data[] = (array)$row;
-    }
-    
-    $filename = 'vefify_participants_' . date('Y-m-d') . '.csv';
-    
-    header('Content-Type: text/csv');
-    header('Content-Disposition: attachment; filename="' . $filename . '"');
-    
-    $output = fopen('php://output', 'w');
-    
-    // Add headers
-    if (!empty($csv_data)) {
-        fputcsv($output, array_keys($csv_data[0]));
+    private function get_participants_summary($where_clause, $params) {
+        $participants_table = $this->database->get_table_name('participants');
         
-        foreach ($csv_data as $row) {
-            fputcsv($output, $row);
-        }
+        $summary = $this->database->get_results("
+            SELECT 
+                COUNT(*) as total,
+                COUNT(CASE WHEN quiz_status = 'completed' THEN 1 END) as completed,
+                COUNT(CASE WHEN gift_id IS NOT NULL THEN 1 END) as with_gifts,
+                AVG(CASE WHEN quiz_status = 'completed' AND final_score > 0 THEN final_score END) as avg_score
+            FROM {$participants_table} p
+            WHERE {$where_clause}
+        ", $params);
+        
+        return $summary[0] ?? (object)array(
+            'total' => 0,
+            'completed' => 0,
+            'with_gifts' => 0,
+            'avg_score' => 0
+        );
     }
-    
-    fclose($output);
-    exit;
-}
     
     /**
-     * Get module analytics for dashboard
+     * FIXED: Handle export functionality with correct column names
      */
-	public function get_module_analytics() {
-    $participants_table = $this->database->get_table_name('participants');
+    private function handle_export() {
+        if (!current_user_can('manage_options')) {
+            wp_die('Unauthorized');
+        }
+        
+        $participants_table = $this->database->get_table_name('participants');
+        $campaigns_table = $this->database->get_table_name('campaigns');
+        $gifts_table = $this->database->get_table_name('gifts');
+        
+        // FIXED: Use correct column names in export
+        $data = $this->database->get_results("
+            SELECT 
+                p.participant_name, p.participant_email, p.participant_phone, 
+                p.province, p.pharmacy_code,
+                p.final_score, p.total_questions, p.completion_time,
+                p.quiz_status, p.start_time, p.end_time, p.created_at,
+                c.name as campaign_name,
+                g.gift_name, g.gift_value, p.gift_code
+            FROM {$participants_table} p
+            JOIN {$campaigns_table} c ON p.campaign_id = c.id
+            LEFT JOIN {$gifts_table} g ON p.gift_id = g.id
+            ORDER BY p.created_at DESC
+        ");
+        
+        if (empty($data)) {
+            echo '<div class="wrap"><h1>Export Results</h1><p>No data to export.</p></div>';
+            return;
+        }
+        
+        // Convert to array for CSV
+        $csv_data = array();
+        foreach ($data as $row) {
+            $csv_data[] = (array)$row;
+        }
+        
+        $filename = 'vefify_participants_' . date('Y-m-d') . '.csv';
+        
+        header('Content-Type: text/csv');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        
+        $output = fopen('php://output', 'w');
+        
+        // Add headers
+        if (!empty($csv_data)) {
+            fputcsv($output, array_keys($csv_data[0]));
+            
+            foreach ($csv_data as $row) {
+                fputcsv($output, $row);
+            }
+        }
+        
+        fclose($output);
+        exit;
+    }
     
-    // FIXED: Use correct column names
-    $stats = $this->database->get_results("
-        SELECT 
-            COUNT(*) as total_participants,
-            COUNT(CASE WHEN quiz_status = 'completed' THEN 1 END) as completed,
-            COUNT(CASE WHEN gift_id IS NOT NULL THEN 1 END) as with_gifts,
-            COUNT(CASE WHEN DATE(created_at) = CURDATE() THEN 1 END) as today
-        FROM {$participants_table}
-    ");
-    
-    $stats = $stats[0] ?? (object)array(
-        'total_participants' => 0,
-        'completed' => 0, 
-        'with_gifts' => 0,
-        'today' => 0
-    );
-    
-    $completion_rate = $stats->total_participants > 0 ? 
-        round(($stats->completed / $stats->total_participants) * 100, 1) : 0;
-    
-    return array(
-        'title' => 'Participants Management',
-        'icon' => '👥',
-        'total_participants' => number_format($stats->total_participants),
-        'completion_rate' => $completion_rate . '%',
-        'with_gifts' => number_format($stats->with_gifts),
-        'today_participants' => $stats->today,
-        'status' => $completion_rate >= 70 ? 'Excellent' : ($completion_rate >= 50 ? 'Good' : 'Needs Improvement')
-    );
-}
+    /**
+     * FIXED: Get module analytics with correct column names
+     */
+    public function get_module_analytics() {
+        $participants_table = $this->database->get_table_name('participants');
+        
+        // FIXED: Use correct column references
+        $stats = $this->database->get_results("
+            SELECT 
+                COUNT(*) as total_participants,
+                COUNT(CASE WHEN quiz_status = 'completed' THEN 1 END) as completed,
+                COUNT(CASE WHEN gift_id IS NOT NULL THEN 1 END) as with_gifts,
+                COUNT(CASE WHEN DATE(created_at) = CURDATE() THEN 1 END) as today
+            FROM {$participants_table}
+        ");
+        
+        $stats = $stats[0] ?? (object)array(
+            'total_participants' => 0, 
+            'completed' => 0, 
+            'with_gifts' => 0, 
+            'today' => 0
+        );
+        
+        $completion_rate = $stats->total_participants > 0 ? 
+            round(($stats->completed / $stats->total_participants) * 100, 1) : 0;
+        
+        return array(
+            'title' => 'Participant Management',
+            'description' => 'Track and manage quiz participants and their results',
+            'icon' => '👥',
+            'stats' => array(
+                'total_participants' => array(
+                    'label' => 'Total Participants',
+                    'value' => number_format($stats->total_participants),
+                    'trend' => '+' . $stats->today . ' today'
+                ),
+                'completed_quizzes' => array(
+                    'label' => 'Completed Quizzes',
+                    'value' => number_format($stats->completed),
+                    'trend' => $completion_rate . '% completion rate'
+                ),
+                'gifts_awarded' => array(
+                    'label' => 'Gifts Awarded',
+                    'value' => number_format($stats->with_gifts),
+                    'trend' => $stats->completed > 0 ? 
+                        round(($stats->with_gifts / $stats->completed) * 100, 1) . '% gift rate' : 
+                        '0% gift rate'
+                )
+            ),
+            'quick_actions' => array(
+                array(
+                    'label' => 'View All Participants',
+                    'url' => admin_url('admin.php?page=vefify-participants'),
+                    'class' => 'button-primary'
+                ),
+                array(
+                    'label' => 'Export Data',
+                    'url' => admin_url('admin.php?page=vefify-participants&action=export'),
+                    'class' => 'button-secondary'
+                )
+            )
+        );
+    }
 }

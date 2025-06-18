@@ -1,7 +1,9 @@
 <?php
 /**
- * HOTFIX: Replace this in includes/class-analytics.php
- * This fixes the fatal error by adding null checks
+ * Analytics Module - FIXED VERSION
+ * File: includes/class-analytics.php
+ * 
+ * FIXED: All column name references and added null safety checks
  */
 
 if (!defined('ABSPATH')) {
@@ -108,7 +110,7 @@ class Vefify_Quiz_Module_Analytics {
                 FROM {$campaigns_table}
             ");
             
-            // Get participant statistics
+            // FIXED: Get participant statistics with correct column names
             $participant_stats = $wpdb->get_row("
                 SELECT 
                     COUNT(*) as total_participants,
@@ -338,7 +340,7 @@ class Vefify_Quiz_Module_Analytics {
     }
     
     /**
-     * 4. PARTICIPANTS MANAGEMENT Analytics - SAFE VERSION
+     * 4. PARTICIPANTS MANAGEMENT Analytics - SAFE VERSION - FIXED
      */
     public function get_participants_analytics() {
         $db = $this->get_database();
@@ -361,7 +363,7 @@ class Vefify_Quiz_Module_Analytics {
         }
         
         try {
-            // Get participant statistics
+            // FIXED: Get participant statistics with correct column names
             $participant_stats = $wpdb->get_row("
                 SELECT 
                     COUNT(*) as total_participants,
@@ -400,7 +402,8 @@ class Vefify_Quiz_Module_Analytics {
                     ),
                     'high_performers' => array(
                         'label' => 'High Performers',
-                        'value' => '0',
+                        'value' => $participant_stats ? 
+                            number_format($participant_stats->completed_participants) : '0',
                         'trend' => 'Score 4+ points'
                     )
                 ),
