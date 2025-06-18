@@ -1,7 +1,14 @@
 <?php
 /**
- * COMPLETE SHORTCODE FIX - Add this to your main plugin file or create a new shortcode handler
- * File: modules/frontend/class-quiz-shortcode.php
+ * Enhanced Quiz Shortcode Class
+ * File: frontend/class-quiz-shortcode.php
+ * 
+ * Phase 1 Enhancements:
+ * - Updated Pharmacist Code field
+ * - Real-time phone validation
+ * - Admin settings integration
+ * - Mobile responsive improvements
+ * - Loading states and animations
  */
 
 if (!defined('ABSPATH')) {
@@ -10,544 +17,483 @@ if (!defined('ABSPATH')) {
 
 class Vefify_Quiz_Shortcode {
     
-    private static $instance = null;
+    private $campaign_id;
+    private $form_settings;
     
-    public static function get_instance() {
-        if (self::$instance === null) {
-            self::$instance = new self();
-        }
-        return self::$instance;
-    }
-    
-    private function __construct() {
-        add_action('init', array($this, 'register_shortcodes'));
+    public function __construct() {
+        add_shortcode('vefify_quiz', array($this, 'render_quiz_shortcode'));
         add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_assets'));
+        
+        // AJAX handlers
+        add_action('wp_ajax_vefify_check_phone_uniqueness', array($this, 'ajax_check_phone_uniqueness'));
+        add_action('wp_ajax_nopriv_vefify_check_phone_uniqueness', array($this, 'ajax_check_phone_uniqueness'));
+        add_action('wp_ajax_vefify_get_districts', array($this, 'ajax_get_districts'));
+        add_action('wp_ajax_nopriv_vefify_get_districts', array($this, 'ajax_get_districts'));
+        add_action('wp_ajax_vefify_submit_quiz', array($this, 'ajax_submit_quiz'));
+        add_action('wp_ajax_nopriv_vefify_submit_quiz', array($this, 'ajax_submit_quiz'));
     }
     
     /**
-     * Register all quiz shortcodes
+     * Render quiz shortcode
      */
-    public function register_shortcodes() {
-        add_shortcode('vefify_quiz', array($this, 'render_quiz'));
-        add_shortcode('vefify_campaign', array($this, 'render_campaign_info'));
-    }
-    
-    /**
-     * Main quiz shortcode handler: [vefify_quiz campaign_id="1"]
-     */
-    public function render_quiz($atts) {
+    public function render_quiz_shortcode($atts) {
         $atts = shortcode_atts(array(
-            'campaign_id' => 0,
-            'template' => 'default',
-            'theme' => 'light'
-        ), $atts);
+            'campaign_id' => '',
+            'theme' => 'default',
+            'show_gifts' => 'true',
+            'show_progress' => 'true'
+        ), $atts, 'vefify_quiz');
         
-        $campaign_id = intval($atts['campaign_id']);
-        
-        if (!$campaign_id) {
-            return '<div class="vefify-error">❌ Campaign ID is required. Usage: [vefify_quiz campaign_id="1"]</div>';
+        if (empty($atts['campaign_id'])) {
+            return '<div class="vefify-error">Campaign ID is required.</div>';
         }
         
-        // Get campaign data
-        $campaign = $this->get_campaign_data($campaign_id);
+        $this->campaign_id = intval($atts['campaign_id']);
         
-        if (!$campaign) {
-            return '<div class="vefify-error">❌ Campaign not found (ID: ' . $campaign_id . ')</div>';
+        // Check if campaign exists and is active
+        $campaign = $this->get_campaign($this->campaign_id);
+        if (!$campaign || !$campaign['is_active']) {
+            return '<div class="vefify-error">Campaign not found or inactive.</div>';
         }
         
-        // Check if campaign is active
-        if (!$this->is_campaign_active($campaign)) {
-            return '<div class="vefify-notice">📅 This campaign is not currently active.</div>';
-        }
-        
-        // Get questions for this campaign
-        $questions = $this->get_campaign_questions($campaign_id);
-        
-        if (empty($questions)) {
-            return '<div class="vefify-error">❌ No questions found for this campaign.</div>';
-        }
-        
-        // Generate unique quiz instance ID
-        $quiz_id = 'quiz_' . $campaign_id . '_' . uniqid();
+        // Load form settings
+        $this->form_settings = get_option('vefify_form_settings', array());
         
         ob_start();
-        ?>
-        <div id="<?php echo esc_attr($quiz_id); ?>" class="vefify-quiz-container" data-campaign-id="<?php echo $campaign_id; ?>">
-            <?php echo $this->render_quiz_template($campaign, $questions, $atts); ?>
-        </div>
-        
-        <script>
-        jQuery(document).ready(function($) {
-            // Initialize quiz functionality
-            if (typeof VefifyQuiz !== 'undefined') {
-                VefifyQuiz.init('<?php echo $quiz_id; ?>', {
-                    campaignId: <?php echo $campaign_id; ?>,
-                    questions: <?php echo json_encode($questions); ?>,
-                    settings: <?php echo json_encode($this->get_quiz_settings($campaign)); ?>
-                });
-            }
-        });
-        </script>
-        <?php
-        
+        $this->render_quiz_container($campaign, $atts);
         return ob_get_clean();
     }
     
     /**
-     * Render quiz template based on theme
+     * Render main quiz container
      */
-    private function render_quiz_template($campaign, $questions, $atts) {
-        $template = $atts['template'];
-        $theme = $atts['theme'];
-        
-        ob_start();
+    private function render_quiz_container($campaign, $atts) {
+        $theme = $atts['theme'] !== 'default' ? $atts['theme'] : ($this->form_settings['form_theme'] ?? 'default');
+        $show_gifts = $atts['show_gifts'] === 'true' && $this->get_setting('show_gift_preview', true);
         ?>
-        <div class="vefify-quiz-wrapper theme-<?php echo esc_attr($theme); ?>">
-            <!-- Quiz Header -->
-            <div class="quiz-header">
-                <h2 class="quiz-title"><?php echo esc_html($campaign['name']); ?></h2>
+        <div id="vefify-quiz-container" class="vefify-quiz-container theme-<?php echo esc_attr($theme); ?>" 
+             data-campaign-id="<?php echo esc_attr($this->campaign_id); ?>"
+             data-theme="<?php echo esc_attr($theme); ?>">
+            
+            <!-- Campaign Header -->
+            <div class="vefify-campaign-header">
+                <h2 class="vefify-campaign-title"><?php echo esc_html($campaign['name']); ?></h2>
                 <?php if (!empty($campaign['description'])): ?>
-                    <p class="quiz-description"><?php echo esc_html($campaign['description']); ?></p>
+                    <p class="vefify-campaign-description"><?php echo esc_html($campaign['description']); ?></p>
+                <?php endif; ?>
+            </div>
+            
+            <?php if ($show_gifts): ?>
+                <?php $this->render_gift_preview($campaign); ?>
+            <?php endif; ?>
+            
+            <!-- Registration Form -->
+            <div id="vefify-registration-step" class="vefify-step active">
+                <?php $this->render_registration_form($campaign); ?>
+            </div>
+            
+            <!-- Quiz Step -->
+            <div id="vefify-quiz-step" class="vefify-step">
+                <div id="vefify-quiz-content">
+                    <!-- Quiz content will be loaded here -->
+                </div>
+            </div>
+            
+            <!-- Results Step -->
+            <div id="vefify-results-step" class="vefify-step">
+                <div id="vefify-results-content">
+                    <!-- Results will be displayed here -->
+                </div>
+            </div>
+            
+            <!-- Loading Overlay -->
+            <div id="vefify-loading-overlay" class="vefify-loading-overlay">
+                <div class="vefify-spinner">
+                    <div class="vefify-bounce1"></div>
+                    <div class="vefify-bounce2"></div>
+                    <div class="vefify-bounce3"></div>
+                </div>
+                <p class="vefify-loading-text">Processing...</p>
+            </div>
+        </div>
+        <?php
+    }
+    
+    /**
+     * Render enhanced registration form
+     */
+    private function render_registration_form($campaign) {
+        ?>
+        <div class="vefify-form-container">
+            <div class="vefify-form-header">
+                <h3>📝 Registration Information</h3>
+                <p>Please fill in your details to start the quiz</p>
+            </div>
+            
+            <form id="vefify-registration-form" class="vefify-registration-form" novalidate>
+                <?php wp_nonce_field('vefify_quiz_registration', 'vefify_registration_nonce'); ?>
+                <input type="hidden" name="campaign_id" value="<?php echo esc_attr($this->campaign_id); ?>">
+                
+                <!-- Full Name Field -->
+                <div class="vefify-form-group">
+                    <label for="full_name" class="vefify-form-label required">
+                        <span class="label-text">Full Name</span>
+                        <span class="required-mark">*</span>
+                    </label>
+                    <div class="vefify-input-wrapper">
+                        <input 
+                            type="text" 
+                            id="full_name" 
+                            name="full_name"
+                            class="vefify-form-input"
+                            placeholder="Enter your full name"
+                            required
+                            autocomplete="name"
+                            data-validate="name"
+                        >
+                        <div class="vefify-input-icon">
+                            <span class="dashicons dashicons-admin-users"></span>
+                        </div>
+                    </div>
+                    <div class="vefify-form-feedback" id="full_name_feedback"></div>
+                </div>
+                
+                <!-- Phone Number Field with Enhanced Validation -->
+                <div class="vefify-form-group">
+                    <label for="phone_number" class="vefify-form-label required">
+                        <span class="label-text">Phone Number</span>
+                        <span class="required-mark">*</span>
+                    </label>
+                    <div class="vefify-input-wrapper">
+                        <input 
+                            type="tel" 
+                            id="phone_number" 
+                            name="phone_number"
+                            class="vefify-form-input"
+                            placeholder="0912345678 or +84912345678"
+                            required
+                            autocomplete="tel"
+                            data-validate="phone"
+                        >
+                        <div class="vefify-input-icon">
+                            <span class="dashicons dashicons-phone"></span>
+                        </div>
+                        <div class="vefify-validation-status" id="phone_validation_status"></div>
+                    </div>
+                    <div class="vefify-form-feedback" id="phone_number_feedback"></div>
+                    <small class="vefify-form-help">Vietnamese mobile number (10 digits starting with 0)</small>
+                </div>
+                
+                <!-- Province Selection -->
+                <div class="vefify-form-group">
+                    <label for="province" class="vefify-form-label required">
+                        <span class="label-text">Province/City</span>
+                        <span class="required-mark">*</span>
+                    </label>
+                    <div class="vefify-input-wrapper">
+                        <select id="province" name="province" class="vefify-form-select" required>
+                            <option value="">Select Province/City</option>
+                            <?php foreach (Vefify_Quiz_Utilities::get_vietnam_provinces() as $code => $name): ?>
+                                <option value="<?php echo esc_attr($code); ?>">
+                                    <?php echo esc_html($name); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <div class="vefify-select-arrow">
+                            <span class="dashicons dashicons-arrow-down-alt2"></span>
+                        </div>
+                    </div>
+                    <div class="vefify-form-feedback" id="province_feedback"></div>
+                </div>
+                
+                <!-- District Selection (conditional) -->
+                <?php if ($this->should_show_field('district')): ?>
+                <div class="vefify-form-group" id="district_group" style="display: none;">
+                    <label for="district" class="vefify-form-label <?php echo $this->is_field_required('district') ? 'required' : ''; ?>">
+                        <span class="label-text">District</span>
+                        <?php if ($this->is_field_required('district')): ?>
+                            <span class="required-mark">*</span>
+                        <?php endif; ?>
+                    </label>
+                    <div class="vefify-input-wrapper">
+                        <select id="district" name="district" class="vefify-form-select" 
+                                <?php echo $this->is_field_required('district') ? 'required' : ''; ?>>
+                            <option value="">Select District</option>
+                        </select>
+                        <div class="vefify-select-arrow">
+                            <span class="dashicons dashicons-arrow-down-alt2"></span>
+                        </div>
+                    </div>
+                    <div class="vefify-form-feedback" id="district_feedback"></div>
+                </div>
                 <?php endif; ?>
                 
-                <div class="quiz-meta">
-                    <span class="quiz-questions">📝 <?php echo count($questions); ?> Questions</span>
-                    <span class="quiz-time">⏱️ <?php echo $campaign['time_limit']; ?> seconds</span>
-                    <span class="quiz-pass-score">🎯 Pass Score: <?php echo $campaign['pass_score']; ?></span>
-                </div>
-            </div>
-            
-            <!-- Progress Bar -->
-            <div class="quiz-progress">
-                <div class="progress-bar">
-                    <div class="progress-fill" style="width: 0%"></div>
-                </div>
-                <div class="progress-text">Question <span class="current-question">0</span> of <span class="total-questions"><?php echo count($questions); ?></span></div>
-            </div>
-            
-            <!-- Quiz Content Area -->
-            <div class="quiz-content">
-                <!-- Start Screen -->
-                <div class="quiz-screen start-screen active">
-                    <div class="start-content">
-                        <h3>Ready to start?</h3>
-                        <p>You have <strong><?php echo $campaign['time_limit']; ?> seconds</strong> to complete this quiz.</p>
-                        <p>You need <strong><?php echo $campaign['pass_score']; ?> correct answers</strong> to pass.</p>
-                        <button class="btn btn-primary start-quiz-btn">🚀 Start Quiz</button>
-                    </div>
-                </div>
-                
-                <!-- Question Screen -->
-                <div class="quiz-screen question-screen">
-                    <div class="question-container">
-                        <h3 class="question-text"></h3>
-                        <div class="question-options"></div>
-                        <div class="question-actions">
-                            <button class="btn btn-secondary prev-btn" style="display: none;">← Previous</button>
-                            <button class="btn btn-primary next-btn">Next →</button>
+                <!-- Enhanced Pharmacist Code Field -->
+                <?php if ($this->should_show_field('pharmacy_code')): ?>
+                <div class="vefify-form-group">
+                    <label for="pharmacist_code" class="vefify-form-label <?php echo $this->is_field_required('pharmacy_code') ? 'required' : ''; ?>">
+                        <span class="label-text">Pharmacist License Code</span>
+                        <?php if ($this->is_field_required('pharmacy_code')): ?>
+                            <span class="required-mark">*</span>
+                        <?php endif; ?>
+                    </label>
+                    <div class="vefify-input-wrapper">
+                        <input 
+                            type="text" 
+                            id="pharmacist_code" 
+                            name="pharmacist_code"
+                            class="vefify-form-input"
+                            placeholder="e.g., PH123456 (6-12 characters)"
+                            pattern="[A-Z0-9]{6,12}"
+                            data-validate="pharmacist"
+                            autocomplete="off"
+                            style="text-transform: uppercase;"
+                            <?php echo $this->is_field_required('pharmacy_code') ? 'required' : ''; ?>
+                        >
+                        <div class="vefify-input-icon">
+                            <span class="dashicons dashicons-id-alt"></span>
                         </div>
                     </div>
+                    <div class="vefify-form-feedback" id="pharmacist_code_feedback"></div>
+                    <small class="vefify-form-help">
+                        <?php echo $this->is_field_required('pharmacy_code') ? 'Required' : 'Optional'; ?>: 
+                        6-12 alphanumeric characters
+                    </small>
                 </div>
+                <?php endif; ?>
                 
-                <!-- Results Screen -->
-                <div class="quiz-screen results-screen">
-                    <div class="results-content">
-                        <h3>Quiz Complete! 🎉</h3>
-                        <div class="score-display">
-                            <div class="score-circle">
-                                <span class="score-number">0</span>
-                                <span class="score-total">/ <?php echo count($questions); ?></span>
+                <!-- Email Field (conditional) -->
+                <?php if ($this->should_show_field('email')): ?>
+                <div class="vefify-form-group">
+                    <label for="email" class="vefify-form-label <?php echo $this->is_field_required('email') ? 'required' : ''; ?>">
+                        <span class="label-text">Email Address</span>
+                        <?php if ($this->is_field_required('email')): ?>
+                            <span class="required-mark">*</span>
+                        <?php endif; ?>
+                    </label>
+                    <div class="vefify-input-wrapper">
+                        <input 
+                            type="email" 
+                            id="email" 
+                            name="email"
+                            class="vefify-form-input"
+                            placeholder="your.email@example.com"
+                            autocomplete="email"
+                            <?php echo $this->is_field_required('email') ? 'required' : ''; ?>
+                        >
+                        <div class="vefify-input-icon">
+                            <span class="dashicons dashicons-email-alt"></span>
+                        </div>
+                    </div>
+                    <div class="vefify-form-feedback" id="email_feedback"></div>
+                    <small class="vefify-form-help">
+                        <?php echo $this->is_field_required('email') ? 'Required' : 'Optional'; ?>: 
+                        For result notifications
+                    </small>
+                </div>
+                <?php endif; ?>
+                
+                <!-- Terms and Conditions (conditional) -->
+                <?php if ($this->should_show_field('terms')): ?>
+                <div class="vefify-form-group checkbox-group">
+                    <label class="vefify-checkbox-label <?php echo $this->is_field_required('terms') ? 'required' : ''; ?>">
+                        <input 
+                            type="checkbox" 
+                            id="terms_accepted" 
+                            name="terms_accepted"
+                            value="1"
+                            class="vefify-checkbox"
+                            <?php echo $this->is_field_required('terms') ? 'required' : ''; ?>
+                        >
+                        <span class="vefify-checkbox-custom"></span>
+                        <span class="checkbox-text">
+                            I agree to the 
+                            <?php 
+                            $terms_url = $this->get_setting('terms_url', '#');
+                            if ($terms_url && $terms_url !== '#'): 
+                            ?>
+                                <a href="<?php echo esc_url($terms_url); ?>" target="_blank" class="terms-link">
+                                    Terms & Conditions
+                                </a>
+                            <?php else: ?>
+                                Terms & Conditions
+                            <?php endif; ?>
+                        </span>
+                    </label>
+                    <div class="vefify-form-feedback" id="terms_accepted_feedback"></div>
+                </div>
+                <?php endif; ?>
+                
+                <!-- Submit Button -->
+                <div class="vefify-form-actions">
+                    <button type="submit" id="vefify-registration-submit" class="vefify-btn vefify-btn-primary vefify-btn-large">
+                        <span class="btn-icon">🚀</span>
+                        <span class="btn-text">Start Quiz</span>
+                        <span class="btn-loading">
+                            <span class="vefify-spinner-small"></span>
+                            Processing...
+                        </span>
+                    </button>
+                </div>
+            </form>
+        </div>
+        <?php
+    }
+    
+    /**
+     * Render gift preview section
+     */
+    private function render_gift_preview($campaign) {
+        $gifts = $this->get_campaign_gifts($campaign['id']);
+        if (empty($gifts)) return;
+        
+        ?>
+        <div class="vefify-gift-preview">
+            <div class="vefify-gift-header">
+                <h3>🎁 Available Rewards</h3>
+                <p>Complete the quiz to earn these amazing gifts!</p>
+            </div>
+            
+            <div class="vefify-gift-grid">
+                <?php foreach ($gifts as $gift): ?>
+                    <div class="vefify-gift-card">
+                        <div class="gift-icon">🎁</div>
+                        <h4 class="gift-name"><?php echo esc_html($gift['gift_name']); ?></h4>
+                        
+                        <?php if ($this->get_setting('show_gift_value', true) && !empty($gift['gift_value'])): ?>
+                            <div class="gift-value"><?php echo esc_html($gift['gift_value']); ?></div>
+                        <?php endif; ?>
+                        
+                        <?php if ($this->get_setting('show_gift_requirements', true)): ?>
+                            <div class="gift-requirement">
+                                Minimum Score: <?php echo esc_html($gift['min_score']); ?>/<?php echo esc_html($campaign['questions_per_quiz']); ?>
                             </div>
-                        </div>
-                        <div class="results-details">
-                            <p class="result-message"></p>
-                            <div class="result-breakdown"></div>
-                        </div>
-                        <div class="result-actions">
-                            <button class="btn btn-primary restart-btn">🔄 Try Again</button>
-                            <button class="btn btn-secondary share-btn">📤 Share Results</button>
-                        </div>
+                        <?php endif; ?>
+                        
+                        <div class="gift-cta">Complete quiz to earn!</div>
                     </div>
-                </div>
-            </div>
-            
-            <!-- Timer Display -->
-            <div class="quiz-timer">
-                <span class="timer-icon">⏰</span>
-                <span class="timer-text">Time: <span class="time-remaining"><?php echo $campaign['time_limit']; ?></span>s</span>
+                <?php endforeach; ?>
             </div>
         </div>
-        
-        <style>
-        .vefify-quiz-wrapper {
-            max-width: 600px;
-            margin: 20px auto;
-            background: #fff;
-            border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-            overflow: hidden;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        }
-        
-        .quiz-header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 30px 20px;
-            text-align: center;
-        }
-        
-        .quiz-title {
-            margin: 0 0 10px;
-            font-size: 24px;
-            font-weight: 600;
-        }
-        
-        .quiz-description {
-            margin: 0 0 20px;
-            opacity: 0.9;
-            font-size: 14px;
-        }
-        
-        .quiz-meta {
-            display: flex;
-            justify-content: center;
-            gap: 20px;
-            flex-wrap: wrap;
-            font-size: 13px;
-        }
-        
-        .quiz-progress {
-            padding: 20px;
-            background: #f8f9fa;
-            border-bottom: 1px solid #e9ecef;
-        }
-        
-        .progress-bar {
-            height: 8px;
-            background: #e9ecef;
-            border-radius: 4px;
-            overflow: hidden;
-            margin-bottom: 10px;
-        }
-        
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #4facfe 0%, #00f2fe 100%);
-            transition: width 0.3s ease;
-        }
-        
-        .progress-text {
-            text-align: center;
-            font-size: 14px;
-            color: #666;
-        }
-        
-        .quiz-content {
-            min-height: 300px;
-            position: relative;
-        }
-        
-        .quiz-screen {
-            display: none;
-            padding: 30px 20px;
-        }
-        
-        .quiz-screen.active {
-            display: block;
-        }
-        
-        .start-content {
-            text-align: center;
-        }
-        
-        .question-container h3 {
-            margin-bottom: 20px;
-            font-size: 18px;
-            line-height: 1.5;
-        }
-        
-        .question-options {
-            margin-bottom: 30px;
-        }
-        
-        .option-item {
-            padding: 15px;
-            margin-bottom: 10px;
-            border: 2px solid #e9ecef;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-        
-        .option-item:hover {
-            border-color: #667eea;
-            background: #f8f9ff;
-        }
-        
-        .option-item.selected {
-            border-color: #667eea;
-            background: #667eea;
-            color: white;
-        }
-        
-        .question-actions {
-            display: flex;
-            justify-content: space-between;
-            gap: 10px;
-        }
-        
-        .btn {
-            padding: 12px 24px;
-            border: none;
-            border-radius: 6px;
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-        
-        .btn-primary {
-            background: #667eea;
-            color: white;
-        }
-        
-        .btn-primary:hover {
-            background: #5a6fd8;
-        }
-        
-        .btn-secondary {
-            background: #6c757d;
-            color: white;
-        }
-        
-        .quiz-timer {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            background: rgba(0,0,0,0.8);
-            color: white;
-            padding: 8px 12px;
-            border-radius: 20px;
-            font-size: 12px;
-        }
-        
-        .results-content {
-            text-align: center;
-        }
-        
-        .score-circle {
-            width: 120px;
-            height: 120px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 20px auto;
-            color: white;
-            font-size: 24px;
-            font-weight: bold;
-        }
-        
-        .vefify-error, .vefify-notice {
-            padding: 15px;
-            margin: 20px 0;
-            border-radius: 6px;
-            font-weight: 500;
-        }
-        
-        .vefify-error {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-        
-        .vefify-notice {
-            background: #d1ecf1;
-            color: #0c5460;
-            border: 1px solid #bee5eb;
-        }
-        
-        /* Responsive */
-        @media (max-width: 600px) {
-            .vefify-quiz-wrapper {
-                margin: 10px;
-                border-radius: 8px;
-            }
-            
-            .quiz-meta {
-                flex-direction: column;
-                gap: 10px;
-            }
-            
-            .question-actions {
-                flex-direction: column;
-            }
-        }
-        </style>
         <?php
-        
-        return ob_get_clean();
     }
     
     /**
-     * Get campaign data
+     * AJAX: Check phone number uniqueness
      */
-    private function get_campaign_data($campaign_id) {
-        global $wpdb;
+    public function ajax_check_phone_uniqueness() {
+        check_ajax_referer('vefify_quiz_registration', 'nonce');
         
-        $table = $wpdb->prefix . 'vefify_campaigns';
+        $phone = sanitize_text_field($_POST['phone'] ?? '');
+        $campaign_id = intval($_POST['campaign_id'] ?? 0);
         
-        $campaign = $wpdb->get_row($wpdb->prepare(
-            "SELECT * FROM {$table} WHERE id = %d",
-            $campaign_id
-        ), ARRAY_A);
-        
-        return $campaign;
-    }
-    
-    /**
-     * Check if campaign is active
-     */
-    private function is_campaign_active($campaign) {
-        if (!$campaign['is_active']) {
-            return false;
+        if (empty($phone) || !$campaign_id) {
+            wp_send_json_error('Invalid data provided');
         }
         
-        $now = current_time('timestamp');
-        $start = strtotime($campaign['start_date']);
-        $end = strtotime($campaign['end_date']);
-        
-        return ($now >= $start && $now <= $end);
-    }
-    
-    /**
-     * Get questions for campaign
-     */
-    private function get_campaign_questions($campaign_id) {
         global $wpdb;
         
-        $questions_table = $wpdb->prefix . 'vefify_questions';
-        $options_table = $wpdb->prefix . 'vefify_question_options';
+        // Format phone number using your existing utility
+        $formatted_phone = Vefify_Quiz_Utilities::format_phone_number($phone);
         
-        // Get questions
-        $questions = $wpdb->get_results($wpdb->prepare(
-            "SELECT * FROM {$questions_table} 
-             WHERE campaign_id = %d AND is_active = 1 
-             ORDER BY RAND() 
-             LIMIT 5",
-            $campaign_id
-        ), ARRAY_A);
+        // Check uniqueness in this campaign
+        $exists = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}vefify_participants 
+             WHERE participant_phone = %s AND campaign_id = %d",
+            $formatted_phone, $campaign_id
+        ));
         
-        // Get options for each question
-        foreach ($questions as &$question) {
-            $options = $wpdb->get_results($wpdb->prepare(
-                "SELECT * FROM {$options_table} 
-                 WHERE question_id = %d 
-                 ORDER BY option_order",
-                $question['id']
-            ), ARRAY_A);
-            
-            $question['options'] = $options;
+        if ($exists > 0) {
+            wp_send_json_error('This phone number is already registered for this campaign');
         }
         
-        return $questions;
+        wp_send_json_success('Phone number is available');
     }
     
     /**
-     * Get quiz settings
+     * AJAX: Get districts for province
      */
-    private function get_quiz_settings($campaign) {
-        return array(
-            'timeLimit' => intval($campaign['time_limit']),
-            'passScore' => intval($campaign['pass_score']),
-            'questionsPerQuiz' => intval($campaign['questions_per_quiz']),
-            'allowRestart' => true,
-            'showExplanations' => true
-        );
+    public function ajax_get_districts() {
+        $province_code = sanitize_text_field($_POST['province_code'] ?? '');
+        
+        if (empty($province_code)) {
+            wp_send_json_error('Province code required');
+        }
+        
+        // Use your existing utility to get districts
+        $districts = Vefify_Quiz_Utilities::get_vietnam_districts($province_code);
+        
+        wp_send_json_success($districts);
     }
     
     /**
      * Enqueue frontend assets
      */
     public function enqueue_frontend_assets() {
-        // Only on pages with shortcodes
-        global $post;
+        if (is_admin()) return;
         
-        if (is_a($post, 'WP_Post') && has_shortcode($post->post_content, 'vefify_quiz')) {
-            
-            wp_enqueue_script('jquery');
-            
-            // Enqueue quiz JavaScript
-            wp_enqueue_script(
-                'vefify-quiz-frontend',
-                VEFIFY_QUIZ_PLUGIN_URL . 'frontend/assets/js/quiz.js',
-                array('jquery'),
-                VEFIFY_QUIZ_VERSION,
-                true
-            );
-            
-            // Localize script
-            wp_localize_script('vefify-quiz-frontend', 'vefifyAjax', array(
-                'ajaxUrl' => admin_url('admin-ajax.php'),
-                'nonce' => wp_create_nonce('vefify_quiz_nonce'),
-                'strings' => array(
-                    'loading' => 'Loading...',
-                    'error' => 'An error occurred',
-                    'timeUp' => 'Time is up!',
-                    'submitting' => 'Submitting...'
-                )
-            ));
-        }
+        wp_enqueue_style(
+            'vefify-quiz-frontend',
+            VEFIFY_QUIZ_PLUGIN_URL . 'assets/css/frontend-quiz.css',
+            array(),
+            VEFIFY_QUIZ_VERSION
+        );
+        
+        wp_enqueue_script(
+            'vefify-quiz-frontend',
+            VEFIFY_QUIZ_PLUGIN_URL . 'assets/js/frontend-quiz.js',
+            array('jquery'),
+            VEFIFY_QUIZ_VERSION,
+            true
+        );
+        
+        // Localize script with AJAX data
+        wp_localize_script('vefify-quiz-frontend', 'vefifyAjax', array(
+            'ajaxUrl' => admin_url('admin-ajax.php'),
+            'nonce' => wp_create_nonce('vefify_quiz_nonce'),
+            'strings' => array(
+                'loading' => 'Loading...',
+                'error' => 'An error occurred. Please try again.',
+                'phoneValidating' => 'Checking phone number...',
+                'phoneAvailable' => '✅ Phone number available',
+                'phoneInUse' => '❌ Phone number already registered',
+                'requiredField' => 'This field is required',
+                'invalidPhone' => 'Please enter a valid Vietnamese phone number',
+                'invalidEmail' => 'Please enter a valid email address'
+            )
+        ));
     }
     
     /**
-     * Campaign info shortcode: [vefify_campaign campaign_id="1"]
+     * Helper methods
      */
-    public function render_campaign_info($atts) {
-        $atts = shortcode_atts(array(
-            'campaign_id' => 0,
-            'show_stats' => false
-        ), $atts);
-        
-        $campaign_id = intval($atts['campaign_id']);
-        
-        if (!$campaign_id) {
-            return '<div class="vefify-error">Campaign ID required</div>';
-        }
-        
-        $campaign = $this->get_campaign_data($campaign_id);
-        
-        if (!$campaign) {
-            return '<div class="vefify-error">Campaign not found</div>';
-        }
-        
-        ob_start();
-        ?>
-        <div class="vefify-campaign-info">
-            <h3><?php echo esc_html($campaign['name']); ?></h3>
-            <p><?php echo esc_html($campaign['description']); ?></p>
-            
-            <div class="campaign-details">
-                <p><strong>Duration:</strong> <?php echo date('M j, Y', strtotime($campaign['start_date'])); ?> - <?php echo date('M j, Y', strtotime($campaign['end_date'])); ?></p>
-                <p><strong>Questions:</strong> <?php echo $campaign['questions_per_quiz']; ?></p>
-                <p><strong>Time Limit:</strong> <?php echo $campaign['time_limit']; ?> seconds</p>
-                <p><strong>Pass Score:</strong> <?php echo $campaign['pass_score']; ?> correct answers</p>
-            </div>
-            
-            <?php if ($this->is_campaign_active($campaign)): ?>
-                <a href="<?php echo add_query_arg('campaign_id', $campaign_id); ?>" class="btn btn-primary">Take Quiz →</a>
-            <?php else: ?>
-                <p class="campaign-inactive">This campaign is not currently active.</p>
-            <?php endif; ?>
-        </div>
-        <?php
-        
-        return ob_get_clean();
+    private function get_campaign($campaign_id) {
+        global $wpdb;
+        return $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}vefify_campaigns WHERE id = %d",
+            $campaign_id
+        ), ARRAY_A);
+    }
+    
+    private function get_campaign_gifts($campaign_id) {
+        global $wpdb;
+        return $wpdb->get_results($wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}vefify_gifts 
+             WHERE campaign_id = %d AND is_active = 1 
+             ORDER BY min_score ASC",
+            $campaign_id
+        ), ARRAY_A);
+    }
+    
+    private function should_show_field($field_name) {
+        return $this->get_setting('show_' . $field_name, true);
+    }
+    
+    private function is_field_required($field_name) {
+        return $this->get_setting('require_' . $field_name, false);
+    }
+    
+    private function get_setting($key, $default = false) {
+        return $this->form_settings[$key] ?? $default;
     }
 }
-
-// Initialize the shortcode handler
-add_action('plugins_loaded', function() {
-    Vefify_Quiz_Shortcode::get_instance();
-});

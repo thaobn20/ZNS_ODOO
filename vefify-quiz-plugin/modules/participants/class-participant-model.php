@@ -513,4 +513,48 @@ class Vefify_Participant_Model {
         // This would be implemented when segment feature is added
         return array('added_count' => count($participant_ids));
     }
+	
+	/**
+ * Check if phone exists in campaign
+ */
+public function phone_exists_in_campaign($phone, $campaign_id) {
+    $formatted_phone = Vefify_Quiz_Utilities::format_phone_number($phone);
+    
+    return $this->db->get_var($this->db->prepare(
+        "SELECT COUNT(*) FROM {$this->table_participants} 
+         WHERE participant_phone = %s AND campaign_id = %d",
+        $formatted_phone, $campaign_id
+    )) > 0;
+}
+
+/**
+ * Create participant session
+ */
+public function create_participant_session($campaign_id, $participant_data) {
+    $session_id = 'vq_' . uniqid() . '_' . time();
+    
+    $data = array(
+        'campaign_id' => $campaign_id,
+        'session_id' => $session_id,
+        'participant_name' => $participant_data['full_name'],
+        'participant_phone' => Vefify_Quiz_Utilities::format_phone_number($participant_data['phone_number']),
+        'participant_email' => $participant_data['email'] ?? '',
+        'province' => $participant_data['province'],
+        'pharmacy_code' => $participant_data['pharmacist_code'] ?? '',
+        'quiz_status' => 'started',
+        'start_time' => current_time('mysql'),
+        'created_at' => current_time('mysql')
+    );
+    
+    $result = $this->db->insert($this->table_participants, $data);
+    
+    if ($result) {
+        return array(
+            'participant_id' => $this->db->insert_id,
+            'session_id' => $session_id
+        );
+    }
+    
+    return false;
+}
 }

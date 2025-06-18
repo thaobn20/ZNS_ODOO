@@ -67,7 +67,7 @@ class Vefify_Quiz_Plugin {
         // Emergency validation helper
         add_action('admin_menu', array($this, 'add_emergency_validation_menu'), 100);
     }
-    
+
     /**
      * Load dependencies in correct order
      */
@@ -81,6 +81,7 @@ class Vefify_Quiz_Plugin {
             'includes/class-analytics-summaries.php',
            # 'includes/class-database-migration.php'
             'includes/admin/debug-database.php'
+           # 'modules/settings/class-form-settings.php'
         );
         
         foreach ($core_files as $file) {
@@ -858,7 +859,11 @@ class Vefify_Quiz_Plugin {
         }
     }
 }
-
+// Include form settings
+if (is_admin()) {
+    require_once VEFIFY_QUIZ_PLUGIN_DIR . 'modules/settings/class-form-settings.php';
+    new Vefify_Form_Settings();
+}
 
 // Initialize the plugin
 function vefify_quiz_init() {
@@ -882,3 +887,25 @@ function vefify_quiz_get_module($module_name) {
     $plugin = Vefify_Quiz_Plugin::get_instance();
     return $plugin->get_module($module_name);
 }
+
+add_action('init', function() {
+    // Admin form settings
+    if (is_admin()) {
+        require_once VEFIFY_QUIZ_PLUGIN_DIR . 'modules/settings/class-form-settings.php';
+        if (class_exists('Vefify_Form_Settings')) {
+            new Vefify_Form_Settings();
+        }
+    }
+    
+    // Frontend enhancements
+    if (!is_admin() || (defined('DOING_AJAX') && DOING_AJAX)) {
+        // Enhanced shortcode
+        require_once VEFIFY_QUIZ_PLUGIN_DIR . 'frontend/class-quiz-shortcode.php';
+        if (class_exists('Vefify_Quiz_Shortcode')) {
+            new Vefify_Quiz_Shortcode();
+        }
+        
+        // Frontend AJAX module
+        require_once VEFIFY_QUIZ_PLUGIN_DIR . 'modules/frontend/class-frontend-module.php';
+    }
+});
