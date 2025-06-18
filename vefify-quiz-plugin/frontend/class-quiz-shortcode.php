@@ -409,13 +409,219 @@ class Vefify_Quiz_Shortcode {
         wp_send_json_success(array('can_participate' => true, 'message' => 'You can participate'));
     }
     
-    public function ajax_start_quiz() {
-        check_ajax_referer('vefify_quiz_nonce', 'nonce');
-        wp_send_json_success(array('session_id' => 'test_session', 'questions' => array()));
+	public function ajax_start_quiz() {
+    // Verify nonce
+    if (!wp_verify_nonce($_POST['vefify_nonce'] ?? '', 'vefify_quiz_nonce')) {
+        wp_send_json_error('Security check failed');
+        return;
     }
+    
+    try {
+        $campaign_id = intval($_POST['campaign_id'] ?? 0);
+        
+        // Sanitize form data
+        $form_data = array(
+            'full_name' => sanitize_text_field($_POST['full_name'] ?? ''),
+            'email' => sanitize_email($_POST['email'] ?? ''),
+            'phone_number' => sanitize_text_field($_POST['phone_number'] ?? ''),
+            'province' => sanitize_text_field($_POST['province'] ?? ''),
+            'pharmacist_code' => sanitize_text_field($_POST['pharmacist_code'] ?? ''),
+            'company' => sanitize_text_field($_POST['company'] ?? '')
+        );
+        
+        // Validate required fields
+        $errors = array();
+        if (empty($form_data['full_name'])) {
+            $errors[] = 'Full name is required';
+        }
+        if (empty($form_data['email']) || !is_email($form_data['email'])) {
+            $errors[] = 'Valid email is required';
+        }
+        if (empty($form_data['phone_number'])) {
+            $errors[] = 'Phone number is required';
+        }
+        if (empty($form_data['province'])) {
+            $errors[] = 'Province selection is required';
+        }
+        
+        if (!empty($errors)) {
+            wp_send_json_error(array(
+                'message' => 'Please correct the following errors:',
+                'errors' => $errors
+            ));
+            return;
+        }
+        
+        // Check if phone already exists for this campaign
+        global $wpdb;
+        $existing = $wpdb->get_var($wpdb->prepare(
+            "SELECT id FROM {$wpdb->prefix}vefify_participants 
+             WHERE phone_number = %s AND campaign_id = %d",
+            $form_data['phone_number'],
+            $campaign_id
+        ));
+        
+        if ($existing) {
+            wp_send_json_error('Phone number already registered for this campaign');
+            return;
+        }
+        
+        // Create participant record
+        $participant_data = array_merge($form_data, array(
+            'campaign_id' => $campaign_id,
+            'session_id' => wp_generate_uuid4(),
+            'quiz_status' => 'registered',
+            'created_at' => current_time('mysql')
+        ));
+        
+        $result = $wpdb->insert(
+            $wpdb->prefix . 'vefify_participants',
+            $participant_data
+        );
+        
+        if ($result === false) {
+            wp_send_json_error('Failed to register. Please try again.');
+            return;
+        }
+        
+        $participant_id = $wpdb->insert_id;
+        
+        // Return success with quiz start data
+        wp_send_json_success(array(
+            'participant_id' => $participant_id,
+            'session_id' => $participant_data['session_id'],
+            'message' => 'Registration successful! Starting quiz...',
+            'redirect_to_quiz' => true
+        ));
+        
+    } catch (Exception $e) {
+        error_log('Quiz start error: ' . $e->getMessage());
+        wp_send_json_error('An error occurred. Please try again.');
+    }
+}	
     
     public function ajax_submit_quiz() {
         check_ajax_referer('vefify_quiz_nonce', 'nonce');
         wp_send_json_success(array('score' => 5, 'total_questions' => 5, 'percentage' => 100));
     }
+	/**
+ * Render province options for Vietnam
+ */
+	private function render_province_options() {
+		$provinces = array(
+			'Ho Chi Minh' => 'Ho Chi Minh City',
+			'Ha Noi' => 'Hanoi',
+			'Da Nang' => 'Da Nang',
+			'Hai Phong' => 'Hai Phong',
+			'Can Tho' => 'Can Tho',
+			'An Giang' => 'An Giang',
+			'Ba Ria Vung Tau' => 'Ba Ria - Vung Tau',
+			'Bac Giang' => 'Bac Giang',
+			'Bac Kan' => 'Bac Kan',
+			'Bac Lieu' => 'Bac Lieu',
+			'Bac Ninh' => 'Bac Ninh',
+			'Ben Tre' => 'Ben Tre',
+			'Binh Dinh' => 'Binh Dinh',
+			'Binh Duong' => 'Binh Duong',
+			'Binh Phuoc' => 'Binh Phuoc',
+			'Binh Thuan' => 'Binh Thuan',
+			'Ca Mau' => 'Ca Mau',
+			'Cao Bang' => 'Cao Bang',
+			'Dak Lak' => 'Dak Lak',
+			'Dak Nong' => 'Dak Nong',
+			'Dien Bien' => 'Dien Bien',
+			'Dong Nai' => 'Dong Nai',
+			'Dong Thap' => 'Dong Thap',
+			'Gia Lai' => 'Gia Lai',
+			'Ha Giang' => 'Ha Giang',
+			'Ha Nam' => 'Ha Nam',
+			'Ha Tinh' => 'Ha Tinh',
+			'Hai Duong' => 'Hai Duong',
+			'Hau Giang' => 'Hau Giang',
+			'Hoa Binh' => 'Hoa Binh',
+			'Hung Yen' => 'Hung Yen',
+			'Khanh Hoa' => 'Khanh Hoa',
+			'Kien Giang' => 'Kien Giang',
+			'Kon Tum' => 'Kon Tum',
+			'Lai Chau' => 'Lai Chau',
+			'Lam Dong' => 'Lam Dong',
+			'Lang Son' => 'Lang Son',
+			'Lao Cai' => 'Lao Cai',
+			'Long An' => 'Long An',
+			'Nam Dinh' => 'Nam Dinh',
+			'Nghe An' => 'Nghe An',
+			'Ninh Binh' => 'Ninh Binh',
+			'Ninh Thuan' => 'Ninh Thuan',
+			'Phu Tho' => 'Phu Tho',
+			'Phu Yen' => 'Phu Yen',
+			'Quang Binh' => 'Quang Binh',
+			'Quang Nam' => 'Quang Nam',
+			'Quang Ngai' => 'Quang Ngai',
+			'Quang Ninh' => 'Quang Ninh',
+			'Quang Tri' => 'Quang Tri',
+			'Soc Trang' => 'Soc Trang',
+			'Son La' => 'Son La',
+			'Tay Ninh' => 'Tay Ninh',
+			'Thai Binh' => 'Thai Binh',
+			'Thai Nguyen' => 'Thai Nguyen',
+			'Thanh Hoa' => 'Thanh Hoa',
+			'Thua Thien Hue' => 'Thua Thien Hue',
+			'Tien Giang' => 'Tien Giang',
+			'Tra Vinh' => 'Tra Vinh',
+			'Tuyen Quang' => 'Tuyen Quang',
+			'Vinh Long' => 'Vinh Long',
+			'Vinh Phuc' => 'Vinh Phuc',
+			'Yen Bai' => 'Yen Bai'
+		);
+		
+		$options = '';
+		foreach ($provinces as $value => $label) {
+			$options .= '<option value="' . esc_attr($value) . '">' . esc_html($label) . '</option>';
+		}
+		
+		return $options;
+	}
+	// Load province and Pharmacist code
+?>
+<div class="vefify-form-group">
+    <label for="province" class="vefify-form-label required">
+        <span class="label-text">Province/City</span>
+        <span class="required-mark">*</span>
+    </label>
+    <div class="vefify-input-wrapper">
+        <select id="province" name="province" class="vefify-form-select" required>
+            <option value="">Select your province/city</option>
+            <?php echo $this->render_province_options(); ?>
+        </select>
+        <div class="vefify-select-arrow">
+            <span class="dashicons dashicons-arrow-down-alt2"></span>
+        </div>
+    </div>
+    <div class="vefify-form-feedback" id="province_feedback"></div>
+</div>
+
+<!-- Pharmacist Code field (find and replace your existing pharmacist field) -->
+<div class="vefify-form-group">
+    <label for="pharmacistCode" class="vefify-form-label">
+        <span class="label-text">Pharmacist License Code</span>
+        <span class="optional-mark">(Optional)</span>
+    </label>
+    <div class="vefify-input-wrapper">
+        <input type="text" 
+               id="pharmacistCode" 
+               name="pharmacist_code" 
+               class="vefify-form-input" 
+               placeholder="e.g., PH123456 (6-12 characters)"
+               pattern="[A-Z0-9]{6,12}"
+               style="text-transform: uppercase;"
+               maxlength="12">
+        <div class="vefify-input-icon">
+            <span class="dashicons dashicons-id-alt"></span>
+        </div>
+    </div>
+    <div class="vefify-form-feedback" id="pharmacistCode_feedback"></div>
+    <small class="vefify-form-help">Optional: Enter your 6-12 character pharmacist license code</small>
+</div>
+
+<?php
 }
