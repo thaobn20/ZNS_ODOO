@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Vefify Quiz Campaign Manager
  * Description: Advanced quiz campaign management with mobile-first design
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: Vefify Team
  * License: GPL v2 or later
  * Text Domain: vefify-quiz
