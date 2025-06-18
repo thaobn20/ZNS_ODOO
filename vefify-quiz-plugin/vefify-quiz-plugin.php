@@ -859,12 +859,6 @@ class Vefify_Quiz_Plugin {
         }
     }
 }
-// Include form settings
-if (is_admin()) {
-    require_once VEFIFY_QUIZ_PLUGIN_DIR . 'modules/settings/class-form-settings.php';
-    new Vefify_Form_Settings();
-}
-
 // Initialize the plugin
 function vefify_quiz_init() {
     return Vefify_Quiz_Plugin::get_instance();
@@ -888,24 +882,43 @@ function vefify_quiz_get_module($module_name) {
     return $plugin->get_module($module_name);
 }
 
-add_action('init', function() {
-	remove_shortcode('vefify_quiz');
-    // Admin form settings
-    if (is_admin()) {
-        require_once VEFIFY_QUIZ_PLUGIN_DIR . 'modules/settings/class-form-settings.php';
-        if (class_exists('Vefify_Form_Settings')) {
-            new Vefify_Form_Settings();
-        }
-    }
+//Load module setting & setting
+	add_action('init', function() {
+		remove_shortcode('vefify_quiz');
+		
+		// Admin form settings - FIXED VERSION
+		if (is_admin()) {
+			require_once VEFIFY_QUIZ_PLUGIN_DIR . 'modules/settings/class-form-settings.php';
+			if (class_exists('Vefify_Form_Settings')) {
+				// Use singleton pattern instead of direct instantiation
+				Vefify_Form_Settings::get_instance();
+			}
+		}
+		
+		// Frontend enhancements
+		if (!is_admin() || (defined('DOING_AJAX') && DOING_AJAX)) {
+			require_once VEFIFY_QUIZ_PLUGIN_DIR . 'frontend/class-quiz-shortcode.php';
+			if (class_exists('Vefify_Quiz_Shortcode')) {
+				Vefify_Quiz_Shortcode::get_instance();
+			}
+			
+			// Frontend AJAX module (if exists)
+			if (file_exists(VEFIFY_QUIZ_PLUGIN_DIR . 'modules/frontend/class-frontend-module.php')) {
+				require_once VEFIFY_QUIZ_PLUGIN_DIR . 'modules/frontend/class-frontend-module.php';
+			}
+		}
+	});
+
+add_action('wp_enqueue_scripts', function() {
+    // Only enqueue on pages with the shortcode
+    global $post;
     
-    // Frontend enhancements
-    if (!is_admin() || (defined('DOING_AJAX') && DOING_AJAX)) {
-        require_once VEFIFY_QUIZ_PLUGIN_DIR . 'frontend/class-quiz-shortcode.php';
-        if (class_exists('Vefify_Quiz_Shortcode')) {
-            new Vefify_Quiz_Shortcode();
-        }
+    if (is_a($post, 'WP_Post') && has_shortcode($post->post_content, 'vefify_quiz')) {
+        // Enqueue dashicons for icons
+        wp_enqueue_style('dashicons');
         
-        // Frontend AJAX module
-        require_once VEFIFY_QUIZ_PLUGIN_DIR . 'modules/frontend/class-frontend-module.php';
+        // Create dynamic CSS file if it doesn't exist
+        $css_content = '/* Vefify Quiz Frontend CSS - Auto Generated */';
+        wp_add_inline_style('dashicons', $css_content);
     }
 });

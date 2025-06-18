@@ -1,159 +1,14 @@
 <?php
-/**
- * FIXED: Settings Integration with Main Menu
- * File: modules/settings/class-form-settings.php
- * 
- * Integrates with the existing 'vefify-settings' menu from main plugin
- */
-
 if (!defined('ABSPATH')) {
     exit;
 }
 
 class Vefify_Form_Settings {
     
-    private $option_group = 'vefify_quiz_settings';
-    private $option_name = 'vefify_quiz_options';
-    private $settings = array();
-    
     public function __construct() {
-        // Hook into WordPress admin
         add_action('admin_init', array($this, 'init_settings'));
-        
-        // Hook into your EXISTING settings page display
-        add_action('admin_head', array($this, 'check_settings_page'));
-        
-        // Load current settings
-        $this->load_settings();
-    }
-    
-    /**
-     * Check if we're on the settings page and enhance it
-     */
-    public function check_settings_page() {
-        $screen = get_current_screen();
-        
-        // Check if we're on the main plugin's settings page
-        if ($screen && $screen->id === 'vefify-quiz_page_vefify-settings') {
-            // Add our enhanced settings to the existing page
-            add_action('admin_footer', array($this, 'inject_enhanced_settings'));
-        }
-    }
-    
-    /**
-     * Inject enhanced settings into existing settings page
-     */
-    public function inject_enhanced_settings() {
-        ?>
-        <script>
-        jQuery(document).ready(function($) {
-            // Add enhanced settings section to existing page
-            const enhancedSettingsHTML = `
-                <div style="background: #fff; padding: 20px; border-radius: 8px; margin-top: 20px; border-left: 4px solid #da020e;">
-                    <h2>🇻🇳 Enhanced Vietnam Settings</h2>
-                    <div class="notice notice-success" style="margin: 15px 0;">
-                        <p><strong>✅ Enhanced Settings Module Active</strong></p>
-                        <p>Vietnam-specific quiz settings are now available!</p>
-                    </div>
-                    
-                    <form method="post" action="options.php" id="enhanced-settings-form">
-                        <?php settings_fields($this->option_group); ?>
-                        
-                        <table class="form-table">
-                            <tr>
-                                <th scope="row">Vietnamese Phone Validation</th>
-                                <td>
-                                    <label>
-                                        <input type="checkbox" name="<?php echo $this->option_name; ?>[vietnam_phone_validation]" value="1" <?php checked(1, $this->get_setting('vietnam_phone_validation', true)); ?> />
-                                        Enable Vietnamese phone number validation (0901234567 format)
-                                    </label>
-                                </td>
-                            </tr>
-                            <tr>
-                                <th scope="row">Province Requirement</th>
-                                <td>
-                                    <label>
-                                        <input type="checkbox" name="<?php echo $this->option_name; ?>[province_required]" value="1" <?php checked(1, $this->get_setting('province_required', true)); ?> />
-                                        Require participants to select their province
-                                    </label>
-                                </td>
-                            </tr>
-                            <tr>
-                                <th scope="row">Pharmacy Code</th>
-                                <td>
-                                    <label>
-                                        <input type="checkbox" name="<?php echo $this->option_name; ?>[pharmacy_code_required]" value="1" <?php checked(1, $this->get_setting('pharmacy_code_required', false)); ?> />
-                                        Require pharmacy code field
-                                    </label>
-                                </td>
-                            </tr>
-                            <tr>
-                                <th scope="row">Default Questions per Quiz</th>
-                                <td>
-                                    <input type="number" name="<?php echo $this->option_name; ?>[default_questions_per_quiz]" value="<?php echo esc_attr($this->get_setting('default_questions_per_quiz', 5)); ?>" min="1" max="20" class="small-text" />
-                                    <p class="description">Number of questions to show in each quiz</p>
-                                </td>
-                            </tr>
-                            <tr>
-                                <th scope="row">Quiz Time Limit</th>
-                                <td>
-                                    <input type="number" name="<?php echo $this->option_name; ?>[default_time_limit]" value="<?php echo esc_attr($this->get_setting('default_time_limit', 600)); ?>" min="60" max="1800" class="small-text" />
-                                    <p class="description">Time limit in seconds (600 = 10 minutes)</p>
-                                </td>
-                            </tr>
-                        </table>
-                        
-                        <p class="submit">
-                            <input type="submit" name="submit" class="button button-primary" value="Save Enhanced Settings" />
-                        </p>
-                    </form>
-                    
-                    <div style="margin-top: 30px; padding: 15px; background: #f0f8ff; border-radius: 4px;">
-                        <h3>📋 Quick Reference</h3>
-                        <p><strong>Shortcode:</strong> <code style="background: #333; color: #0f0; padding: 4px 8px; border-radius: 3px;">[vefify_quiz campaign_id="1"]</code></p>
-                        <p><strong>Debug URL:</strong> Add <code>?debug=1</code> to your quiz page to verify correct shortcode is loading</p>
-                        
-                        <h3>📊 Current Status</h3>
-                        <ul>
-                            <li>✅ Vietnam Provinces: <?php echo count(Vefify_Quiz_Utilities::get_vietnam_provinces()); ?> provinces loaded</li>
-                            <li>✅ Phone Validation: <?php echo $this->get_setting('vietnam_phone_validation', true) ? 'Active' : 'Disabled'; ?></li>
-                            <li>✅ Province Required: <?php echo $this->get_setting('province_required', true) ? 'Yes' : 'No'; ?></li>
-                            <li>✅ Default Questions: <?php echo $this->get_setting('default_questions_per_quiz', 5); ?> questions</li>
-                        </ul>
-                    </div>
-                </div>
-            `;
-            
-            // Append to the existing settings page
-            $('.wrap').append(enhancedSettingsHTML);
-        });
-        </script>
-        <?php
-    }
-    
-    /**
-     * Load current settings
-     */
-    private function load_settings() {
-        $defaults = $this->get_default_settings();
-        $saved_settings = get_option($this->option_name, array());
-        $this->settings = wp_parse_args($saved_settings, $defaults);
-    }
-    
-    /**
-     * Get default settings (Vietnam focused)
-     */
-    private function get_default_settings() {
-        return array(
-            'vietnam_phone_validation' => true,
-            'province_required' => true,
-            'pharmacy_code_required' => false,
-            'default_questions_per_quiz' => 5,
-            'default_time_limit' => 600,
-            'default_pass_score' => 3,
-            'primary_color' => '#da020e',
-            'secondary_color' => '#ffcd00'
-        );
+        add_action('admin_menu', array($this, 'add_settings_menu'));
+        add_action('admin_notices', array($this, 'show_success_notice'));
     }
     
     /**
@@ -161,56 +16,331 @@ class Vefify_Form_Settings {
      */
     public function init_settings() {
         register_setting(
-            $this->option_group,
-            $this->option_name,
-            array('sanitize_callback' => array($this, 'sanitize_settings'))
+            'vefify_quiz_settings_group',
+            'vefify_quiz_settings',
+            array($this, 'sanitize_settings')
         );
+    }
+    
+    /**
+     * Add settings menu
+     */
+    public function add_settings_menu() {
+        add_submenu_page(
+            'vefify-quiz',
+            'Quiz Settings',
+            '⚙️ Settings',
+            'manage_options',
+            'vefify-quiz-settings',
+            array($this, 'settings_page')
+        );
+    }
+    
+    /**
+     * Show success notice
+     */
+    public function show_success_notice() {
+        if (isset($_GET['settings-updated']) && $_GET['settings-updated'] && 
+            isset($_GET['page']) && $_GET['page'] === 'vefify-quiz-settings') {
+            echo '<div class="notice notice-success is-dismissible">';
+            echo '<p><strong>Settings saved successfully!</strong></p>';
+            echo '</div>';
+        }
+    }
+    
+    /**
+     * Settings page
+     */
+    public function settings_page() {
+        // Get current settings
+        $settings = get_option('vefify_quiz_settings', array());
+        
+        // Default values
+        $defaults = array(
+            'show_province' => 1,
+            'require_province' => 1,
+            'show_pharmacist_code' => 1,
+            'require_pharmacist_code' => 0,
+            'show_email' => 1,
+            'require_email' => 1,
+            'show_company' => 1,
+            'require_company' => 0,
+            'enable_retakes' => 0,
+            'show_progress' => 1,
+            'randomize_questions' => 1,
+            'quiz_theme' => 'default'
+        );
+        
+        $settings = wp_parse_args($settings, $defaults);
+        ?>
+        
+        <div class="wrap">
+            <h1>🎯 Vefify Quiz Settings</h1>
+            
+            <div class="settings-info">
+                <p>Configure your quiz form fields and behavior settings.</p>
+            </div>
+            
+            <form method="post" action="options.php">
+                <?php
+                settings_fields('vefify_quiz_settings_group');
+                do_settings_sections('vefify_quiz_settings_group');
+                ?>
+                
+                <table class="form-table">
+                    <tbody>
+                        <!-- Province Settings -->
+                        <tr>
+                            <th scope="row">
+                                <label>Province Field</label>
+                            </th>
+                            <td>
+                                <fieldset>
+                                    <label>
+                                        <input type="checkbox" name="vefify_quiz_settings[show_province]" value="1" 
+                                               <?php checked(1, $settings['show_province']); ?>>
+                                        Show Province/City field
+                                    </label>
+                                    <br>
+                                    <label>
+                                        <input type="checkbox" name="vefify_quiz_settings[require_province]" value="1"
+                                               <?php checked(1, $settings['require_province']); ?>>
+                                        Make Province required
+                                    </label>
+                                </fieldset>
+                                <p class="description">Province/City selection for Vietnamese locations</p>
+                            </td>
+                        </tr>
+                        
+                        <!-- Pharmacist Code Settings -->
+                        <tr>
+                            <th scope="row">
+                                <label>Pharmacist Code</label>
+                            </th>
+                            <td>
+                                <fieldset>
+                                    <label>
+                                        <input type="checkbox" name="vefify_quiz_settings[show_pharmacist_code]" value="1"
+                                               <?php checked(1, $settings['show_pharmacist_code']); ?>>
+                                        Show Pharmacist Code field
+                                    </label>
+                                    <br>
+                                    <label>
+                                        <input type="checkbox" name="vefify_quiz_settings[require_pharmacist_code]" value="1"
+                                               <?php checked(1, $settings['require_pharmacist_code']); ?>>
+                                        Make Pharmacist Code required
+                                    </label>
+                                </fieldset>
+                                <p class="description">Professional pharmacist license code (6-12 characters)</p>
+                            </td>
+                        </tr>
+                        
+                        <!-- Email Settings -->
+                        <tr>
+                            <th scope="row">
+                                <label>Email Field</label>
+                            </th>
+                            <td>
+                                <fieldset>
+                                    <label>
+                                        <input type="checkbox" name="vefify_quiz_settings[show_email]" value="1"
+                                               <?php checked(1, $settings['show_email']); ?>>
+                                        Show Email field
+                                    </label>
+                                    <br>
+                                    <label>
+                                        <input type="checkbox" name="vefify_quiz_settings[require_email]" value="1"
+                                               <?php checked(1, $settings['require_email']); ?>>
+                                        Make Email required
+                                    </label>
+                                </fieldset>
+                                <p class="description">Email address for notifications and results</p>
+                            </td>
+                        </tr>
+                        
+                        <!-- Company Settings -->
+                        <tr>
+                            <th scope="row">
+                                <label>Company Field</label>
+                            </th>
+                            <td>
+                                <fieldset>
+                                    <label>
+                                        <input type="checkbox" name="vefify_quiz_settings[show_company]" value="1"
+                                               <?php checked(1, $settings['show_company']); ?>>
+                                        Show Company/Organization field
+                                    </label>
+                                    <br>
+                                    <label>
+                                        <input type="checkbox" name="vefify_quiz_settings[require_company]" value="1"
+                                               <?php checked(1, $settings['require_company']); ?>>
+                                        Make Company required
+                                    </label>
+                                </fieldset>
+                                <p class="description">Workplace or organization information</p>
+                            </td>
+                        </tr>
+                        
+                        <!-- Quiz Behavior -->
+                        <tr>
+                            <th scope="row">
+                                <label>Quiz Behavior</label>
+                            </th>
+                            <td>
+                                <fieldset>
+                                    <label>
+                                        <input type="checkbox" name="vefify_quiz_settings[enable_retakes]" value="1"
+                                               <?php checked(1, $settings['enable_retakes']); ?>>
+                                        Allow participants to retake quiz
+                                    </label>
+                                    <br>
+                                    <label>
+                                        <input type="checkbox" name="vefify_quiz_settings[show_progress]" value="1"
+                                               <?php checked(1, $settings['show_progress']); ?>>
+                                        Show progress bar during quiz
+                                    </label>
+                                    <br>
+                                    <label>
+                                        <input type="checkbox" name="vefify_quiz_settings[randomize_questions]" value="1"
+                                               <?php checked(1, $settings['randomize_questions']); ?>>
+                                        Randomize question order
+                                    </label>
+                                </fieldset>
+                                <p class="description">Configure quiz behavior and user experience</p>
+                            </td>
+                        </tr>
+                        
+                        <!-- Theme Selection -->
+                        <tr>
+                            <th scope="row">
+                                <label for="quiz_theme">Quiz Theme</label>
+                            </th>
+                            <td>
+                                <select name="vefify_quiz_settings[quiz_theme]" id="quiz_theme">
+                                    <option value="default" <?php selected('default', $settings['quiz_theme']); ?>>Default</option>
+                                    <option value="modern" <?php selected('modern', $settings['quiz_theme']); ?>>Modern</option>
+                                    <option value="minimal" <?php selected('minimal', $settings['quiz_theme']); ?>>Minimal</option>
+                                    <option value="colorful" <?php selected('colorful', $settings['quiz_theme']); ?>>Colorful</option>
+                                </select>
+                                <p class="description">Choose the visual theme for your quiz forms</p>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <?php submit_button('Save Settings'); ?>
+            </form>
+            
+            <!-- Settings Preview -->
+            <div class="settings-preview">
+                <h2>🔍 Settings Preview</h2>
+                <div class="preview-box">
+                    <h3>Current Configuration:</h3>
+                    <ul>
+                        <li><strong>Province Field:</strong> 
+                            <?php echo $settings['show_province'] ? '✅ Shown' : '❌ Hidden'; ?>
+                            <?php echo $settings['require_province'] ? ' (Required)' : ' (Optional)'; ?>
+                        </li>
+                        <li><strong>Pharmacist Code:</strong> 
+                            <?php echo $settings['show_pharmacist_code'] ? '✅ Shown' : '❌ Hidden'; ?>
+                            <?php echo $settings['require_pharmacist_code'] ? ' (Required)' : ' (Optional)'; ?>
+                        </li>
+                        <li><strong>Email Field:</strong> 
+                            <?php echo $settings['show_email'] ? '✅ Shown' : '❌ Hidden'; ?>
+                            <?php echo $settings['require_email'] ? ' (Required)' : ' (Optional)'; ?>
+                        </li>
+                        <li><strong>Company Field:</strong> 
+                            <?php echo $settings['show_company'] ? '✅ Shown' : '❌ Hidden'; ?>
+                            <?php echo $settings['require_company'] ? ' (Required)' : ' (Optional)'; ?>
+                        </li>
+                        <li><strong>Retakes:</strong> <?php echo $settings['enable_retakes'] ? '✅ Allowed' : '❌ Not Allowed'; ?></li>
+                        <li><strong>Progress Bar:</strong> <?php echo $settings['show_progress'] ? '✅ Shown' : '❌ Hidden'; ?></li>
+                        <li><strong>Question Order:</strong> <?php echo $settings['randomize_questions'] ? '🔀 Randomized' : '📋 Fixed'; ?></li>
+                        <li><strong>Theme:</strong> <?php echo ucfirst($settings['quiz_theme']); ?></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <style>
+        .settings-info {
+            background: #e7f3ff;
+            border-left: 4px solid #0073aa;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        
+        .form-table th {
+            width: 200px;
+            vertical-align: top;
+            padding-top: 15px;
+        }
+        
+        .form-table fieldset {
+            margin: 0;
+        }
+        
+        .form-table fieldset label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: normal;
+        }
+        
+        .form-table .description {
+            margin-top: 10px;
+            font-style: italic;
+            color: #666;
+        }
+        
+        .settings-preview {
+            margin-top: 40px;
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+        }
+        
+        .preview-box {
+            background: #fff;
+            padding: 15px;
+            border-radius: 4px;
+            border-left: 4px solid #00a32a;
+        }
+        
+        .preview-box ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        
+        .preview-box li {
+            margin-bottom: 5px;
+        }
+        </style>
+        <?php
     }
     
     /**
      * Sanitize settings
      */
-    public function sanitize_settings($input) {
+    public function sanitize_settings($settings) {
         $sanitized = array();
         
-        foreach ($input as $key => $value) {
-            switch ($key) {
-                case 'default_questions_per_quiz':
-                case 'default_time_limit':
-                case 'default_pass_score':
-                    $sanitized[$key] = absint($value);
-                    break;
-                    
-                case 'vietnam_phone_validation':
-                case 'province_required':
-                case 'pharmacy_code_required':
-                    $sanitized[$key] = (bool) $value;
-                    break;
-                    
-                default:
-                    $sanitized[$key] = sanitize_text_field($value);
-                    break;
-            }
+        // Checkboxes - ensure they're 1 or 0
+        $checkboxes = array(
+            'show_province', 'require_province',
+            'show_pharmacist_code', 'require_pharmacist_code',
+            'show_email', 'require_email',
+            'show_company', 'require_company',
+            'enable_retakes', 'show_progress', 'randomize_questions'
+        );
+        
+        foreach ($checkboxes as $checkbox) {
+            $sanitized[$checkbox] = isset($settings[$checkbox]) ? 1 : 0;
         }
+        
+        // Theme selection
+        $sanitized['quiz_theme'] = sanitize_text_field($settings['quiz_theme'] ?? 'default');
         
         return $sanitized;
     }
-    
-    /**
-     * Get setting value
-     */
-    public function get_setting($key, $default = null) {
-        return $this->settings[$key] ?? $default;
-    }
-}
-
-// Global function to get settings
-function vefify_get_setting($key, $default = null) {
-    static $settings_instance = null;
-    
-    if ($settings_instance === null) {
-        $settings_instance = new Vefify_Form_Settings();
-    }
-    
-    return $settings_instance->get_setting($key, $default);
 }
