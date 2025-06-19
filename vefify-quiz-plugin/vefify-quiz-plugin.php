@@ -1209,4 +1209,137 @@ function vefify_simple_test_shortcode($atts) {
             </div>';
 }
 add_shortcode('vefify_simple_test', 'vefify_simple_test_shortcode');
+add_filter('query_vars', function($vars) {
+    $quiz_vars = array(
+        'campaign_id',
+        'vefify_nonce', 
+        'name',
+        'phone',
+        'email',
+        'province',
+        'pharmacy_code',
+        'occupation',
+        'company',
+        'age',
+        '_wp_http_referer'
+    );
+    
+    return array_merge($vars, $quiz_vars);
+});
+
+/**
+ * 🔧 Handle template redirect to prevent 404
+ */
+add_action('template_redirect', function() {
+    global $wp_query;
+    
+    // Check if we're on a page with quiz parameters
+    if (is_page() && (get_query_var('campaign_id') || isset($_GET['campaign_id']))) {
+        global $post;
+        
+        // Verify this page has the quiz shortcode
+        if ($post && has_shortcode($post->post_content, 'vefify_quiz')) {
+            
+            // Set query vars from GET parameters
+            foreach ($_GET as $key => $value) {
+                if (in_array($key, array('campaign_id', 'name', 'phone', 'email', 'province', 'pharmacy_code', 'vefify_nonce'))) {
+                    set_query_var($key, sanitize_text_field($value));
+                }
+            }
+            
+            // Prevent 404 error
+            $wp_query->is_404 = false;
+            status_header(200);
+            
+            // Debug logging
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('🔧 Fix #2: Prevented 404 for quiz page with parameters');
+                error_log('Campaign ID: ' . get_query_var('campaign_id'));
+                error_log('Request URI: ' . $_SERVER['REQUEST_URI']);
+            }
+        }
+    }
+});
+
+/**
+ * 🔧 Pre-get posts filter to handle quiz pages
+ */
+add_action('pre_get_posts', function($query) {
+    if (!is_admin() && $query->is_main_query()) {
+        // If we have quiz parameters, ensure the page loads
+        if (isset($_GET['campaign_id']) && is_page()) {
+            $query->set('ignore_sticky_posts', true);
+        }
+    }
+});
+
+/**
+ * 🔧 Plugin activation hook - flush rewrite rules
+ */
+register_activation_hook(__FILE__, function() {
+    // Flush rewrite rules to ensure proper URL handling
+    flush_rewrite_rules();
+    
+    // Set flag to indicate rewrite rules were flushed
+    update_option('vefify_quiz_permalinks_flushed', time());
+    
+    error_log('🔧 Fix #3: Rewrite rules flushed on plugin activation');
+});
+
+/**
+ * 🔧 Check and flush rewrite rules if needed
+ */
+add_action('init', function() {
+    // Check if we need to flush rewrite rules
+    $last_flush = get_option('vefify_quiz_permalinks_flushed', 0);
+    $plugin_version_option = get_option('vefify_quiz_version', '0');
+    
+    // Flush if this is a new version or if never flushed
+    if ($plugin_version_option !== VEFIFY_QUIZ_VERSION || !$last_flush) {
+        flush_rewrite_rules();
+        update_option('vefify_quiz_permalinks_flushed', time());
+        update_option('vefify_quiz_version', VEFIFY_QUIZ_VERSION);
+        
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('🔧 Fix #3: Rewrite rules flushed - Version: ' . VEFIFY_QUIZ_VERSION);
+        }
+    }
+});
+
+/**
+ * 🔧 Manual flush function for debugging
+ * Call this function to manually flush permalinks
+ */
+function vefify_quiz_flush_rewrite_rules() {
+    flush_rewrite_rules(true); // Hard flush
+    update_option('vefify_quiz_permalinks_flushed', time());
+    
+    if (defined('WP_DEBUG') && WP_DEBUG) {
+        error_log('🔧 Fix #3: Manual rewrite rules flush completed');
+    }
+    
+    return 'Rewrite rules flushed successfully';
+}
+
+/**
+ * 🔧 Add admin notice for manual flush
+ */
+add_action('admin_notices', function() {
+    if (current_user_can('manage_options') && isset($_GET['vefify_flush_rules'])) {
+        $result = vefify_quiz_flush_rewrite_rules();
+        echo '<div class="notice notice-success is-dismissible">';
+        echo '<p><strong>🔧 Vefify Quiz:</strong> ' . esc_html($result) . '</p>';
+        echo '</div>';
+    }
+});
+
+/**
+ * 🔧 Add debug info to admin
+ */
+add_action('admin_footer', function() {
+    if (defined('WP_DEBUG') && WP_DEBUG && current_user_can('manage_options')) {
+        $last_flush = get_option('vefify_quiz_permalinks_flushed', 0);
+        echo '<!-- Vefify Quiz Debug: Last permalink flush: ' . date('Y-m-d H:i:s', $last_flush) . ' -->';
+    }
+});
 ?>
