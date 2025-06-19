@@ -554,34 +554,43 @@ class Vefify_Quiz_Shortcodes {
     /**
      * 📊 GET CAMPAIGN DATA
      */
-    private function get_campaign($campaign_id) {
+	    protected function get_campaign($campaign_id) {
         if (!$this->database) {
             return null;
         }
         
         $campaigns_table = $this->database->get_table_name('campaigns');
         if (!$campaigns_table) {
-            return null;
+            // Fallback to direct table name
+            $campaigns_table = $this->wpdb->prefix . 'vefify_campaigns';
         }
         
-        return $this->wpdb->get_row($this->wpdb->prepare(
+        $campaign = $this->wpdb->get_row($this->wpdb->prepare(
             "SELECT * FROM {$campaigns_table} WHERE id = %d",
             $campaign_id
         ));
+        
+        if ($this->wpdb->last_error) {
+            error_log('Vefify Quiz: Error getting campaign: ' . $this->wpdb->last_error);
+            return null;
+        }
+        
+        return $campaign;
     }
     
     /**
      * ✅ CHECK IF CAMPAIGN IS ACTIVE
      */
-    private function is_campaign_active($campaign) {
+    protected function is_campaign_active($campaign) {
         if (!$campaign) {
             return false;
         }
         
         $now = current_time('mysql');
-        return ($campaign->is_active == 1 && 
-                $campaign->start_date <= $now && 
-                $campaign->end_date >= $now);
+        $start_date = $campaign->start_date;
+        $end_date = $campaign->end_date;
+        
+        return ($now >= $start_date && $now <= $end_date);
     }
     
     /**
@@ -837,11 +846,22 @@ class Vefify_Quiz_Shortcodes {
     /**
      * 📝 GET QUIZ QUESTIONS
      */
-    private function get_quiz_questions($campaign_id, $limit) {
+		protected function get_quiz_questions($campaign_id, $limit) {
+        // Keep your exact existing code - it's perfect!
+        if (!$this->database) {
+            error_log('Vefify Quiz: Database not available');
+            return array();
+        }
+        
         $questions_table = $this->database->get_table_name('questions');
         $options_table = $this->database->get_table_name('question_options');
         
-        // Get random questions
+        if (!$questions_table || !$options_table) {
+            error_log('Vefify Quiz: Could not get table names');
+            return array();
+        }
+        
+        // Your original query - it's excellent!
         $questions = $this->wpdb->get_results($this->wpdb->prepare(
             "SELECT * FROM {$questions_table} 
              WHERE campaign_id = %d AND is_active = 1 
@@ -850,16 +870,21 @@ class Vefify_Quiz_Shortcodes {
             $campaign_id, $limit
         ), ARRAY_A);
         
-        // Get options for each question
+        if ($this->wpdb->last_error) {
+            error_log('Vefify Quiz: SQL Error: ' . $this->wpdb->last_error);
+            return array();
+        }
+        
+        // Your original options loading - also excellent!
         foreach ($questions as &$question) {
             $options = $this->wpdb->get_results($this->wpdb->prepare(
-                "SELECT option_text, option_value FROM {$options_table} 
+                "SELECT option_text, option_value, is_correct FROM {$options_table} 
                  WHERE question_id = %d 
                  ORDER BY option_order",
                 $question['id']
             ), ARRAY_A);
             
-            $question['options'] = $options;
+            $question['options'] = $options ?: array();
         }
         
         return $questions;
