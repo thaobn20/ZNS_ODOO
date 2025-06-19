@@ -657,12 +657,12 @@ class Vefify_Quiz_Shortcodes {
         );
         
         // Validate required fields
-        if (empty($participant_data['full_name']) || empty($participant_data['phone_number'])) {
+        if (empty($participant_data['participant_name']) || empty($participant_data['participant_phone'])) {
             wp_send_json_error('Name and phone number are required');
         }
         
         // Check for duplicate phone in this campaign
-        $existing = $this->check_existing_participant($campaign_id, $participant_data['phone_number']);
+        $existing = $this->check_existing_participant($campaign_id, $participant_data['participant_phone']);
         if ($existing) {
             wp_send_json_error('Phone number already registered for this campaign');
         }
@@ -828,7 +828,7 @@ class Vefify_Quiz_Shortcodes {
         
         return $this->wpdb->get_var($this->wpdb->prepare(
             "SELECT id FROM {$participants_table} 
-             WHERE campaign_id = %d AND phone_number = %s",
+             WHERE campaign_id = %d AND participant_phone = %s",
             $campaign_id, $phone
         ));
     }
