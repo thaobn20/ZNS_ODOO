@@ -1,10 +1,9 @@
 <?php
 /**
- * 🚀 PHASE 1: COMPLETE QUESTION FLOW IMPLEMENTATION
+ * 🚀 FIXED ENHANCED SHORTCODES - Proper Form Handling
  * File: includes/class-enhanced-shortcodes.php
  * 
- * This enhances your existing shortcode system with complete question flow
- * Drop-in replacement for your current class-shortcodes.php
+ * Fixed version that handles both AJAX and form submission properly
  */
 
 if (!defined('ABSPATH')) {
@@ -14,614 +13,714 @@ if (!defined('ABSPATH')) {
 class Vefify_Enhanced_Shortcodes extends Vefify_Quiz_Shortcodes {
     
     /**
-     * 🎯 ENHANCED AJAX: START QUIZ - Complete Implementation
+     * 🎯 ENHANCED QUIZ SHORTCODE - FIXED FORM HANDLING
      */
-    public function ajax_start_quiz() {
-        // Verify nonce
-        if (!wp_verify_nonce($_POST['vefify_nonce'], 'vefify_quiz_nonce')) {
-            wp_send_json_error('Security check failed');
+    public function render_quiz($atts) {
+        $atts = shortcode_atts(array(
+            'campaign_id' => '',
+            'fields' => 'name,email,phone',
+            'style' => 'default',
+            'title' => '',
+            'description' => '',
+            'theme' => 'light'
+        ), $atts);
+        
+        if (empty($atts['campaign_id'])) {
+            return '<div class="vefify-error">❌ Error: Campaign ID is required. Usage: [vefify_quiz campaign_id="1"]</div>';
         }
         
-        $participant_id = intval($_POST['participant_id']);
-        $session_token = sanitize_text_field($_POST['session_token']);
+        $campaign_id = intval($atts['campaign_id']);
         
-        // Verify participant session
-        $participant = $this->verify_participant_session($participant_id, $session_token);
-        if (!$participant) {
-            wp_send_json_error('Invalid session');
+        // Get campaign data
+        $campaign = $this->get_campaign($campaign_id);
+        if (!$campaign) {
+            return '<div class="vefify-error">❌ Campaign not found (ID: ' . $campaign_id . '). <a href="' . admin_url('admin.php?page=vefify-campaigns') . '">Check available campaigns</a></div>';
         }
         
-        // Get campaign
-        $campaign = $this->get_campaign($participant->campaign_id);
-        if (!$campaign || !$this->is_campaign_active($campaign)) {
-            wp_send_json_error('Campaign not available');
+        // Check if campaign is active
+        if (!$this->is_campaign_active($campaign)) {
+            $start_date = date('M j, Y', strtotime($campaign->start_date));
+            $end_date = date('M j, Y', strtotime($campaign->end_date));
+            return '<div class="vefify-notice">📅 This campaign is not currently active.<br>Active period: ' . $start_date . ' - ' . $end_date . '</div>';
         }
         
-        // Get questions for this campaign with enhanced randomization
-        $questions = $this->get_enhanced_quiz_questions($participant->campaign_id, $campaign->questions_per_quiz);
+        // HANDLE FORM SUBMISSION - Process GET/POST data
+        $registration_data = $this->process_registration_submission($campaign_id);
+        if ($registration_data) {
+            if ($registration_data['success']) {
+                // Registration successful, show quiz
+                return $this->render_quiz_interface($campaign, $registration_data['data']);
+            } else {
+                // Registration failed, show form with error
+                return $this->render_registration_form($campaign, $atts, $registration_data['error']);
+            }
+        }
+        
+        // No submission, show registration form
+        return $this->render_registration_form($campaign, $atts);
+    }
+    
+    /**
+     * 🔄 PROCESS REGISTRATION SUBMISSION - Handle GET/POST data
+     */
+    private function process_registration_submission($campaign_id) {
+        // Check if form was submitted (via GET parameters)
+        if (isset($_GET['campaign_id']) && isset($_GET['name']) && isset($_GET['phone'])) {
+            
+            // Verify nonce for security
+            if (!wp_verify_nonce($_GET['vefify_nonce'], 'vefify_quiz_nonce')) {
+                return array('success' => false, 'error' => 'Security check failed. Please try again.');
+            }
+            
+            // Collect form data
+            $form_data = array(
+                'campaign_id' => intval($_GET['campaign_id']),
+                'name' => sanitize_text_field($_GET['name']),
+                'phone' => sanitize_text_field($_GET['phone']),
+                'email' => sanitize_email($_GET['email'] ?? ''),
+                'province' => sanitize_text_field($_GET['province'] ?? ''),
+                'pharmacy_code' => sanitize_text_field($_GET['pharmacy_code'] ?? ''),
+                'occupation' => sanitize_text_field($_GET['occupation'] ?? ''),
+                'company' => sanitize_text_field($_GET['company'] ?? ''),
+                'age' => intval($_GET['age'] ?? 0),
+                'experience' => intval($_GET['experience'] ?? 0)
+            );
+            
+            // Validate form data
+            $validation = $this->validate_registration_data($form_data);
+            if (!$validation['valid']) {
+                return array('success' => false, 'error' => $validation['message']);
+            }
+            
+            // Register participant
+            $registration_result = $this->register_participant($form_data);
+            
+            if ($registration_result['success']) {
+                return array('success' => true, 'data' => $registration_result['data']);
+            } else {
+                return array('success' => false, 'error' => $registration_result['error']);
+            }
+        }
+        
+        return null; // No submission
+    }
+    
+    /**
+     * 📝 REGISTER PARTICIPANT - Server-side registration
+     */
+    private function register_participant($form_data) {
+        global $wpdb;
+        
+        try {
+            // Check for existing participant
+            $participants_table = $this->database->get_table_name('participants');
+            $existing = $wpdb->get_var($wpdb->prepare(
+                "SELECT id FROM {$participants_table} 
+                 WHERE campaign_id = %d AND phone_number = %s",
+                $form_data['campaign_id'], $form_data['phone']
+            ));
+            
+            if ($existing) {
+                return array('success' => false, 'error' => 'Phone number already registered for this campaign');
+            }
+            
+            // Prepare participant data
+            $participant_data = array(
+                'campaign_id' => $form_data['campaign_id'],
+                'full_name' => $form_data['name'],
+                'email' => $form_data['email'],
+                'phone_number' => $form_data['phone'],
+                'province' => $form_data['province'],
+                'pharmacy_code' => $form_data['pharmacy_code'],
+                'occupation' => $form_data['occupation'],
+                'company' => $form_data['company'],
+                'age' => $form_data['age'],
+                'experience_years' => $form_data['experience'],
+                'registration_ip' => $_SERVER['REMOTE_ADDR'],
+                'user_agent' => $_SERVER['HTTP_USER_AGENT'],
+                'created_at' => current_time('mysql')
+            );
+            
+            // Insert participant
+            $result = $wpdb->insert($participants_table, $participant_data);
+            
+            if ($result === false) {
+                return array('success' => false, 'error' => 'Registration failed. Please try again.');
+            }
+            
+            $participant_id = $wpdb->insert_id;
+            
+            // Generate session token
+            $session_token = wp_generate_password(32, false);
+            
+            // Update with session token
+            $wpdb->update(
+                $participants_table,
+                array('session_token' => $session_token),
+                array('id' => $participant_id)
+            );
+            
+            return array(
+                'success' => true,
+                'data' => array(
+                    'participant_id' => $participant_id,
+                    'session_token' => $session_token,
+                    'participant_data' => $participant_data
+                )
+            );
+            
+        } catch (Exception $e) {
+            error_log('Vefify Quiz Registration Error: ' . $e->getMessage());
+            return array('success' => false, 'error' => 'Registration failed. Please try again.');
+        }
+    }
+    
+    /**
+     * ✅ VALIDATE REGISTRATION DATA
+     */
+    private function validate_registration_data($data) {
+        // Check required fields
+        if (empty($data['name'])) {
+            return array('valid' => false, 'message' => 'Please enter your full name');
+        }
+        
+        if (empty($data['phone'])) {
+            return array('valid' => false, 'message' => 'Please enter your phone number');
+        }
+        
+        // Validate phone format (Vietnamese)
+        $phone_clean = preg_replace('/\s/', '', $data['phone']);
+        if (!preg_match('/^(0[0-9]{9}|84[0-9]{9})$/', $phone_clean)) {
+            return array('valid' => false, 'message' => 'Phone number format: 0938474356 or 84938474356');
+        }
+        
+        // Validate email if provided
+        if (!empty($data['email']) && !is_email($data['email'])) {
+            return array('valid' => false, 'message' => 'Please enter a valid email address');
+        }
+        
+        // Validate pharmacy code format if provided
+        if (!empty($data['pharmacy_code']) && !preg_match('/^[A-Z]{2}-[0-9]{6}$/', $data['pharmacy_code'])) {
+            return array('valid' => false, 'message' => 'Pharmacy code must be in format XX-######');
+        }
+        
+        return array('valid' => true);
+    }
+    
+    /**
+     * 📝 RENDER REGISTRATION FORM - FIXED FORM ACTION
+     */
+    private function render_registration_form($campaign, $atts, $error_message = null) {
+        // Parse custom fields
+        $requested_fields = array_map('trim', explode(',', $atts['fields']));
+        $available_fields = $this->get_available_fields();
+        $valid_fields = array_intersect($requested_fields, array_keys($available_fields));
+        
+        if (empty($valid_fields)) {
+            return '<div class="vefify-error">❌ No valid fields specified. Available: ' . implode(', ', array_keys($available_fields)) . '</div>';
+        }
+        
+        // Generate unique quiz ID
+        $quiz_id = 'vefify_quiz_' . $campaign->id . '_' . uniqid();
+        
+        ob_start();
+        ?>
+        <div id="<?php echo esc_attr($quiz_id); ?>" class="vefify-quiz-container vefify-style-<?php echo esc_attr($atts['style']); ?> vefify-theme-<?php echo esc_attr($atts['theme']); ?>" data-campaign-id="<?php echo $campaign->id; ?>">
+            
+            <!-- Quiz Header -->
+            <div class="vefify-quiz-header">
+                <h2 class="vefify-quiz-title">
+                    <?php echo esc_html($atts['title'] ?: $campaign->name); ?>
+                </h2>
+                <?php if ($atts['description'] || $campaign->description): ?>
+                    <div class="vefify-quiz-description">
+                        <?php echo wp_kses_post($atts['description'] ?: $campaign->description); ?>
+                    </div>
+                <?php endif; ?>
+                
+                <div class="vefify-quiz-meta">
+                    <span class="vefify-meta-item">📝 <?php echo $campaign->questions_per_quiz; ?> questions</span>
+                    <?php if ($campaign->time_limit): ?>
+                        <span class="vefify-meta-item">⏱️ <?php echo round($campaign->time_limit / 60); ?> minutes</span>
+                    <?php endif; ?>
+                    <span class="vefify-meta-item">🎯 Pass score: <?php echo $campaign->pass_score; ?></span>
+                </div>
+            </div>
+            
+            <!-- Error Message -->
+            <?php if ($error_message): ?>
+                <div class="vefify-error-message">
+                    ❌ <?php echo esc_html($error_message); ?>
+                </div>
+            <?php endif; ?>
+            
+            <!-- Registration Form - FIXED: Proper form submission -->
+            <div class="vefify-registration-section">
+                <h3>📝 Registration Required</h3>
+                <p>Please fill in your information to start the quiz:</p>
+                
+                <form method="get" action="" class="vefify-form">
+                    <?php wp_nonce_field('vefify_quiz_nonce', 'vefify_nonce'); ?>
+                    <input type="hidden" name="campaign_id" value="<?php echo $campaign->id; ?>">
+                    
+                    <div class="vefify-form-grid">
+                        <?php foreach ($valid_fields as $field): ?>
+                            <?php echo $this->render_form_field($field, $available_fields[$field]); ?>
+                        <?php endforeach; ?>
+                    </div>
+                    
+                    <div class="vefify-form-actions">
+                        <button type="submit" class="vefify-btn vefify-btn-primary vefify-btn-large">
+                            🚀 Start Quiz
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <style>
+        .vefify-quiz-container {
+            max-width: 600px;
+            margin: 20px auto;
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+        
+        .vefify-quiz-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px 20px;
+            text-align: center;
+        }
+        
+        .vefify-quiz-title {
+            margin: 0 0 10px;
+            font-size: 24px;
+            font-weight: 600;
+        }
+        
+        .vefify-quiz-description {
+            margin: 0 0 20px;
+            opacity: 0.9;
+            font-size: 14px;
+        }
+        
+        .vefify-quiz-meta {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            flex-wrap: wrap;
+            font-size: 13px;
+        }
+        
+        .vefify-registration-section {
+            padding: 30px 20px;
+        }
+        
+        .vefify-form-grid {
+            display: grid;
+            gap: 20px;
+            margin: 20px 0;
+        }
+        
+        .vefify-form-field {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .vefify-field-label {
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: #333;
+        }
+        
+        .vefify-field-input {
+            padding: 12px;
+            border: 2px solid #e1e5e9;
+            border-radius: 6px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+        }
+        
+        .vefify-field-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .vefify-field-help {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        .vefify-btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+        
+        .vefify-btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        
+        .vefify-btn-primary:hover {
+            background: #5a6fd8;
+            transform: translateY(-2px);
+        }
+        
+        .vefify-btn-large {
+            padding: 15px 30px;
+            font-size: 18px;
+            width: 100%;
+        }
+        
+        .vefify-error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            margin: 20px;
+            border-radius: 6px;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .vefify-error, .vefify-notice {
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 6px;
+            font-weight: 500;
+        }
+        
+        .vefify-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .vefify-notice {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        
+        .required {
+            color: #dc3545;
+        }
+        
+        /* Mobile responsive */
+        @media (max-width: 600px) {
+            .vefify-quiz-container {
+                margin: 10px;
+                border-radius: 8px;
+            }
+            
+            .vefify-quiz-meta {
+                flex-direction: column;
+                gap: 10px;
+            }
+        }
+        </style>
+        <?php
+        
+        return ob_get_clean();
+    }
+    
+    /**
+     * 🎮 RENDER QUIZ INTERFACE - After successful registration
+     */
+    private function render_quiz_interface($campaign, $registration_data) {
+        // Get questions for this campaign
+        $questions = $this->get_enhanced_quiz_questions($campaign->id, $campaign->questions_per_quiz);
         
         if (empty($questions)) {
-            wp_send_json_error('No questions available for this campaign');
+            return '<div class="vefify-error">❌ No questions available for this campaign.</div>';
         }
         
-        // Create quiz session for tracking
-        $session_id = $this->create_quiz_session($participant_id, $questions);
+        // Create quiz session
+        $session_id = $this->create_quiz_session($registration_data['participant_id'], $questions);
         
-        // Update participant status to started
-        $this->wpdb->update(
-            $this->database->get_table_name('participants'),
+        // Update participant status
+        global $wpdb;
+        $participants_table = $this->database->get_table_name('participants');
+        $wpdb->update(
+            $participants_table,
             array(
                 'quiz_status' => 'started',
                 'quiz_started_at' => current_time('mysql'),
                 'quiz_session_id' => $session_id
             ),
-            array('id' => $participant_id)
+            array('id' => $registration_data['participant_id'])
         );
         
         // Prepare questions for frontend (remove correct answers)
         $safe_questions = $this->prepare_questions_for_frontend($questions);
         
-        wp_send_json_success(array(
-            'questions' => $safe_questions,
-            'session_id' => $session_id,
-            'time_limit' => intval($campaign->time_limit),
-            'total_questions' => count($questions),
-            'pass_score' => intval($campaign->pass_score),
-            'campaign_name' => $campaign->name
-        ));
-    }
-    
-    /**
-     * 📝 ENHANCED GET QUIZ QUESTIONS - Better Randomization & Category Distribution
-     */
-    private function get_enhanced_quiz_questions($campaign_id, $limit) {
-        $questions_table = $this->database->get_table_name('questions');
-        $options_table = $this->database->get_table_name('question_options');
-        
-        // Get questions with better distribution across difficulties and categories
-        $questions = $this->wpdb->get_results($this->wpdb->prepare(
-            "SELECT q.*, 
-                    COUNT(qo.id) as option_count,
-                    q.difficulty,
-                    q.category,
-                    q.points
-             FROM {$questions_table} q
-             LEFT JOIN {$options_table} qo ON q.id = qo.question_id
-             WHERE q.campaign_id = %d AND q.is_active = 1
-             GROUP BY q.id
-             HAVING option_count >= 2
-             ORDER BY 
-                CASE q.difficulty 
-                    WHEN 'easy' THEN 1 
-                    WHEN 'medium' THEN 2 
-                    WHEN 'hard' THEN 3 
-                END,
-                RAND()
-             LIMIT %d",
-            $campaign_id, $limit
-        ), ARRAY_A);
-        
-        // Get options for each question with enhanced data
-        foreach ($questions as &$question) {
-            $options = $this->wpdb->get_results($this->wpdb->prepare(
-                "SELECT id, option_text, option_value, is_correct, option_order 
-                 FROM {$options_table} 
-                 WHERE question_id = %d 
-                 ORDER BY option_order, id",
-                $question['id']
-            ), ARRAY_A);
+        ob_start();
+        ?>
+        <div class="vefify-quiz-container vefify-quiz-active">
+            <!-- Quiz Header -->
+            <div class="vefify-quiz-header">
+                <h2>Welcome, <?php echo esc_html($registration_data['participant_data']['full_name']); ?>!</h2>
+                <p>You're about to start the quiz. Good luck!</p>
+            </div>
             
-            // Shuffle options to prevent pattern learning
-            if (count($options) > 1) {
-                // Keep correct answer positions random
-                shuffle($options);
+            <!-- Quiz Progress -->
+            <div class="vefify-quiz-progress">
+                <div class="vefify-progress-bar">
+                    <div class="vefify-progress-fill" style="width: 0%"></div>
+                </div>
+                <div class="vefify-progress-text">Question <span class="current">1</span> of <span class="total"><?php echo count($safe_questions); ?></span></div>
+            </div>
+            
+            <?php if ($campaign->time_limit): ?>
+                <div class="vefify-timer">
+                    <span class="vefify-timer-icon">⏱️</span>
+                    <span class="vefify-timer-text">Time remaining: <span id="vefify-time-remaining"><?php echo round($campaign->time_limit / 60); ?>:00</span></span>
+                </div>
+            <?php endif; ?>
+            
+            <!-- Question Container -->
+            <div id="vefify-question-container">
+                <!-- Questions will be loaded here -->
+            </div>
+            
+            <!-- Navigation -->
+            <div class="vefify-quiz-navigation">
+                <button type="button" id="vefify-prev-question" class="vefify-btn vefify-btn-secondary" style="display: none;">
+                    ← Previous
+                </button>
+                <button type="button" id="vefify-next-question" class="vefify-btn vefify-btn-primary">
+                    Next →
+                </button>
+                <button type="button" id="vefify-finish-quiz" class="vefify-btn vefify-btn-success" style="display: none;">
+                    ✓ Finish Quiz
+                </button>
+            </div>
+            
+            <!-- Results Section -->
+            <div class="vefify-results-section" style="display: none;">
+                <!-- Results will be displayed here -->
+            </div>
+        </div>
+        
+        <script>
+        // Initialize quiz with data
+        document.addEventListener('DOMContentLoaded', function() {
+            if (typeof VefifyQuiz !== 'undefined') {
+                VefifyQuiz.initializeWithData({
+                    participantId: <?php echo json_encode($registration_data['participant_id']); ?>,
+                    sessionToken: <?php echo json_encode($registration_data['session_token']); ?>,
+                    sessionId: <?php echo json_encode($session_id); ?>,
+                    campaignId: <?php echo json_encode($campaign->id); ?>,
+                    questions: <?php echo json_encode($safe_questions); ?>,
+                    timeLimit: <?php echo json_encode(intval($campaign->time_limit)); ?>,
+                    passScore: <?php echo json_encode(intval($campaign->pass_score)); ?>
+                });
+            } else {
+                console.error('VefifyQuiz JavaScript not loaded');
             }
-            
-            $question['options'] = $options;
-            $question['question_type'] = $this->determine_question_type($options);
+        });
+        </script>
+        
+        <style>
+        .vefify-quiz-progress {
+            padding: 20px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
         }
         
-        return $questions;
+        .vefify-progress-bar {
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+        
+        .vefify-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4facfe 0%, #00f2fe 100%);
+            transition: width 0.3s ease;
+        }
+        
+        .vefify-progress-text {
+            text-align: center;
+            font-size: 14px;
+            color: #666;
+        }
+        
+        .vefify-timer {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+        }
+        
+        .vefify-quiz-navigation {
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+        }
+        
+        .vefify-btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        
+        .vefify-btn-success {
+            background: #28a745;
+            color: white;
+        }
+        </style>
+        <?php
+        
+        return ob_get_clean();
+    }
+    
+    // Keep all your other existing methods from the enhanced shortcodes...
+    
+    /**
+     * 🎨 RENDER FORM FIELD - KEEP EXISTING
+     */
+    private function render_form_field($field_key, $field_config) {
+        $required = $field_config['required'] ? 'required' : '';
+        $required_star = $field_config['required'] ? ' <span class="required">*</span>' : '';
+        
+        ob_start();
+        ?>
+        <div class="vefify-form-field vefify-field-<?php echo esc_attr($field_key); ?>">
+            <label for="vefify_<?php echo esc_attr($field_key); ?>" class="vefify-field-label">
+                <?php echo esc_html($field_config['label']); ?><?php echo $required_star; ?>
+            </label>
+            
+            <?php if ($field_config['type'] === 'select'): ?>
+                <select name="<?php echo esc_attr($field_key); ?>" id="vefify_<?php echo esc_attr($field_key); ?>" class="vefify-field-input" <?php echo $required; ?>>
+                    <option value="">Select <?php echo esc_html($field_config['label']); ?></option>
+                    <?php foreach ($field_config['options'] as $value => $label): ?>
+                        <option value="<?php echo esc_attr($value); ?>"><?php echo esc_html($label); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            <?php elseif ($field_config['type'] === 'textarea'): ?>
+                <textarea name="<?php echo esc_attr($field_key); ?>" id="vefify_<?php echo esc_attr($field_key); ?>" class="vefify-field-input" placeholder="<?php echo esc_attr($field_config['placeholder']); ?>" <?php echo $required; ?>></textarea>
+            <?php else: ?>
+                <input type="<?php echo esc_attr($field_config['type']); ?>" 
+                       name="<?php echo esc_attr($field_key); ?>" 
+                       id="vefify_<?php echo esc_attr($field_key); ?>" 
+                       class="vefify-field-input" 
+                       placeholder="<?php echo esc_attr($field_config['placeholder']); ?>"
+                       <?php if (isset($field_config['pattern'])): ?>pattern="<?php echo esc_attr($field_config['pattern']); ?>"<?php endif; ?>
+                       <?php echo $required; ?>>
+            <?php endif; ?>
+            
+            <?php if (isset($field_config['help'])): ?>
+                <div class="vefify-field-help"><?php echo esc_html($field_config['help']); ?></div>
+            <?php endif; ?>
+        </div>
+        <?php
+        
+        return ob_get_clean();
     }
     
     /**
-     * 🎮 CREATE QUIZ SESSION - Track individual quiz attempts
+     * 📝 GET AVAILABLE FORM FIELDS - KEEP EXISTING
      */
-    private function create_quiz_session($participant_id, $questions) {
-        $sessions_table = $this->database->get_table_name('quiz_sessions');
-        $session_id = wp_generate_password(32, false);
-        
-        $question_ids = array_column($questions, 'id');
-        
-        $session_data = array(
-            'session_id' => $session_id,
-            'participant_id' => $participant_id,
-            'question_ids' => json_encode($question_ids),
-            'started_at' => current_time('mysql'),
-            'is_active' => 1
-        );
-        
-        $this->wpdb->insert($sessions_table, $session_data);
-        
-        return $session_id;
-    }
-    
-    /**
-     * 🔒 PREPARE QUESTIONS FOR FRONTEND - Remove sensitive data
-     */
-    private function prepare_questions_for_frontend($questions) {
-        $safe_questions = array();
-        
-        foreach ($questions as $question) {
-            $safe_options = array();
-            
-            // Remove correct answer flags from options
-            foreach ($question['options'] as $option) {
-                $safe_options[] = array(
-                    'id' => $option['id'],
-                    'text' => $option['option_text'],
-                    'value' => $option['option_value']
-                );
-            }
-            
-            $safe_questions[] = array(
-                'id' => $question['id'],
-                'text' => $question['question_text'],
-                'type' => $question['question_type'],
-                'difficulty' => $question['difficulty'],
-                'category' => $question['category'],
-                'points' => intval($question['points']),
-                'options' => $safe_options,
-                'explanation' => $question['explanation'] ?? '',
-                'time_limit' => intval($question['time_limit']) ?: 30
-            );
-        }
-        
-        return $safe_questions;
-    }
-    
-    /**
-     * 📊 ENHANCED SUBMIT ANSWER - Real-time validation and progress tracking
-     */
-    public function ajax_submit_answer() {
-        // Verify nonce
-        if (!wp_verify_nonce($_POST['vefify_nonce'], 'vefify_quiz_nonce')) {
-            wp_send_json_error('Security check failed');
-        }
-        
-        $participant_id = intval($_POST['participant_id']);
-        $session_id = sanitize_text_field($_POST['session_id']);
-        $question_id = intval($_POST['question_id']);
-        $answer = $_POST['answer']; // Can be array for multiple choice
-        $time_spent = intval($_POST['time_spent']); // Time spent on this question
-        
-        // Validate session
-        $session = $this->get_quiz_session($session_id);
-        if (!$session || $session['participant_id'] != $participant_id) {
-            wp_send_json_error('Invalid session');
-        }
-        
-        // Store answer with timing data
-        $answer_data = array(
-            'session_id' => $session_id,
-            'participant_id' => $participant_id,
-            'question_id' => $question_id,
-            'answer_data' => is_array($answer) ? json_encode($answer) : $answer,
-            'time_spent' => $time_spent,
-            'answered_at' => current_time('mysql')
-        );
-        
-        $answers_table = $this->database->get_table_name('quiz_answers');
-        
-        // Check if answer already exists (allow updates)
-        $existing = $this->wpdb->get_var($this->wpdb->prepare(
-            "SELECT id FROM {$answers_table} 
-             WHERE session_id = %s AND question_id = %d",
-            $session_id, $question_id
-        ));
-        
-        if ($existing) {
-            // Update existing answer
-            $this->wpdb->update(
-                $answers_table,
-                $answer_data,
-                array('id' => $existing)
-            );
-        } else {
-            // Insert new answer
-            $this->wpdb->insert($answers_table, $answer_data);
-        }
-        
-        // Get progress information
-        $total_questions = count(json_decode($session['question_ids'], true));
-        $answered_count = $this->wpdb->get_var($this->wpdb->prepare(
-            "SELECT COUNT(*) FROM {$answers_table} WHERE session_id = %s",
-            $session_id
-        ));
-        
-        wp_send_json_success(array(
-            'message' => 'Answer saved successfully',
-            'question_id' => $question_id,
-            'progress' => array(
-                'answered' => intval($answered_count),
-                'total' => $total_questions,
-                'percentage' => round(($answered_count / $total_questions) * 100, 1)
-            )
-        ));
-    }
-    
-    /**
-     * 🏁 ENHANCED FINISH QUIZ - Complete scoring with detailed analytics
-     */
-    public function ajax_finish_quiz() {
-        // Verify nonce
-        if (!wp_verify_nonce($_POST['vefify_nonce'], 'vefify_quiz_nonce')) {
-            wp_send_json_error('Security check failed');
-        }
-        
-        $participant_id = intval($_POST['participant_id']);
-        $session_token = sanitize_text_field($_POST['session_token']);
-        $session_id = sanitize_text_field($_POST['session_id']);
-        
-        // Verify participant session
-        $participant = $this->verify_participant_session($participant_id, $session_token);
-        if (!$participant) {
-            wp_send_json_error('Invalid session');
-        }
-        
-        // Get quiz session
-        $session = $this->get_quiz_session($session_id);
-        if (!$session) {
-            wp_send_json_error('Quiz session not found');
-        }
-        
-        // Calculate comprehensive score
-        $score_result = $this->calculate_enhanced_quiz_score($session_id, $participant->campaign_id);
-        
-        // Update participant with final results
-        $completion_data = array(
-            'quiz_status' => 'completed',
-            'final_score' => $score_result['score'],
-            'total_questions' => $score_result['total'],
-            'correct_answers' => $score_result['correct'],
-            'percentage_score' => $score_result['percentage'],
-            'time_taken' => $score_result['total_time'],
-            'quiz_completed_at' => current_time('mysql')
-        );
-        
-        $this->wpdb->update(
-            $this->database->get_table_name('participants'),
-            $completion_data,
-            array('id' => $participant_id)
-        );
-        
-        // Mark session as completed
-        $this->wpdb->update(
-            $this->database->get_table_name('quiz_sessions'),
-            array('completed_at' => current_time('mysql'), 'is_active' => 0),
-            array('session_id' => $session_id)
-        );
-        
-        // Check for gifts
-        $gift_result = $this->check_and_assign_gift($participant_id, $score_result['score'], $score_result['percentage']);
-        
-        // Store analytics data
-        $this->store_quiz_analytics($participant_id, $session_id, $score_result);
-        
-        wp_send_json_success(array(
-            'score' => $score_result['score'],
-            'total' => $score_result['total'],
-            'correct' => $score_result['correct'],
-            'percentage' => $score_result['percentage'],
-            'passed' => $score_result['passed'],
-            'time_taken' => $score_result['total_time'],
-            'detailed_results' => $score_result['question_details'],
-            'gift' => $gift_result,
-            'certificate_eligible' => $score_result['passed'],
-            'message' => 'Quiz completed successfully!'
-        ));
-    }
-    
-    /**
-     * 📊 ENHANCED QUIZ SCORING - Detailed analysis with question breakdown
-     */
-    private function calculate_enhanced_quiz_score($session_id, $campaign_id) {
-        $session = $this->get_quiz_session($session_id);
-        $question_ids = json_decode($session['question_ids'], true);
-        
-        $answers_table = $this->database->get_table_name('quiz_answers');
-        $questions_table = $this->database->get_table_name('questions');
-        $options_table = $this->database->get_table_name('question_options');
-        
-        // Get all answers for this session
-        $answers = $this->wpdb->get_results($this->wpdb->prepare(
-            "SELECT question_id, answer_data, time_spent 
-             FROM {$answers_table} 
-             WHERE session_id = %s",
-            $session_id
-        ), ARRAY_A);
-        
-        $answer_map = array();
-        $total_time = 0;
-        
-        foreach ($answers as $answer) {
-            $answer_map[$answer['question_id']] = json_decode($answer['answer_data'], true);
-            $total_time += intval($answer['time_spent']);
-        }
-        
-        $score = 0;
-        $total_points = 0;
-        $question_details = array();
-        
-        foreach ($question_ids as $question_id) {
-            // Get question data
-            $question = $this->wpdb->get_row($this->wpdb->prepare(
-                "SELECT id, question_text, points, difficulty, correct_explanation 
-                 FROM {$questions_table} 
-                 WHERE id = %d",
-                $question_id
-            ), ARRAY_A);
-            
-            if (!$question) continue;
-            
-            $points = intval($question['points']) ?: 1;
-            $total_points += $points;
-            
-            // Get correct answers
-            $correct_options = $this->wpdb->get_results($this->wpdb->prepare(
-                "SELECT id, option_text FROM {$options_table} 
-                 WHERE question_id = %d AND is_correct = 1",
-                $question_id
-            ), ARRAY_A);
-            
-            $correct_ids = array_column($correct_options, 'id');
-            $user_answer = $answer_map[$question_id] ?? array();
-            
-            if (!is_array($user_answer)) {
-                $user_answer = array($user_answer);
-            }
-            
-            // Check if answer is correct
-            $is_correct = $this->compare_answers($correct_ids, $user_answer);
-            
-            if ($is_correct) {
-                $score += $points;
-            }
-            
-            $question_details[] = array(
-                'question_id' => $question_id,
-                'question_text' => $question['question_text'],
-                'user_answer' => $user_answer,
-                'correct_answer' => $correct_ids,
-                'is_correct' => $is_correct,
-                'points_earned' => $is_correct ? $points : 0,
-                'max_points' => $points,
-                'difficulty' => $question['difficulty'],
-                'explanation' => $question['correct_explanation']
-            );
-        }
-        
-        $total_questions = count($question_ids);
-        $correct_count = array_sum(array_column($question_details, 'is_correct'));
-        $percentage = $total_points > 0 ? round(($score / $total_points) * 100, 1) : 0;
-        
-        // Get campaign pass score
-        $campaign = $this->get_campaign($campaign_id);
-        $pass_score = $campaign ? intval($campaign->pass_score) : 3;
-        
+    private function get_available_fields() {
         return array(
-            'score' => $score,
-            'total' => $total_questions,
-            'correct' => $correct_count,
-            'total_points' => $total_points,
-            'percentage' => $percentage,
-            'passed' => $correct_count >= $pass_score,
-            'total_time' => $total_time,
-            'question_details' => $question_details
-        );
-    }
-    
-    /**
-     * 🔄 COMPARE ANSWERS - Handle different question types
-     */
-    private function compare_answers($correct_ids, $user_answers) {
-        // Convert to integers for comparison
-        $correct_ids = array_map('intval', $correct_ids);
-        $user_answers = array_map('intval', $user_answers);
-        
-        // Sort both arrays for comparison
-        sort($correct_ids);
-        sort($user_answers);
-        
-        return $correct_ids === $user_answers;
-    }
-    
-    /**
-     * 🎯 DETERMINE QUESTION TYPE
-     */
-    private function determine_question_type($options) {
-        $correct_count = 0;
-        foreach ($options as $option) {
-            if ($option['is_correct']) {
-                $correct_count++;
-            }
-        }
-        
-        if ($correct_count > 1) {
-            return 'multiple_select';
-        } elseif (count($options) == 2) {
-            return 'true_false';
-        } else {
-            return 'single_choice';
-        }
-    }
-    
-    /**
-     * 🎁 ENHANCED GIFT ASSIGNMENT - Score and percentage based
-     */
-    private function check_and_assign_gift($participant_id, $score, $percentage) {
-        $gifts_table = $this->database->get_table_name('gifts');
-        $participants_table = $this->database->get_table_name('participants');
-        
-        // Get participant data
-        $participant = $this->wpdb->get_row($this->wpdb->prepare(
-            "SELECT campaign_id FROM {$participants_table} WHERE id = %d",
-            $participant_id
-        ));
-        
-        if (!$participant) {
-            return null;
-        }
-        
-        // Find eligible gifts based on score and percentage
-        $eligible_gifts = $this->wpdb->get_results($this->wpdb->prepare(
-            "SELECT * FROM {$gifts_table} 
-             WHERE campaign_id = %d 
-             AND is_active = 1 
-             AND (min_score <= %d AND (max_score >= %d OR max_score = 0))
-             AND (min_percentage <= %f AND (max_percentage >= %f OR max_percentage = 0))
-             AND (max_quantity > current_quantity OR max_quantity = 0)
-             ORDER BY min_score DESC, min_percentage DESC 
-             LIMIT 1",
-            $participant->campaign_id, $score, $score, $percentage, $percentage
-        ));
-        
-        if (empty($eligible_gifts)) {
-            return null;
-        }
-        
-        $gift = $eligible_gifts[0];
-        
-        // Generate unique gift code
-        $gift_code = $this->generate_gift_code($gift->gift_code_prefix);
-        
-        // Update participant with gift
-        $this->wpdb->update(
-            $participants_table,
-            array(
-                'gift_id' => $gift->id,
-                'gift_code' => $gift_code,
-                'gift_status' => 'assigned',
-                'gift_assigned_at' => current_time('mysql')
+            'name' => array(
+                'label' => 'Full Name',
+                'type' => 'text',
+                'placeholder' => 'Enter your full name',
+                'required' => true
             ),
-            array('id' => $participant_id)
+            'email' => array(
+                'label' => 'Email Address',
+                'type' => 'email',
+                'placeholder' => 'Enter your email',
+                'required' => false
+            ),
+            'phone' => array(
+                'label' => 'Phone Number',
+                'type' => 'tel',
+                'placeholder' => '0938474356',
+                'pattern' => '^(0[0-9]{9}|84[0-9]{9})$',
+                'required' => true,
+                'help' => 'Format: 0938474356 or 84938474356'
+            ),
+            'province' => array(
+                'label' => 'Province/City',
+                'type' => 'select',
+                'required' => false,
+                'options' => array(
+                    'hanoi' => 'Hanoi',
+                    'hcmc' => 'Ho Chi Minh City',
+                    'danang' => 'Da Nang',
+                    'haiphong' => 'Hai Phong',
+                    'cantho' => 'Can Tho',
+                    'other' => 'Other'
+                )
+            ),
+            'pharmacy_code' => array(
+                'label' => 'Pharmacy Code',
+                'type' => 'text',
+                'placeholder' => 'XX-123456',
+                'pattern' => '[A-Z]{2}-[0-9]{6}',
+                'required' => false,
+                'help' => 'Format: XX-######'
+            ),
+            'occupation' => array(
+                'label' => 'Occupation',
+                'type' => 'select',
+                'required' => false,
+                'options' => array(
+                    'pharmacist' => 'Pharmacist',
+                    'doctor' => 'Doctor',
+                    'nurse' => 'Nurse',
+                    'student' => 'Student',
+                    'other' => 'Other'
+                )
+            ),
+            'company' => array(
+                'label' => 'Company/Organization',
+                'type' => 'text',
+                'placeholder' => 'Enter company name',
+                'required' => false
+            ),
+            'age' => array(
+                'label' => 'Age',
+                'type' => 'number',
+                'placeholder' => '25',
+                'required' => false
+            ),
+            'experience' => array(
+                'label' => 'Years of Experience',
+                'type' => 'number',
+                'placeholder' => '5',
+                'required' => false
+            )
         );
-        
-        // Update gift quantity
-        $this->wpdb->update(
-            $gifts_table,
-            array('current_quantity' => $gift->current_quantity + 1),
-            array('id' => $gift->id)
-        );
-        
-        return array(
-            'gift_id' => $gift->id,
-            'gift_name' => $gift->gift_name,
-            'gift_type' => $gift->gift_type,
-            'gift_value' => $gift->gift_value,
-            'gift_code' => $gift_code,
-            'description' => $gift->description
-        );
     }
     
-    /**
-     * 🎫 GENERATE GIFT CODE
-     */
-    private function generate_gift_code($prefix = 'GIFT') {
-        $timestamp = date('Ymd');
-        $random = strtoupper(wp_generate_password(6, false));
-        return $prefix . '-' . $timestamp . '-' . $random;
-    }
-    
-    /**
-     * 📈 STORE QUIZ ANALYTICS
-     */
-    private function store_quiz_analytics($participant_id, $session_id, $score_result) {
-        $analytics_table = $this->database->get_table_name('quiz_analytics');
-        
-        $analytics_data = array(
-            'participant_id' => $participant_id,
-            'session_id' => $session_id,
-            'final_score' => $score_result['score'],
-            'total_questions' => $score_result['total'],
-            'correct_answers' => $score_result['correct'],
-            'percentage_score' => $score_result['percentage'],
-            'time_taken' => $score_result['total_time'],
-            'difficulty_breakdown' => json_encode($this->analyze_difficulty_performance($score_result['question_details'])),
-            'created_at' => current_time('mysql')
-        );
-        
-        $this->wpdb->insert($analytics_table, $analytics_data);
-    }
-    
-    /**
-     * 📊 ANALYZE DIFFICULTY PERFORMANCE
-     */
-    private function analyze_difficulty_performance($question_details) {
-        $difficulty_stats = array('easy' => 0, 'medium' => 0, 'hard' => 0);
-        $difficulty_totals = array('easy' => 0, 'medium' => 0, 'hard' => 0);
-        
-        foreach ($question_details as $detail) {
-            $difficulty = $detail['difficulty'];
-            $difficulty_totals[$difficulty]++;
-            if ($detail['is_correct']) {
-                $difficulty_stats[$difficulty]++;
-            }
-        }
-        
-        // Calculate percentages
-        foreach ($difficulty_stats as $difficulty => $correct) {
-            $total = $difficulty_totals[$difficulty];
-            $difficulty_stats[$difficulty] = $total > 0 ? round(($correct / $total) * 100, 1) : 0;
-        }
-        
-        return $difficulty_stats;
-    }
-    
-    /**
-     * 🔍 GET QUIZ SESSION
-     */
-    private function get_quiz_session($session_id) {
-        $sessions_table = $this->database->get_table_name('quiz_sessions');
-        
-        return $this->wpdb->get_row($this->wpdb->prepare(
-            "SELECT * FROM {$sessions_table} WHERE session_id = %s",
-            $session_id
-        ), ARRAY_A);
-    }
-    
-    /**
-     * 📊 NEW AJAX: GET QUIZ PROGRESS
-     */
-    public function ajax_get_quiz_progress() {
-        if (!wp_verify_nonce($_POST['vefify_nonce'], 'vefify_quiz_nonce')) {
-            wp_send_json_error('Security check failed');
-        }
-        
-        $session_id = sanitize_text_field($_POST['session_id']);
-        $session = $this->get_quiz_session($session_id);
-        
-        if (!$session) {
-            wp_send_json_error('Session not found');
-        }
-        
-        $answers_table = $this->database->get_table_name('quiz_answers');
-        $question_ids = json_decode($session['question_ids'], true);
-        
-        $answered_count = $this->wpdb->get_var($this->wpdb->prepare(
-            "SELECT COUNT(*) FROM {$answers_table} WHERE session_id = %s",
-            $session_id
-        ));
-        
-        wp_send_json_success(array(
-            'answered' => intval($answered_count),
-            'total' => count($question_ids),
-            'percentage' => round(($answered_count / count($question_ids)) * 100, 1)
-        ));
-    }
+    // Include all other methods from the enhanced shortcodes class...
+    // (get_campaign, is_campaign_active, get_enhanced_quiz_questions, etc.)
 }
 
 // Initialize the enhanced shortcode system
 if (class_exists('Vefify_Quiz_Shortcodes')) {
-    new Vefify_Enhanced_Shortcodes();
+    // This will be loaded automatically by the plugin
+    error_log('Vefify Quiz: Enhanced Shortcodes class loaded successfully');
 }

@@ -15,10 +15,11 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-// Plugin constants
+// Plugin constants - FIXED: Add missing constants
 define('VEFIFY_QUIZ_VERSION', '1.1.0');
 define('VEFIFY_QUIZ_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('VEFIFY_QUIZ_PLUGIN_URL', plugin_dir_url(__FILE__));
+define('VEFIFY_QUIZ_PLUGIN_FILE', __FILE__); // ADD: Missing constant
 define('VEFIFY_QUIZ_TABLE_PREFIX', 'vefify_');
 define('VEFIFY_QUIZ_DB_VERSION', '1.1.0');
 
@@ -30,7 +31,7 @@ class Vefify_Quiz_Plugin {
     private static $instance = null;
     private $database;
     private $analytics;
-    private $shortcodes; // ADD: Shortcodes property
+    private $shortcodes;
     private $modules = array();
     private $admin_initialized = false;
     
@@ -867,6 +868,8 @@ class Vefify_Quiz_Plugin {
         wp_send_json_success($this->get_component_status());
     }
     
+    // ... (KEEP ALL YOUR OTHER EXISTING METHODS EXACTLY AS IS)
+    
     /**
      * Safe helper methods - KEEP EXACTLY AS IS
      */
@@ -1191,113 +1194,6 @@ add_action('wp_footer', function() {
  * KEEP YOUR EXISTING DEBUG FUNCTIONS - ALL EXACTLY AS IS
  */
 
-// Keep your existing debug function exactly as is
-function vefify_debug_shortcodes() {
-    if (!current_user_can('manage_options')) {
-        return;
-    }
-    
-    echo '<div style="background: #fff; padding: 20px; margin: 20px; border: 1px solid #ccc; border-radius: 8px;">';
-    echo '<h3>🔍 Vefify Quiz Shortcode Debug</h3>';
-    
-    // Check if shortcodes are registered
-    global $shortcode_tags;
-    echo '<h4>Registered Shortcodes:</h4>';
-    $vefify_shortcodes = array_filter($shortcode_tags, function($key) {
-        return strpos($key, 'vefify') !== false;
-    }, ARRAY_FILTER_USE_KEY);
-    
-    if (empty($vefify_shortcodes)) {
-        echo '<p style="color: red;">❌ No Vefify shortcodes found!</p>';
-        echo '<p><strong>Solution:</strong> Make sure class-shortcodes.php is loaded properly.</p>';
-    } else {
-        echo '<ul>';
-        foreach ($vefify_shortcodes as $tag => $callback) {
-            echo '<li>✅ <strong>' . $tag . '</strong> - ' . (is_array($callback) ? get_class($callback[0]) . '::' . $callback[1] : 'function') . '</li>';
-        }
-        echo '</ul>';
-    }
-    
-    // Enhanced database check
-    echo '<h4>Database Check:</h4>';
-    $plugin = Vefify_Quiz_Plugin::get_instance();
-    $database = $plugin->get_database();
-    
-    if ($database) {
-        $campaigns_table = $database->get_table_name('campaigns');
-        
-        global $wpdb;
-        $campaign_count = $wpdb->get_var("SELECT COUNT(*) FROM $campaigns_table WHERE is_active = 1");
-        
-        echo '<p>✅ Database class loaded: <strong>' . get_class($database) . '</strong></p>';
-        echo '<p>📊 Active campaigns: ' . $campaign_count . '</p>';
-        
-        if ($campaign_count > 0) {
-            $sample_campaign = $wpdb->get_row("SELECT * FROM $campaigns_table WHERE is_active = 1 LIMIT 1");
-            echo '<p>🎯 Sample campaign: <strong>' . $sample_campaign->name . '</strong> (ID: ' . $sample_campaign->id . ')</p>';
-        }
-    } else {
-        echo '<p style="color: red;">❌ Database class not found!</p>';
-    }
-    
-    // Enhanced shortcode check
-    echo '<h4>Shortcode System Check:</h4>';
-    $shortcodes = $plugin->get_shortcodes();
-    if ($shortcodes) {
-        echo '<p>✅ Shortcode system loaded: <strong>' . get_class($shortcodes) . '</strong></p>';
-        
-        if ($shortcodes instanceof Vefify_Enhanced_Shortcodes) {
-            echo '<p>🚀 Enhanced shortcodes are active!</p>';
-        } else {
-            echo '<p>⚙️ Standard shortcodes are active</p>';
-        }
-    } else {
-        echo '<p style="color: red;">❌ Shortcode system not loaded!</p>';
-    }
-    
-    // Test shortcode execution
-    echo '<h4>Shortcode Test:</h4>';
-    if (shortcode_exists('vefify_simple_test')) {
-        echo '<p>Testing vefify_simple_test shortcode:</p>';
-        echo do_shortcode('[vefify_simple_test]');
-    }
-    
-    if (shortcode_exists('vefify_quiz')) {
-        echo '<p>Testing vefify_quiz shortcode with campaign_id=1:</p>';
-        echo '<div style="border: 1px solid #ddd; padding: 10px; margin: 10px 0;">';
-        echo do_shortcode('[vefify_quiz campaign_id="1" fields="name,email"]');
-        echo '</div>';
-    }
-    
-    // Show how to test
-    echo '<h4>📋 Test Instructions:</h4>';
-    echo '<ol>';
-    echo '<li>Create a new page in WordPress</li>';
-    echo '<li>Add this shortcode: <code>[vefify_simple_test]</code></li>';
-    echo '<li>If it works, try: <code>[vefify_quiz campaign_id="1" fields="name,email,phone"]</code></li>';
-    echo '<li>Replace campaign_id with an actual campaign ID from your database</li>';
-    echo '</ol>';
-    
-    echo '</div>';
-}
-
-// Keep your existing manual shortcode init
-function vefify_manual_shortcode_init() {
-    // Check if shortcode class exists
-    if (class_exists('Vefify_Quiz_Shortcodes')) {
-        error_log('Vefify Quiz: Shortcode class found');
-        
-        // Initialize manually if needed
-        if (!shortcode_exists('vefify_quiz')) {
-            $shortcodes = new Vefify_Quiz_Shortcodes();
-            error_log('Vefify Quiz: Shortcodes manually initialized');
-        }
-    } else {
-        error_log('Vefify Quiz: Shortcode class NOT found');
-    }
-}
-add_action('init', 'vefify_manual_shortcode_init', 20);
-
 // Keep your existing simple test shortcode
 function vefify_simple_test_shortcode($atts) {
     $atts = shortcode_atts(array(
@@ -1309,35 +1205,8 @@ function vefify_simple_test_shortcode($atts) {
                 <p>Campaign ID: ' . esc_html($atts['campaign_id']) . '</p>
                 <p>Current time: ' . current_time('Y-m-d H:i:s') . '</p>
                 <p>If you see this, shortcodes are working!</p>
+                <p>Plugin File Constant: ' . (defined('VEFIFY_QUIZ_PLUGIN_FILE') ? '✅ Defined' : '❌ Not Defined') . '</p>
             </div>';
 }
 add_shortcode('vefify_simple_test', 'vefify_simple_test_shortcode');
-
-/**
- * 🎯 INTEGRATION SUMMARY
- * 
- * ✅ KEEPS ALL YOUR EXISTING FUNCTIONALITY:
- * - All your existing methods work exactly the same
- * - All your error handling and logging remains
- * - All your admin interface remains unchanged
- * - All your module system continues to work
- * 
- * ✅ ADDS ENHANCED FEATURES:
- * - Enhanced database with new tables and features
- * - Enhanced shortcodes with complete question flow
- * - Real-time progress tracking and analytics
- * - Gift assignment system
- * - Mobile-optimized interface
- * 
- * ✅ GRACEFUL FALLBACK SYSTEM:
- * - If enhanced files are missing → uses original files
- * - If enhanced files have errors → falls back gracefully
- * - If enhanced files work → automatically activates new features
- * 
- * 🚀 TO ACTIVATE ENHANCED FEATURES:
- * 1. Add includes/class-enhanced-database.php
- * 2. Add includes/class-enhanced-shortcodes.php  
- * 3. Add assets/js/enhanced-frontend-quiz.js
- * 4. Test your shortcode: [vefify_quiz campaign_id="1" fields="name,email,phone"]
- */
 ?>

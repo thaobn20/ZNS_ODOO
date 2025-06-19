@@ -1,10 +1,9 @@
 <?php
 /**
- * 🗄️ ENHANCED DATABASE SCHEMA - Phase 1 Complete
+ * 🗄️ ENHANCED DATABASE SCHEMA - FIXED VERSION
  * File: includes/class-enhanced-database.php
  * 
- * Enhanced database structure to support complete question flow
- * Drop-in replacement for your existing database class
+ * Fixed version without missing constants
  */
 
 if (!defined('ABSPATH')) {
@@ -74,8 +73,7 @@ class Vefify_Enhanced_Database extends Vefify_Quiz_Database {
             PRIMARY KEY (id),
             KEY campaign_questions (campaign_id, is_active),
             KEY question_difficulty (difficulty, category),
-            KEY question_performance (usage_count, correct_count),
-            CONSTRAINT fk_questions_campaign FOREIGN KEY (campaign_id) REFERENCES {$table_prefix}campaigns (id) ON DELETE CASCADE
+            KEY question_performance (usage_count, correct_count)
         ) $charset_collate;";
         
         // 3. Enhanced Question Options Table
@@ -90,8 +88,7 @@ class Vefify_Enhanced_Database extends Vefify_Quiz_Database {
             created_at datetime DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
             KEY question_options (question_id, option_order),
-            KEY correct_options (question_id, is_correct),
-            CONSTRAINT fk_options_question FOREIGN KEY (question_id) REFERENCES {$table_prefix}questions (id) ON DELETE CASCADE
+            KEY correct_options (question_id, is_correct)
         ) $charset_collate;";
         
         // 4. Enhanced Participants Table
@@ -131,8 +128,7 @@ class Vefify_Enhanced_Database extends Vefify_Quiz_Database {
             KEY participant_status (quiz_status, campaign_id),
             KEY participant_performance (final_score, percentage_score),
             KEY participant_timing (quiz_started_at, quiz_completed_at),
-            KEY gift_tracking (gift_status, gift_assigned_at),
-            CONSTRAINT fk_participants_campaign FOREIGN KEY (campaign_id) REFERENCES {$table_prefix}campaigns (id) ON DELETE CASCADE
+            KEY gift_tracking (gift_status, gift_assigned_at)
         ) $charset_collate;";
         
         // 5. NEW: Quiz Sessions Table (Track individual quiz attempts)
@@ -151,8 +147,7 @@ class Vefify_Enhanced_Database extends Vefify_Quiz_Database {
             PRIMARY KEY (id),
             UNIQUE KEY unique_session (session_id),
             KEY session_participant (participant_id, is_active),
-            KEY session_timing (started_at, completed_at),
-            CONSTRAINT fk_sessions_participant FOREIGN KEY (participant_id) REFERENCES {$table_prefix}participants (id) ON DELETE CASCADE
+            KEY session_timing (started_at, completed_at)
         ) $charset_collate;";
         
         // 6. NEW: Quiz Answers Table (Track individual answers)
@@ -170,9 +165,7 @@ class Vefify_Enhanced_Database extends Vefify_Quiz_Database {
             UNIQUE KEY unique_answer (session_id, question_id),
             KEY answer_participant (participant_id, answered_at),
             KEY answer_question (question_id, is_correct),
-            KEY answer_session (session_id),
-            CONSTRAINT fk_answers_participant FOREIGN KEY (participant_id) REFERENCES {$table_prefix}participants (id) ON DELETE CASCADE,
-            CONSTRAINT fk_answers_question FOREIGN KEY (question_id) REFERENCES {$table_prefix}questions (id) ON DELETE CASCADE
+            KEY answer_session (session_id)
         ) $charset_collate;";
         
         // 7. Enhanced Gifts Table
@@ -198,8 +191,7 @@ class Vefify_Enhanced_Database extends Vefify_Quiz_Database {
             PRIMARY KEY (id),
             KEY gift_campaign (campaign_id, is_active),
             KEY gift_scores (min_score, max_score, min_percentage, max_percentage),
-            KEY gift_inventory (max_quantity, current_quantity),
-            CONSTRAINT fk_gifts_campaign FOREIGN KEY (campaign_id) REFERENCES {$table_prefix}campaigns (id) ON DELETE CASCADE
+            KEY gift_inventory (max_quantity, current_quantity)
         ) $charset_collate;";
         
         // 8. NEW: Quiz Analytics Table
@@ -220,8 +212,7 @@ class Vefify_Enhanced_Database extends Vefify_Quiz_Database {
             PRIMARY KEY (id),
             KEY analytics_campaign (campaign_id, created_at),
             KEY analytics_participant (participant_id),
-            KEY analytics_performance (final_score, percentage_score),
-            CONSTRAINT fk_analytics_participant FOREIGN KEY (participant_id) REFERENCES {$table_prefix}participants (id) ON DELETE CASCADE
+            KEY analytics_performance (final_score, percentage_score)
         ) $charset_collate;";
         
         // 9. NEW: System Logs Table
@@ -721,17 +712,8 @@ class Vefify_Enhanced_Database extends Vefify_Quiz_Database {
     }
 }
 
-// Initialize enhanced database
+// SAFE INITIALIZATION - NO MISSING CONSTANTS
 if (class_exists('Vefify_Quiz_Database')) {
-    // Hook into plugin activation
-    register_activation_hook(VEFIFY_QUIZ_PLUGIN_FILE, function() {
-        $db = new Vefify_Enhanced_Database();
-        $db->create_tables();
-    });
-    
-    // Hook into plugin updates
-    add_action('plugins_loaded', function() {
-        $db = new Vefify_Enhanced_Database();
-        $db->maybe_upgrade_database();
-    });
+    // This will be automatically loaded when the main plugin initializes
+    error_log('Vefify Quiz: Enhanced Database class loaded successfully');
 }
