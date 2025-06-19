@@ -638,19 +638,22 @@ class Vefify_Quiz_Shortcodes {
         
         // Collect and sanitize participant data
         $participant_data = array(
-            'campaign_id' => $campaign_id,
-            'full_name' => sanitize_text_field($_POST['name'] ?? ''),
-            'email' => sanitize_email($_POST['email'] ?? ''),
-            'phone_number' => sanitize_text_field($_POST['phone'] ?? ''),
-            'province' => sanitize_text_field($_POST['province'] ?? ''),
-            'pharmacy_code' => sanitize_text_field($_POST['pharmacy_code'] ?? ''),
-            'occupation' => sanitize_text_field($_POST['occupation'] ?? ''),
-            'company' => sanitize_text_field($_POST['company'] ?? ''),
-            'age' => intval($_POST['age'] ?? 0),
-            'experience_years' => intval($_POST['experience'] ?? 0),
-            'registration_ip' => $_SERVER['REMOTE_ADDR'],
-            'user_agent' => $_SERVER['HTTP_USER_AGENT'],
-            'created_at' => current_time('mysql')
+		   'campaign_id' => $campaign_id,
+			'session_id' => wp_generate_password(32, false),
+			// CORRECT COLUMN NAMES FROM YOUR DATABASE:
+			'participant_name' => sanitize_text_field($_POST['name'] ?? ''),           // NOT 'full_name'
+			'participant_email' => sanitize_email($_POST['email'] ?? ''),             // NOT 'email'
+			'participant_phone' => sanitize_text_field($_POST['phone'] ?? ''),        // NOT 'phone_number'
+			'province' => sanitize_text_field($_POST['province'] ?? ''),
+			'pharmacy_code' => sanitize_text_field($_POST['pharmacy_code'] ?? ''),
+			'company' => sanitize_text_field($_POST['company'] ?? ''),
+			'occupation' => sanitize_text_field($_POST['occupation'] ?? ''),
+			'age' => intval($_POST['age'] ?? 0),
+			'quiz_status' => 'started',
+			'start_time' => current_time('mysql'),
+			'ip_address' => $_SERVER['REMOTE_ADDR'],
+			'user_agent' => $_SERVER['HTTP_USER_AGENT'],
+			'created_at' => current_time('mysql')
         );
         
         // Validate required fields
