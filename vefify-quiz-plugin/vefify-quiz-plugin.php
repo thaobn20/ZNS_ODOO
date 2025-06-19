@@ -78,7 +78,7 @@ class Vefify_Quiz_Plugin {
             'includes/class-utilities.php', 
             'includes/class-analytics.php',
             'includes/class-validation-helper.php',
-            'includes/includes/class-shortcodes.php' #Add field short code
+            'includes/class-shortcodes.php' #Add field short code
         );
         
         foreach ($core_files as $file) {
@@ -879,3 +879,176 @@ function vefify_quiz_get_module($module_name) {
     $plugin = Vefify_Quiz_Plugin::get_instance();
     return $plugin->get_module($module_name);
 }
+
+/**
+ * SHORTCODE DEBUG AND TEST SCRIPT
+ * 
+ * Add this temporarily to your main plugin file to debug shortcode issues
+ */
+
+// Add this function to your main plugin class or functions.php temporarily
+function vefify_debug_shortcodes() {
+    if (!current_user_can('manage_options')) {
+        return;
+    }
+    
+    echo '<div style="background: #fff; padding: 20px; margin: 20px; border: 1px solid #ccc; border-radius: 8px;">';
+    echo '<h3>🔍 Vefify Quiz Shortcode Debug</h3>';
+    
+    // Check if shortcodes are registered
+    global $shortcode_tags;
+    echo '<h4>Registered Shortcodes:</h4>';
+    $vefify_shortcodes = array_filter($shortcode_tags, function($key) {
+        return strpos($key, 'vefify') !== false;
+    }, ARRAY_FILTER_USE_KEY);
+    
+    if (empty($vefify_shortcodes)) {
+        echo '<p style="color: red;">❌ No Vefify shortcodes found!</p>';
+        echo '<p><strong>Solution:</strong> Make sure class-shortcodes.php is loaded properly.</p>';
+    } else {
+        echo '<ul>';
+        foreach ($vefify_shortcodes as $tag => $callback) {
+            echo '<li>✅ <strong>' . $tag . '</strong> - ' . (is_array($callback) ? get_class($callback[0]) . '::' . $callback[1] : 'function') . '</li>';
+        }
+        echo '</ul>';
+    }
+    
+    // Check database connection
+    echo '<h4>Database Check:</h4>';
+    if (class_exists('Vefify_Quiz_Database')) {
+        $db = new Vefify_Quiz_Database();
+        $campaigns_table = $db->get_table_name('campaigns');
+        
+        global $wpdb;
+        $campaign_count = $wpdb->get_var("SELECT COUNT(*) FROM $campaigns_table WHERE is_active = 1");
+        
+        echo '<p>✅ Database class loaded</p>';
+        echo '<p>📊 Active campaigns: ' . $campaign_count . '</p>';
+        
+        if ($campaign_count > 0) {
+            $sample_campaign = $wpdb->get_row("SELECT * FROM $campaigns_table WHERE is_active = 1 LIMIT 1");
+            echo '<p>🎯 Sample campaign: <strong>' . $sample_campaign->name . '</strong> (ID: ' . $sample_campaign->id . ')</p>';
+        }
+    } else {
+        echo '<p style="color: red;">❌ Database class not found!</p>';
+    }
+    
+    // Test shortcode execution
+    echo '<h4>Shortcode Test:</h4>';
+    if (shortcode_exists('vefify_test')) {
+        echo '<p>Testing vefify_test shortcode:</p>';
+        echo do_shortcode('[vefify_test]');
+    }
+    
+    if (shortcode_exists('vefify_quiz')) {
+        echo '<p>Testing vefify_quiz shortcode with campaign_id=1:</p>';
+        echo '<div style="border: 1px solid #ddd; padding: 10px; margin: 10px 0;">';
+        echo do_shortcode('[vefify_quiz campaign_id="1" fields="name,email"]');
+        echo '</div>';
+    }
+    
+    // Show how to test
+    echo '<h4>📋 Test Instructions:</h4>';
+    echo '<ol>';
+    echo '<li>Create a new page in WordPress</li>';
+    echo '<li>Add this shortcode: <code>[vefify_test]</code></li>';
+    echo '<li>If it works, try: <code>[vefify_quiz campaign_id="1" fields="name,email,phone"]</code></li>';
+    echo '<li>Replace campaign_id with an actual campaign ID from your database</li>';
+    echo '</ol>';
+    
+    echo '</div>';
+}
+
+// Hook to show debug info in admin
+add_action('admin_notices', 'vefify_debug_shortcodes');
+
+/**
+ * QUICK FIX FOR SHORTCODE PATH
+ * 
+ * Update your main plugin file load_dependencies() method:
+ */
+/*
+private function load_dependencies() {
+    $core_files = array(
+        'includes/class-database.php',
+        // ... other files ...
+        'includes/class-shortcodes.php'  // FIXED: Remove the extra 'includes/'
+    );
+    
+    foreach ($core_files as $file) {
+        $file_path = plugin_dir_path(__FILE__) . $file;
+        
+        if (file_exists($file_path)) {
+            require_once $file_path;
+            error_log("Vefify Quiz: Loaded $file");
+        } else {
+            error_log("Vefify Quiz: File not found - $file_path");
+        }
+    }
+}
+*/
+
+/**
+ * MANUAL SHORTCODE REGISTRATION (if auto-loading fails)
+ * 
+ * Add this to your main plugin activation or init:
+ */
+function vefify_manual_shortcode_init() {
+    // Check if shortcode class exists
+    if (class_exists('Vefify_Quiz_Shortcodes')) {
+        error_log('Vefify Quiz: Shortcode class found');
+        
+        // Initialize manually if needed
+        if (!shortcode_exists('vefify_quiz')) {
+            $shortcodes = new Vefify_Quiz_Shortcodes();
+            error_log('Vefify Quiz: Shortcodes manually initialized');
+        }
+    } else {
+        error_log('Vefify Quiz: Shortcode class NOT found');
+    }
+}
+add_action('init', 'vefify_manual_shortcode_init', 20);
+
+/**
+ * SIMPLE TEST SHORTCODE (add this to main plugin file temporarily)
+ */
+function vefify_simple_test_shortcode($atts) {
+    $atts = shortcode_atts(array(
+        'campaign_id' => '1'
+    ), $atts);
+    
+    return '<div style="background: #e7f3ff; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                <h3>🧪 Simple Test Working!</h3>
+                <p>Campaign ID: ' . esc_html($atts['campaign_id']) . '</p>
+                <p>Current time: ' . current_time('Y-m-d H:i:s') . '</p>
+                <p>If you see this, shortcodes are working!</p>
+            </div>';
+}
+add_shortcode('vefify_simple_test', 'vefify_simple_test_shortcode');
+
+/**
+ * TROUBLESHOOTING CHECKLIST
+ */
+/*
+1. ✅ Check file path: Should be 'includes/class-shortcodes.php' (not 'includes/includes/...')
+
+2. ✅ Verify file upload: Make sure the file is actually uploaded to the correct location
+
+3. ✅ Check for PHP errors: Look at error logs for any syntax errors
+
+4. ✅ Test simple shortcode first: Try [vefify_simple_test] to see if shortcodes work at all
+
+5. ✅ Check database: Make sure you have active campaigns to display
+
+6. ✅ Clear cache: If using caching plugins, clear them
+
+7. ✅ Check theme compatibility: Try with a default theme
+
+Common Issues:
+- Wrong file path in load_dependencies()
+- PHP syntax errors in shortcode file
+- Database connection issues
+- Missing campaigns in database
+- Caching plugins interfering
+*/
+?>

@@ -1,9 +1,10 @@
 <?php
 /**
- * COMPLETE QUIZ SHORTCODE SYSTEM
+ * 🚀 COMPLETE SHORTCODE SYSTEM FOR VEFIFY QUIZ
  * File: includes/class-shortcodes.php
  * 
- * Provides frontend quiz display with custom field collection
+ * This replaces/enhances your existing shortcode implementation
+ * Building on your working vefify_simple_test foundation
  */
 
 if (!defined('ABSPATH')) {
@@ -13,19 +14,26 @@ if (!defined('ABSPATH')) {
 class Vefify_Quiz_Shortcodes {
     
     private $database;
+    private $wpdb;
     
     public function __construct() {
+        global $wpdb;
+        $this->wpdb = $wpdb;
         $this->database = new Vefify_Quiz_Database();
         $this->init();
     }
     
     public function init() {
-        // Register shortcodes
-        add_shortcode('vefify_quiz', array($this, 'render_quiz'));
-        add_shortcode('vefify_quiz_list', array($this, 'render_quiz_list'));
-        add_shortcode('vefify_quiz_form', array($this, 'render_quiz_form'));
+        // Register all shortcodes
+        add_shortcode('vefify_simple_test', array($this, 'simple_test')); // Keep your working one
+        add_shortcode('vefify_test', array($this, 'debug_test')); // Enhanced debug
+        add_shortcode('vefify_quiz', array($this, 'render_quiz')); // Main quiz
+        add_shortcode('vefify_quiz_list', array($this, 'render_quiz_list')); // Quiz list
+        add_shortcode('vefify_campaign', array($this, 'render_campaign_info')); // Campaign info
         
-        // AJAX handlers for frontend
+        // AJAX handlers
+        add_action('wp_ajax_vefify_register_participant', array($this, 'ajax_register_participant'));
+        add_action('wp_ajax_nopriv_vefify_register_participant', array($this, 'ajax_register_participant'));
         add_action('wp_ajax_vefify_start_quiz', array($this, 'ajax_start_quiz'));
         add_action('wp_ajax_nopriv_vefify_start_quiz', array($this, 'ajax_start_quiz'));
         add_action('wp_ajax_vefify_submit_answer', array($this, 'ajax_submit_answer'));
@@ -33,38 +41,163 @@ class Vefify_Quiz_Shortcodes {
         add_action('wp_ajax_vefify_finish_quiz', array($this, 'ajax_finish_quiz'));
         add_action('wp_ajax_nopriv_vefify_finish_quiz', array($this, 'ajax_finish_quiz'));
         
-        // Enqueue frontend scripts
+        // Enqueue scripts
         add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_scripts'));
     }
     
     /**
-     * Main quiz shortcode with custom fields
-     * Usage: [vefify_quiz campaign_id="1" fields="name,email,phone,province,pharmacy_code"]
+     * 🧪 KEEP YOUR WORKING SIMPLE TEST (Enhanced)
+     */
+    public function simple_test($atts) {
+        $atts = shortcode_atts(array(
+            'campaign_id' => '1',
+            'debug' => 'false'
+        ), $atts);
+        
+        $campaign_id = intval($atts['campaign_id']);
+        $current_time = current_time('mysql');
+        
+        $output = '<div class="vefify-test-output">';
+        $output .= '<h3>✅ Simple Test Working!</h3>';
+        $output .= '<p><strong>Campaign ID:</strong> ' . $campaign_id . '</p>';
+        $output .= '<p><strong>Current time:</strong> ' . $current_time . '</p>';
+        
+        // Enhanced: Check database connection
+        if ($this->database) {
+            $campaigns_table = $this->database->get_table_name('campaigns');
+            if ($campaigns_table) {
+                $campaign_count = $this->wpdb->get_var("SELECT COUNT(*) FROM {$campaigns_table}");
+                $output .= '<p><strong>Campaigns in database:</strong> ' . ($campaign_count ?: '0') . '</p>';
+            } else {
+                $output .= '<p><strong>Database:</strong> ❌ Tables not found</p>';
+            }
+        } else {
+            $output .= '<p><strong>Database:</strong> ❌ Not connected</p>';
+        }
+        
+        $output .= '<p>If you see this, shortcodes are working! 🎉</p>';
+        
+        // Show debug info if requested
+        if ($atts['debug'] === 'true') {
+            $output .= '<div class="vefify-debug">';
+            $output .= '<h4>🔍 Debug Information:</h4>';
+            $output .= '<p><strong>Plugin URL:</strong> ' . VEFIFY_QUIZ_PLUGIN_URL . '</p>';
+            $output .= '<p><strong>Plugin Dir:</strong> ' . VEFIFY_QUIZ_PLUGIN_DIR . '</p>';
+            $output .= '<p><strong>WordPress Version:</strong> ' . get_bloginfo('version') . '</p>';
+            $output .= '<p><strong>PHP Version:</strong> ' . phpversion() . '</p>';
+            $output .= '</div>';
+        }
+        
+        $output .= '</div>';
+        
+        return $output;
+    }
+    
+    /**
+     * 🔍 ENHANCED DEBUG TEST
+     */
+    public function debug_test($atts) {
+        $output = '<div class="vefify-debug-test">';
+        $output .= '<h3>🔍 Vefify Quiz Debug Test</h3>';
+        
+        // Test database connection
+        if ($this->database) {
+            $output .= '<p>✅ Database class loaded</p>';
+            
+            $tables = array('campaigns', 'questions', 'participants', 'gifts');
+            foreach ($tables as $table) {
+                $table_name = $this->database->get_table_name($table);
+                if ($table_name) {
+                    $count = $this->wpdb->get_var("SELECT COUNT(*) FROM {$table_name}");
+                    $output .= '<p>✅ Table ' . $table . ': ' . ($count ?: '0') . ' records</p>';
+                } else {
+                    $output .= '<p>❌ Table ' . $table . ': Not found</p>';
+                }
+            }
+        } else {
+            $output .= '<p>❌ Database class not loaded</p>';
+        }
+        
+        // Test AJAX endpoints
+        $output .= '<h4>🔗 AJAX Endpoints:</h4>';
+        $output .= '<p><strong>AJAX URL:</strong> ' . admin_url('admin-ajax.php') . '</p>';
+        $output .= '<p><strong>Nonce:</strong> ' . wp_create_nonce('vefify_quiz_nonce') . '</p>';
+        
+        // Test file includes
+        $output .= '<h4>📁 File Check:</h4>';
+        $files_to_check = array(
+            'Database' => VEFIFY_QUIZ_PLUGIN_DIR . 'includes/class-database.php',
+            'Participant Model' => VEFIFY_QUIZ_PLUGIN_DIR . 'modules/participants/class-participant-model.php',
+            'Question Model' => VEFIFY_QUIZ_PLUGIN_DIR . 'modules/questions/class-question-model.php'
+        );
+        
+        foreach ($files_to_check as $name => $file) {
+            if (file_exists($file)) {
+                $output .= '<p>✅ ' . $name . ': Found</p>';
+            } else {
+                $output .= '<p>❌ ' . $name . ': Missing (' . basename($file) . ')</p>';
+            }
+        }
+        
+        $output .= '</div>';
+        
+        return $output;
+    }
+    
+    /**
+     * 📋 MAIN QUIZ SHORTCODE
+     * Usage: [vefify_quiz campaign_id="2" fields="name,email,phone,province,pharmacy_code,occupation,company" style="modern"]
      */
     public function render_quiz($atts) {
         $atts = shortcode_atts(array(
             'campaign_id' => '',
-            'fields' => 'name,email,phone,province', // Default fields
+            'fields' => 'name,email,phone', // Default fields
+            'style' => 'default', // default, modern, minimal
             'title' => '',
             'description' => '',
-            'style' => 'default' // default, modern, minimal
+            'theme' => 'light' // light, dark, blue
         ), $atts);
         
         if (empty($atts['campaign_id'])) {
-            return '<div class="vefify-error">Error: Campaign ID is required</div>';
+            return '<div class="vefify-error">❌ Error: Campaign ID is required. Usage: [vefify_quiz campaign_id="1"]</div>';
         }
         
-        $campaign = $this->get_campaign($atts['campaign_id']);
+        $campaign_id = intval($atts['campaign_id']);
+        
+        // Get campaign data
+        $campaign = $this->get_campaign($campaign_id);
         if (!$campaign) {
-            return '<div class="vefify-error">Error: Campaign not found</div>';
+            return '<div class="vefify-error">❌ Campaign not found (ID: ' . $campaign_id . '). <a href="' . admin_url('admin.php?page=vefify-campaigns') . '">Check available campaigns</a></div>';
+        }
+        
+        // Check if campaign is active
+        if (!$this->is_campaign_active($campaign)) {
+            $start_date = date('M j, Y', strtotime($campaign->start_date));
+            $end_date = date('M j, Y', strtotime($campaign->end_date));
+            return '<div class="vefify-notice">📅 This campaign is not currently active.<br>Active period: ' . $start_date . ' - ' . $end_date . '</div>';
         }
         
         // Parse custom fields
-        $custom_fields = array_map('trim', explode(',', $atts['fields']));
+        $requested_fields = array_map('trim', explode(',', $atts['fields']));
+        $available_fields = $this->get_available_fields();
+        $valid_fields = array_intersect($requested_fields, array_keys($available_fields));
+        
+        if (empty($valid_fields)) {
+            return '<div class="vefify-error">❌ No valid fields specified. Available: ' . implode(', ', array_keys($available_fields)) . '</div>';
+        }
+        
+        // Generate unique quiz ID
+        $quiz_id = 'vefify_quiz_' . $campaign_id . '_' . uniqid();
         
         ob_start();
         ?>
-        <div class="vefify-quiz-container" data-campaign-id="<?php echo esc_attr($atts['campaign_id']); ?>" data-style="<?php echo esc_attr($atts['style']); ?>">
+        <div id="<?php echo esc_attr($quiz_id); ?>" class="vefify-quiz-container vefify-style-<?php echo esc_attr($atts['style']); ?> vefify-theme-<?php echo esc_attr($atts['theme']); ?>" data-campaign-id="<?php echo $campaign_id; ?>">
+            
+            <!-- Loading overlay -->
+            <div class="vefify-loading-overlay" style="display: none;">
+                <div class="vefify-spinner"></div>
+                <p>Loading quiz...</p>
+            </div>
             
             <!-- Quiz Header -->
             <div class="vefify-quiz-header">
@@ -72,328 +205,161 @@ class Vefify_Quiz_Shortcodes {
                     <?php echo esc_html($atts['title'] ?: $campaign->name); ?>
                 </h2>
                 <?php if ($atts['description'] || $campaign->description): ?>
-                    <p class="vefify-quiz-description">
-                        <?php echo esc_html($atts['description'] ?: $campaign->description); ?>
-                    </p>
+                    <div class="vefify-quiz-description">
+                        <?php echo wp_kses_post($atts['description'] ?: $campaign->description); ?>
+                    </div>
                 <?php endif; ?>
+                
+                <div class="vefify-quiz-meta">
+                    <span class="vefify-meta-item">📝 <?php echo $campaign->questions_per_quiz; ?> questions</span>
+                    <?php if ($campaign->time_limit): ?>
+                        <span class="vefify-meta-item">⏱️ <?php echo round($campaign->time_limit / 60); ?> minutes</span>
+                    <?php endif; ?>
+                    <span class="vefify-meta-item">🎯 Pass score: <?php echo $campaign->pass_score; ?></span>
+                </div>
             </div>
             
             <!-- Registration Form -->
-            <div class="vefify-registration-form" id="vefify-registration-<?php echo $atts['campaign_id']; ?>">
-                <h3>📝 Participant Information</h3>
-                <form id="vefify-participant-form" class="vefify-form">
+            <div class="vefify-registration-section">
+                <h3>📝 Registration Required</h3>
+                <p>Please fill in your information to start the quiz:</p>
+                
+                <form id="vefify-registration-form" class="vefify-form">
+                    <?php wp_nonce_field('vefify_quiz_nonce', 'vefify_nonce'); ?>
+                    <input type="hidden" name="campaign_id" value="<?php echo $campaign_id; ?>">
                     
-                    <?php foreach ($custom_fields as $field): ?>
-                        <?php $this->render_field($field); ?>
-                    <?php endforeach; ?>
-                    
-                    <!-- Privacy/Terms -->
-                    <div class="vefify-field">
-                        <label class="vefify-checkbox">
-                            <input type="checkbox" name="agree_terms" required>
-                            <span class="checkmark"></span>
-                            I agree to participate in this quiz and allow my data to be collected
-                        </label>
+                    <div class="vefify-form-grid">
+                        <?php foreach ($valid_fields as $field): ?>
+                            <?php echo $this->render_form_field($field, $available_fields[$field]); ?>
+                        <?php endforeach; ?>
                     </div>
                     
-                    <!-- Submit Button -->
-                    <div class="vefify-field">
-                        <button type="submit" class="vefify-btn vefify-btn-primary">
+                    <div class="vefify-form-actions">
+                        <button type="submit" class="vefify-btn vefify-btn-primary vefify-btn-large">
                             🚀 Start Quiz
                         </button>
                     </div>
-                    
-                    <input type="hidden" name="campaign_id" value="<?php echo esc_attr($atts['campaign_id']); ?>">
-                    <?php wp_nonce_field('vefify_start_quiz', 'vefify_nonce'); ?>
                 </form>
             </div>
             
-            <!-- Quiz Interface (hidden initially) -->
-            <div class="vefify-quiz-interface" id="vefify-quiz-<?php echo $atts['campaign_id']; ?>" style="display: none;">
-                
-                <!-- Quiz Progress -->
+            <!-- Quiz Section (Hidden initially) -->
+            <div class="vefify-quiz-section" style="display: none;">
                 <div class="vefify-quiz-progress">
                     <div class="vefify-progress-bar">
                         <div class="vefify-progress-fill" style="width: 0%"></div>
                     </div>
-                    <div class="vefify-progress-text">
-                        Question <span class="current">1</span> of <span class="total"><?php echo $campaign->questions_per_quiz; ?></span>
-                    </div>
+                    <div class="vefify-progress-text">Question <span class="current">1</span> of <span class="total"><?php echo $campaign->questions_per_quiz; ?></span></div>
                 </div>
                 
-                <!-- Timer (if enabled) -->
                 <?php if ($campaign->time_limit): ?>
-                <div class="vefify-quiz-timer">
-                    ⏱️ Time remaining: <span id="vefify-timer"><?php echo $campaign->time_limit; ?></span> seconds
-                </div>
+                    <div class="vefify-timer">
+                        <span class="vefify-timer-icon">⏱️</span>
+                        <span class="vefify-timer-text">Time remaining: <span id="vefify-time-remaining"><?php echo round($campaign->time_limit / 60); ?>:00</span></span>
+                    </div>
                 <?php endif; ?>
                 
-                <!-- Question Container -->
-                <div class="vefify-question-container">
-                    <div class="vefify-question">
-                        <h3 class="vefify-question-text"></h3>
-                        <div class="vefify-question-options"></div>
-                        
-                        <div class="vefify-question-nav">
-                            <button type="button" class="vefify-btn vefify-btn-secondary" id="vefify-prev-btn" style="display: none;">
-                                ← Previous
-                            </button>
-                            <button type="button" class="vefify-btn vefify-btn-primary" id="vefify-next-btn">
-                                Next →
-                            </button>
-                        </div>
-                    </div>
+                <div id="vefify-question-container">
+                    <!-- Questions will be loaded here via AJAX -->
+                </div>
+                
+                <div class="vefify-quiz-navigation">
+                    <button type="button" id="vefify-prev-question" class="vefify-btn vefify-btn-secondary" style="display: none;">
+                        ← Previous
+                    </button>
+                    <button type="button" id="vefify-next-question" class="vefify-btn vefify-btn-primary">
+                        Next →
+                    </button>
+                    <button type="button" id="vefify-finish-quiz" class="vefify-btn vefify-btn-success" style="display: none;">
+                        ✓ Finish Quiz
+                    </button>
                 </div>
             </div>
             
-            <!-- Results Display -->
-            <div class="vefify-quiz-results" id="vefify-results-<?php echo $atts['campaign_id']; ?>" style="display: none;">
+            <!-- Results Section (Hidden initially) -->
+            <div class="vefify-results-section" style="display: none;">
                 <div class="vefify-results-content">
-                    <h3>🎉 Quiz Complete!</h3>
-                    <div class="vefify-score-display">
-                        <div class="vefify-score-circle">
-                            <span class="vefify-score-number"></span>
-                            <span class="vefify-score-total"></span>
-                        </div>
-                        <div class="vefify-score-percentage"></div>
-                    </div>
-                    
-                    <div class="vefify-gift-info" style="display: none;">
-                        <h4>🎁 Congratulations!</h4>
-                        <div class="vefify-gift-details"></div>
-                    </div>
-                    
-                    <div class="vefify-results-actions">
-                        <button type="button" class="vefify-btn vefify-btn-secondary" onclick="location.reload()">
-                            🔄 Take Quiz Again
-                        </button>
-                    </div>
+                    <!-- Results will be displayed here -->
                 </div>
             </div>
-            
-            <!-- Loading States -->
-            <div class="vefify-loading" style="display: none;">
-                <div class="vefify-spinner"></div>
-                <p>Loading...</p>
-            </div>
-            
         </div>
         
+        <!-- Initialize Quiz JavaScript -->
+        <script>
+        jQuery(document).ready(function($) {
+            // Initialize Vefify Quiz
+            if (typeof VefifyQuiz !== 'undefined') {
+                VefifyQuiz.init('<?php echo $quiz_id; ?>', {
+                    campaignId: <?php echo $campaign_id; ?>,
+                    ajaxUrl: '<?php echo admin_url('admin-ajax.php'); ?>',
+                    nonce: '<?php echo wp_create_nonce('vefify_quiz_nonce'); ?>',
+                    timeLimit: <?php echo intval($campaign->time_limit); ?>,
+                    questionsPerQuiz: <?php echo intval($campaign->questions_per_quiz); ?>,
+                    passScore: <?php echo intval($campaign->pass_score); ?>
+                });
+            } else {
+                console.error('VefifyQuiz JavaScript not loaded');
+            }
+        });
+        </script>
         <?php
-        $this->render_quiz_styles($atts['style']);
-        $this->render_quiz_scripts();
         
         return ob_get_clean();
     }
     
     /**
-     * Render custom form fields
-     */
-    private function render_field($field) {
-        $field = trim($field);
-        
-        switch ($field) {
-            case 'name':
-                ?>
-                <div class="vefify-field">
-                    <label for="participant_name">👤 Full Name *</label>
-                    <input type="text" name="participant_name" id="participant_name" required 
-                           placeholder="Enter your full name">
-                </div>
-                <?php
-                break;
-                
-            case 'email':
-                ?>
-                <div class="vefify-field">
-                    <label for="participant_email">📧 Email Address *</label>
-                    <input type="email" name="participant_email" id="participant_email" required 
-                           placeholder="Enter your email address">
-                </div>
-                <?php
-                break;
-                
-            case 'phone':
-                ?>
-                <div class="vefify-field">
-                    <label for="participant_phone">📱 Phone Number *</label>
-                    <input type="tel" name="participant_phone" id="participant_phone" required 
-                           placeholder="+84 901 234 567">
-                </div>
-                <?php
-                break;
-                
-            case 'province':
-                ?>
-                <div class="vefify-field">
-                    <label for="province">🌍 Province/City *</label>
-                    <select name="province" id="province" required>
-                        <option value="">Select your province</option>
-                        <option value="Ho Chi Minh">Ho Chi Minh City</option>
-                        <option value="Ha Noi">Ha Noi</option>
-                        <option value="Da Nang">Da Nang</option>
-                        <option value="Can Tho">Can Tho</option>
-                        <option value="Hai Phong">Hai Phong</option>
-                        <option value="Dong Nai">Dong Nai</option>
-                        <option value="Binh Duong">Binh Duong</option>
-                        <option value="Khanh Hoa">Khanh Hoa</option>
-                        <option value="Nghe An">Nghe An</option>
-                        <option value="Gia Lai">Gia Lai</option>
-                        <option value="Other">Other</option>
-                    </select>
-                </div>
-                <?php
-                break;
-                
-            case 'pharmacy_code':
-                ?>
-                <div class="vefify-field">
-                    <label for="pharmacy_code">🏥 Pharmacy Code</label>
-                    <input type="text" name="pharmacy_code" id="pharmacy_code" 
-                           placeholder="Enter pharmacy code (optional)">
-                </div>
-                <?php
-                break;
-                
-            case 'age':
-                ?>
-                <div class="vefify-field">
-                    <label for="age">🎂 Age</label>
-                    <input type="number" name="age" id="age" min="16" max="100" 
-                           placeholder="Enter your age">
-                </div>
-                <?php
-                break;
-                
-            case 'gender':
-                ?>
-                <div class="vefify-field">
-                    <label>👥 Gender</label>
-                    <div class="vefify-radio-group">
-                        <label class="vefify-radio">
-                            <input type="radio" name="gender" value="male">
-                            <span class="radio-mark"></span>
-                            Male
-                        </label>
-                        <label class="vefify-radio">
-                            <input type="radio" name="gender" value="female">
-                            <span class="radio-mark"></span>
-                            Female
-                        </label>
-                        <label class="vefify-radio">
-                            <input type="radio" name="gender" value="other">
-                            <span class="radio-mark"></span>
-                            Other
-                        </label>
-                    </div>
-                </div>
-                <?php
-                break;
-                
-            case 'occupation':
-                ?>
-                <div class="vefify-field">
-                    <label for="occupation">💼 Occupation</label>
-                    <select name="occupation" id="occupation">
-                        <option value="">Select occupation</option>
-                        <option value="pharmacist">Pharmacist</option>
-                        <option value="doctor">Doctor</option>
-                        <option value="nurse">Nurse</option>
-                        <option value="student">Student</option>
-                        <option value="teacher">Teacher</option>
-                        <option value="engineer">Engineer</option>
-                        <option value="business">Business</option>
-                        <option value="other">Other</option>
-                    </select>
-                </div>
-                <?php
-                break;
-                
-            case 'company':
-                ?>
-                <div class="vefify-field">
-                    <label for="company">🏢 Company/Organization</label>
-                    <input type="text" name="company" id="company" 
-                           placeholder="Enter your company name">
-                </div>
-                <?php
-                break;
-                
-            default:
-                // Custom field - render as text input
-                ?>
-                <div class="vefify-field">
-                    <label for="<?php echo esc_attr($field); ?>"><?php echo esc_html(ucfirst(str_replace('_', ' ', $field))); ?></label>
-                    <input type="text" name="<?php echo esc_attr($field); ?>" id="<?php echo esc_attr($field); ?>" 
-                           placeholder="Enter <?php echo esc_attr(str_replace('_', ' ', $field)); ?>">
-                </div>
-                <?php
-                break;
-        }
-    }
-    
-    /**
-     * Quiz list shortcode
-     * Usage: [vefify_quiz_list limit="5" style="grid"]
+     * 📋 QUIZ LIST SHORTCODE
+     * Usage: [vefify_quiz_list limit="5"]
      */
     public function render_quiz_list($atts) {
         $atts = shortcode_atts(array(
-            'limit' => 10,
-            'style' => 'list', // list, grid, cards
+            'limit' => '10',
+            'style' => 'default',
             'show_description' => 'true',
             'show_stats' => 'true'
         ), $atts);
         
-        global $wpdb;
-        $campaigns_table = $this->database->get_table_name('campaigns');
-        
-        $campaigns = $wpdb->get_results($wpdb->prepare("
-            SELECT * FROM {$campaigns_table} 
-            WHERE is_active = 1 
-            AND start_date <= NOW() 
-            AND end_date >= NOW()
-            ORDER BY created_at DESC 
-            LIMIT %d
-        ", $atts['limit']));
+        $campaigns = $this->get_active_campaigns(intval($atts['limit']));
         
         if (empty($campaigns)) {
-            return '<div class="vefify-message">No active quizzes available at the moment.</div>';
+            return '<div class="vefify-notice">📋 No active quiz campaigns available at this time.</div>';
         }
         
         ob_start();
         ?>
         <div class="vefify-quiz-list vefify-style-<?php echo esc_attr($atts['style']); ?>">
-            <?php foreach ($campaigns as $campaign): ?>
-                <div class="vefify-quiz-item">
-                    <h3 class="vefify-quiz-item-title">
-                        <a href="<?php echo add_query_arg('quiz', $campaign->slug, get_permalink()); ?>">
-                            <?php echo esc_html($campaign->name); ?>
-                        </a>
-                    </h3>
-                    
-                    <?php if ($atts['show_description'] === 'true' && $campaign->description): ?>
-                        <p class="vefify-quiz-item-description">
-                            <?php echo esc_html($campaign->description); ?>
-                        </p>
-                    <?php endif; ?>
-                    
-                    <?php if ($atts['show_stats'] === 'true'): ?>
-                        <div class="vefify-quiz-item-stats">
-                            <span class="vefify-stat">📝 <?php echo $campaign->questions_per_quiz; ?> questions</span>
-                            <?php if ($campaign->time_limit): ?>
-                                <span class="vefify-stat">⏱️ <?php echo round($campaign->time_limit / 60); ?> minutes</span>
-                            <?php endif; ?>
+            <h3>🎯 Available Quizzes</h3>
+            
+            <div class="vefify-quiz-grid">
+                <?php foreach ($campaigns as $campaign): ?>
+                    <div class="vefify-quiz-card">
+                        <div class="vefify-quiz-card-header">
+                            <h4 class="vefify-quiz-card-title"><?php echo esc_html($campaign->name); ?></h4>
                         </div>
-                    <?php endif; ?>
-                    
-                    <div class="vefify-quiz-item-actions">
-                        <a href="#" class="vefify-btn vefify-btn-primary" 
-                           onclick="startQuiz(<?php echo $campaign->id; ?>); return false;">
-                            🚀 Start Quiz
-                        </a>
+                        
+                        <?php if ($atts['show_description'] === 'true' && $campaign->description): ?>
+                            <div class="vefify-quiz-card-description">
+                                <?php echo wp_kses_post(wp_trim_words($campaign->description, 20)); ?>
+                            </div>
+                        <?php endif; ?>
+                        
+                        <?php if ($atts['show_stats'] === 'true'): ?>
+                            <div class="vefify-quiz-card-stats">
+                                <span class="vefify-stat">📝 <?php echo $campaign->questions_per_quiz; ?> questions</span>
+                                <?php if ($campaign->time_limit): ?>
+                                    <span class="vefify-stat">⏱️ <?php echo round($campaign->time_limit / 60); ?> min</span>
+                                <?php endif; ?>
+                                <span class="vefify-stat">🎯 Pass: <?php echo $campaign->pass_score; ?></span>
+                            </div>
+                        <?php endif; ?>
+                        
+                        <div class="vefify-quiz-card-actions">
+                            <a href="?quiz=<?php echo $campaign->id; ?>" class="vefify-btn vefify-btn-primary">
+                                🚀 Start Quiz
+                            </a>
+                        </div>
                     </div>
-                </div>
-            <?php endforeach; ?>
+                <?php endforeach; ?>
+            </div>
         </div>
         <?php
         
@@ -401,29 +367,63 @@ class Vefify_Quiz_Shortcodes {
     }
     
     /**
-     * Simple quiz form shortcode
-     * Usage: [vefify_quiz_form campaign_id="1"]
+     * 📊 CAMPAIGN INFO SHORTCODE
+     * Usage: [vefify_campaign campaign_id="1"]
      */
-    public function render_quiz_form($atts) {
+    public function render_campaign_info($atts) {
         $atts = shortcode_atts(array(
             'campaign_id' => '',
-            'redirect' => '',
-            'button_text' => 'Start Quiz'
+            'show_stats' => 'true'
         ), $atts);
         
         if (empty($atts['campaign_id'])) {
-            return '<div class="vefify-error">Error: Campaign ID is required</div>';
+            return '<div class="vefify-error">❌ Campaign ID is required</div>';
+        }
+        
+        $campaign = $this->get_campaign(intval($atts['campaign_id']));
+        if (!$campaign) {
+            return '<div class="vefify-error">❌ Campaign not found</div>';
         }
         
         ob_start();
         ?>
-        <div class="vefify-simple-form">
-            <form action="<?php echo esc_url($atts['redirect'] ?: '#'); ?>" method="get">
-                <input type="hidden" name="vefify_quiz" value="<?php echo esc_attr($atts['campaign_id']); ?>">
-                <button type="submit" class="vefify-btn vefify-btn-primary">
-                    <?php echo esc_html($atts['button_text']); ?>
-                </button>
-            </form>
+        <div class="vefify-campaign-info">
+            <h3><?php echo esc_html($campaign->name); ?></h3>
+            
+            <?php if ($campaign->description): ?>
+                <div class="vefify-campaign-description">
+                    <?php echo wp_kses_post($campaign->description); ?>
+                </div>
+            <?php endif; ?>
+            
+            <?php if ($atts['show_stats'] === 'true'): ?>
+                <div class="vefify-campaign-stats">
+                    <div class="vefify-stat-item">
+                        <span class="vefify-stat-label">Questions:</span>
+                        <span class="vefify-stat-value"><?php echo $campaign->questions_per_quiz; ?></span>
+                    </div>
+                    
+                    <?php if ($campaign->time_limit): ?>
+                        <div class="vefify-stat-item">
+                            <span class="vefify-stat-label">Time Limit:</span>
+                            <span class="vefify-stat-value"><?php echo round($campaign->time_limit / 60); ?> minutes</span>
+                        </div>
+                    <?php endif; ?>
+                    
+                    <div class="vefify-stat-item">
+                        <span class="vefify-stat-label">Pass Score:</span>
+                        <span class="vefify-stat-value"><?php echo $campaign->pass_score; ?></span>
+                    </div>
+                    
+                    <div class="vefify-stat-item">
+                        <span class="vefify-stat-label">Period:</span>
+                        <span class="vefify-stat-value">
+                            <?php echo date('M j', strtotime($campaign->start_date)); ?> - 
+                            <?php echo date('M j, Y', strtotime($campaign->end_date)); ?>
+                        </span>
+                    </div>
+                </div>
+            <?php endif; ?>
         </div>
         <?php
         
@@ -431,619 +431,537 @@ class Vefify_Quiz_Shortcodes {
     }
     
     /**
-     * Get campaign data
+     * 🎨 RENDER FORM FIELD
+     */
+    private function render_form_field($field_key, $field_config) {
+        $required = $field_config['required'] ? 'required' : '';
+        $required_star = $field_config['required'] ? ' <span class="required">*</span>' : '';
+        
+        ob_start();
+        ?>
+        <div class="vefify-form-field vefify-field-<?php echo esc_attr($field_key); ?>">
+            <label for="vefify_<?php echo esc_attr($field_key); ?>" class="vefify-field-label">
+                <?php echo esc_html($field_config['label']); ?><?php echo $required_star; ?>
+            </label>
+            
+            <?php if ($field_config['type'] === 'select'): ?>
+                <select name="<?php echo esc_attr($field_key); ?>" id="vefify_<?php echo esc_attr($field_key); ?>" class="vefify-field-input" <?php echo $required; ?>>
+                    <option value="">Select <?php echo esc_html($field_config['label']); ?></option>
+                    <?php foreach ($field_config['options'] as $value => $label): ?>
+                        <option value="<?php echo esc_attr($value); ?>"><?php echo esc_html($label); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            <?php elseif ($field_config['type'] === 'textarea'): ?>
+                <textarea name="<?php echo esc_attr($field_key); ?>" id="vefify_<?php echo esc_attr($field_key); ?>" class="vefify-field-input" placeholder="<?php echo esc_attr($field_config['placeholder']); ?>" <?php echo $required; ?>></textarea>
+            <?php else: ?>
+                <input type="<?php echo esc_attr($field_config['type']); ?>" 
+                       name="<?php echo esc_attr($field_key); ?>" 
+                       id="vefify_<?php echo esc_attr($field_key); ?>" 
+                       class="vefify-field-input" 
+                       placeholder="<?php echo esc_attr($field_config['placeholder']); ?>"
+                       <?php if (isset($field_config['pattern'])): ?>pattern="<?php echo esc_attr($field_config['pattern']); ?>"<?php endif; ?>
+                       <?php echo $required; ?>>
+            <?php endif; ?>
+            
+            <?php if (isset($field_config['help'])): ?>
+                <div class="vefify-field-help"><?php echo esc_html($field_config['help']); ?></div>
+            <?php endif; ?>
+        </div>
+        <?php
+        
+        return ob_get_clean();
+    }
+    
+    /**
+     * 📝 GET AVAILABLE FORM FIELDS
+     */
+    private function get_available_fields() {
+        return array(
+            'name' => array(
+                'label' => 'Full Name',
+                'type' => 'text',
+                'placeholder' => 'Enter your full name',
+                'required' => true
+            ),
+            'email' => array(
+                'label' => 'Email Address',
+                'type' => 'email',
+                'placeholder' => 'Enter your email',
+                'required' => true
+            ),
+            'phone' => array(
+                'label' => 'Phone Number',
+                'type' => 'tel',
+                'placeholder' => '0938474356',
+                'pattern' => '^(0[0-9]{9}|84[0-9]{9})$',
+                'required' => true,
+                'help' => 'Định dạng: 0938474356 hoặc 84938474356'
+            ),
+            'province' => array(
+                'label' => 'Province/City',
+                'type' => 'select',
+                'required' => false,
+                'options' => array(
+                    'hanoi' => 'Hanoi',
+                    'hcmc' => 'Ho Chi Minh City',
+                    'danang' => 'Da Nang',
+                    'haiphong' => 'Hai Phong',
+                    'cantho' => 'Can Tho',
+                    'other' => 'Other'
+                )
+            ),
+            'pharmacy_code' => array(
+                'label' => 'Pharmacy Code',
+                'type' => 'text',
+                'placeholder' => 'NT-123456',
+                'pattern' => '[A-Z]{2}-[0-9]{6}',
+                'required' => false,
+                'help' => 'Format: XX-######'
+            ),
+            'occupation' => array(
+                'label' => 'Occupation',
+                'type' => 'select',
+                'required' => false,
+                'options' => array(
+                    'pharmacist' => 'Pharmacist',
+                    'doctor' => 'Doctor',
+                    'nurse' => 'Nurse',
+                    'student' => 'Student',
+                    'other' => 'Other'
+                )
+            ),
+            'company' => array(
+                'label' => 'Company/Organization',
+                'type' => 'text',
+                'placeholder' => 'Enter company name',
+                'required' => false
+            ),
+            'age' => array(
+                'label' => 'Age',
+                'type' => 'number',
+                'placeholder' => '25',
+                'required' => false
+            ),
+            'experience' => array(
+                'label' => 'Years of Experience',
+                'type' => 'number',
+                'placeholder' => '5',
+                'required' => false
+            )
+        );
+    }
+    
+    /**
+     * 📊 GET CAMPAIGN DATA
      */
     private function get_campaign($campaign_id) {
-        global $wpdb;
-        $campaigns_table = $this->database->get_table_name('campaigns');
+        if (!$this->database) {
+            return null;
+        }
         
-        return $wpdb->get_row($wpdb->prepare(
-            "SELECT * FROM {$campaigns_table} WHERE id = %d AND is_active = 1",
+        $campaigns_table = $this->database->get_table_name('campaigns');
+        if (!$campaigns_table) {
+            return null;
+        }
+        
+        return $this->wpdb->get_row($this->wpdb->prepare(
+            "SELECT * FROM {$campaigns_table} WHERE id = %d",
             $campaign_id
         ));
     }
     
     /**
-     * AJAX: Start quiz
+     * ✅ CHECK IF CAMPAIGN IS ACTIVE
      */
-    public function ajax_start_quiz() {
+    private function is_campaign_active($campaign) {
+        if (!$campaign) {
+            return false;
+        }
+        
+        $now = current_time('mysql');
+        return ($campaign->is_active == 1 && 
+                $campaign->start_date <= $now && 
+                $campaign->end_date >= $now);
+    }
+    
+    /**
+     * 📋 GET ACTIVE CAMPAIGNS
+     */
+    private function get_active_campaigns($limit = 10) {
+        if (!$this->database) {
+            return array();
+        }
+        
+        $campaigns_table = $this->database->get_table_name('campaigns');
+        if (!$campaigns_table) {
+            return array();
+        }
+        
+        $now = current_time('mysql');
+        
+        return $this->wpdb->get_results($this->wpdb->prepare(
+            "SELECT * FROM {$campaigns_table} 
+             WHERE is_active = 1 
+             AND start_date <= %s 
+             AND end_date >= %s 
+             ORDER BY created_at DESC 
+             LIMIT %d",
+            $now, $now, $limit
+        ));
+    }
+    
+    /**
+     * 🔗 AJAX: REGISTER PARTICIPANT
+     */
+    public function ajax_register_participant() {
         // Verify nonce
-        if (!wp_verify_nonce($_POST['vefify_nonce'], 'vefify_start_quiz')) {
+        if (!wp_verify_nonce($_POST['vefify_nonce'], 'vefify_quiz_nonce')) {
             wp_send_json_error('Security check failed');
         }
         
         $campaign_id = intval($_POST['campaign_id']);
-        $participant_data = array();
         
-        // Collect all form fields
-        $allowed_fields = array(
-            'participant_name', 'participant_email', 'participant_phone', 
-            'province', 'pharmacy_code', 'age', 'gender', 'occupation', 'company'
+        // Validate campaign
+        $campaign = $this->get_campaign($campaign_id);
+        if (!$campaign || !$this->is_campaign_active($campaign)) {
+            wp_send_json_error('Campaign not available');
+        }
+        
+        // Collect and sanitize participant data
+        $participant_data = array(
+            'campaign_id' => $campaign_id,
+            'full_name' => sanitize_text_field($_POST['name'] ?? ''),
+            'email' => sanitize_email($_POST['email'] ?? ''),
+            'phone_number' => sanitize_text_field($_POST['phone'] ?? ''),
+            'province' => sanitize_text_field($_POST['province'] ?? ''),
+            'pharmacy_code' => sanitize_text_field($_POST['pharmacy_code'] ?? ''),
+            'occupation' => sanitize_text_field($_POST['occupation'] ?? ''),
+            'company' => sanitize_text_field($_POST['company'] ?? ''),
+            'age' => intval($_POST['age'] ?? 0),
+            'experience_years' => intval($_POST['experience'] ?? 0),
+            'registration_ip' => $_SERVER['REMOTE_ADDR'],
+            'user_agent' => $_SERVER['HTTP_USER_AGENT'],
+            'created_at' => current_time('mysql')
         );
         
-        foreach ($allowed_fields as $field) {
-            if (isset($_POST[$field])) {
-                $participant_data[$field] = sanitize_text_field($_POST[$field]);
-            }
+        // Validate required fields
+        if (empty($participant_data['full_name']) || empty($participant_data['phone_number'])) {
+            wp_send_json_error('Name and phone number are required');
         }
         
-        // Generate session ID
-        $session_id = 'quiz_' . time() . '_' . wp_generate_password(8, false);
+        // Check for duplicate phone in this campaign
+        $existing = $this->check_existing_participant($campaign_id, $participant_data['phone_number']);
+        if ($existing) {
+            wp_send_json_error('Phone number already registered for this campaign');
+        }
         
-        // Save participant
-        $participant_data['campaign_id'] = $campaign_id;
-        $participant_data['session_id'] = $session_id;
-        $participant_data['quiz_status'] = 'started';
-        $participant_data['ip_address'] = $_SERVER['REMOTE_ADDR'];
-        $participant_data['user_agent'] = $_SERVER['HTTP_USER_AGENT'];
-        
-        global $wpdb;
+        // Insert participant
         $participants_table = $this->database->get_table_name('participants');
+        $result = $this->wpdb->insert($participants_table, $participant_data);
         
-        $result = $wpdb->insert($participants_table, $participant_data);
-        
-        if ($result) {
-            $participant_id = $wpdb->insert_id;
-            
-            // Get quiz questions
-            $questions = $this->get_quiz_questions($campaign_id);
-            
-            wp_send_json_success(array(
-                'participant_id' => $participant_id,
-                'session_id' => $session_id,
-                'questions' => $questions,
-                'message' => 'Quiz started successfully!'
-            ));
-        } else {
-            wp_send_json_error('Failed to start quiz. Please try again.');
+        if ($result === false) {
+            wp_send_json_error('Registration failed. Please try again.');
         }
+        
+        $participant_id = $this->wpdb->insert_id;
+        
+        // Generate session token
+        $session_token = wp_generate_password(32, false);
+        
+        // Update with session token
+        $this->wpdb->update(
+            $participants_table,
+            array('session_token' => $session_token),
+            array('id' => $participant_id)
+        );
+        
+        wp_send_json_success(array(
+            'participant_id' => $participant_id,
+            'session_token' => $session_token,
+            'message' => 'Registration successful!'
+        ));
     }
     
     /**
-     * Get quiz questions for campaign
+     * 🎯 AJAX: START QUIZ
      */
-    private function get_quiz_questions($campaign_id) {
-        global $wpdb;
+    public function ajax_start_quiz() {
+        // Verify nonce
+        if (!wp_verify_nonce($_POST['vefify_nonce'], 'vefify_quiz_nonce')) {
+            wp_send_json_error('Security check failed');
+        }
+        
+        $participant_id = intval($_POST['participant_id']);
+        $session_token = sanitize_text_field($_POST['session_token']);
+        
+        // Verify participant session
+        $participant = $this->verify_participant_session($participant_id, $session_token);
+        if (!$participant) {
+            wp_send_json_error('Invalid session');
+        }
+        
+        // Get campaign
+        $campaign = $this->get_campaign($participant->campaign_id);
+        if (!$campaign || !$this->is_campaign_active($campaign)) {
+            wp_send_json_error('Campaign not available');
+        }
+        
+        // Get questions for this campaign
+        $questions = $this->get_quiz_questions($participant->campaign_id, $campaign->questions_per_quiz);
+        
+        if (empty($questions)) {
+            wp_send_json_error('No questions available');
+        }
+        
+        // Update participant status to started
+        $this->wpdb->update(
+            $this->database->get_table_name('participants'),
+            array(
+                'quiz_status' => 'started',
+                'quiz_started_at' => current_time('mysql')
+            ),
+            array('id' => $participant_id)
+        );
+        
+        wp_send_json_success(array(
+            'questions' => $questions,
+            'time_limit' => intval($campaign->time_limit),
+            'total_questions' => count($questions)
+        ));
+    }
+    
+    /**
+     * ✅ AJAX: SUBMIT ANSWER
+     */
+    public function ajax_submit_answer() {
+        // Verify nonce
+        if (!wp_verify_nonce($_POST['vefify_nonce'], 'vefify_quiz_nonce')) {
+            wp_send_json_error('Security check failed');
+        }
+        
+        $participant_id = intval($_POST['participant_id']);
+        $question_id = intval($_POST['question_id']);
+        $answer = sanitize_text_field($_POST['answer']);
+        
+        // Store answer in session or temporary table
+        // For now, we'll use session
+        if (!isset($_SESSION['quiz_answers'])) {
+            session_start();
+            $_SESSION['quiz_answers'] = array();
+        }
+        
+        $_SESSION['quiz_answers'][$question_id] = $answer;
+        
+        wp_send_json_success(array(
+            'message' => 'Answer saved',
+            'question_id' => $question_id
+        ));
+    }
+    
+    /**
+     * 🏁 AJAX: FINISH QUIZ
+     */
+    public function ajax_finish_quiz() {
+        // Verify nonce
+        if (!wp_verify_nonce($_POST['vefify_nonce'], 'vefify_quiz_nonce')) {
+            wp_send_json_error('Security check failed');
+        }
+        
+        $participant_id = intval($_POST['participant_id']);
+        $session_token = sanitize_text_field($_POST['session_token']);
+        $answers = $_POST['answers'] ?? array();
+        
+        // Verify participant session
+        $participant = $this->verify_participant_session($participant_id, $session_token);
+        if (!$participant) {
+            wp_send_json_error('Invalid session');
+        }
+        
+        // Calculate score
+        $score_result = $this->calculate_quiz_score($answers);
+        
+        // Update participant with final results
+        $this->wpdb->update(
+            $this->database->get_table_name('participants'),
+            array(
+                'quiz_status' => 'completed',
+                'final_score' => $score_result['score'],
+                'total_questions' => $score_result['total'],
+                'correct_answers' => $score_result['correct'],
+                'quiz_completed_at' => current_time('mysql'),
+                'quiz_answers' => json_encode($answers)
+            ),
+            array('id' => $participant_id)
+        );
+        
+        // Check for gifts
+        $gift_result = $this->check_and_assign_gift($participant_id, $score_result['score']);
+        
+        wp_send_json_success(array(
+            'score' => $score_result['score'],
+            'total' => $score_result['total'],
+            'correct' => $score_result['correct'],
+            'percentage' => $score_result['percentage'],
+            'passed' => $score_result['passed'],
+            'gift' => $gift_result,
+            'message' => 'Quiz completed successfully!'
+        ));
+    }
+    
+    /**
+     * 🔍 CHECK EXISTING PARTICIPANT
+     */
+    private function check_existing_participant($campaign_id, $phone) {
+        $participants_table = $this->database->get_table_name('participants');
+        
+        return $this->wpdb->get_var($this->wpdb->prepare(
+            "SELECT id FROM {$participants_table} 
+             WHERE campaign_id = %d AND phone_number = %s",
+            $campaign_id, $phone
+        ));
+    }
+    
+    /**
+     * ✅ VERIFY PARTICIPANT SESSION
+     */
+    private function verify_participant_session($participant_id, $session_token) {
+        $participants_table = $this->database->get_table_name('participants');
+        
+        return $this->wpdb->get_row($this->wpdb->prepare(
+            "SELECT * FROM {$participants_table} 
+             WHERE id = %d AND session_token = %s",
+            $participant_id, $session_token
+        ));
+    }
+    
+    /**
+     * 📝 GET QUIZ QUESTIONS
+     */
+    private function get_quiz_questions($campaign_id, $limit) {
         $questions_table = $this->database->get_table_name('questions');
         $options_table = $this->database->get_table_name('question_options');
         
-        // Get campaign details
-        $campaigns_table = $this->database->get_table_name('campaigns');
-        $campaign = $wpdb->get_row($wpdb->prepare(
-            "SELECT questions_per_quiz FROM {$campaigns_table} WHERE id = %d",
-            $campaign_id
-        ));
-        
-        $limit = $campaign ? $campaign->questions_per_quiz : 5;
-        
         // Get random questions
-        $questions = $wpdb->get_results($wpdb->prepare("
-            SELECT * FROM {$questions_table}
-            WHERE campaign_id = %d AND is_active = 1
-            ORDER BY RAND()
-            LIMIT %d
-        ", $campaign_id, $limit));
+        $questions = $this->wpdb->get_results($this->wpdb->prepare(
+            "SELECT * FROM {$questions_table} 
+             WHERE campaign_id = %d AND is_active = 1 
+             ORDER BY RAND() 
+             LIMIT %d",
+            $campaign_id, $limit
+        ), ARRAY_A);
         
         // Get options for each question
         foreach ($questions as &$question) {
-            $question->options = $wpdb->get_results($wpdb->prepare("
-                SELECT id, option_text, explanation
-                FROM {$options_table}
-                WHERE question_id = %d
-                ORDER BY order_index
-            ", $question->id));
+            $options = $this->wpdb->get_results($this->wpdb->prepare(
+                "SELECT option_text, option_value FROM {$options_table} 
+                 WHERE question_id = %d 
+                 ORDER BY option_order",
+                $question['id']
+            ), ARRAY_A);
+            
+            $question['options'] = $options;
         }
         
         return $questions;
     }
     
     /**
-     * AJAX: Submit answer
+     * 📊 CALCULATE QUIZ SCORE
      */
-    public function ajax_submit_answer() {
-        $participant_id = intval($_POST['participant_id']);
-        $question_id = intval($_POST['question_id']);
-        $answer = sanitize_text_field($_POST['answer']);
+    private function calculate_quiz_score($answers) {
+        $total_questions = count($answers);
+        $correct_answers = 0;
         
-        // Here you would save the answer and return feedback
-        wp_send_json_success(array(
-            'correct' => true, // Determine if answer is correct
-            'explanation' => 'Great job!',
-            'next_question' => true
-        ));
-    }
-    
-    /**
-     * AJAX: Finish quiz
-     */
-    public function ajax_finish_quiz() {
-        $participant_id = intval($_POST['participant_id']);
-        $answers = $_POST['answers']; // Array of answers
+        foreach ($answers as $question_id => $answer) {
+            // Get correct answer from database
+            $correct_answer = $this->get_correct_answer($question_id);
+            if ($answer === $correct_answer) {
+                $correct_answers++;
+            }
+        }
         
-        // Calculate score and update participant
-        $score = $this->calculate_score($answers);
+        $percentage = $total_questions > 0 ? round(($correct_answers / $total_questions) * 100, 1) : 0;
         
-        global $wpdb;
-        $participants_table = $this->database->get_table_name('participants');
-        
-        $wpdb->update(
-            $participants_table,
-            array(
-                'final_score' => $score['score'],
-                'total_questions' => $score['total'],
-                'quiz_status' => 'completed',
-                'completed_at' => current_time('mysql'),
-                'answers_data' => json_encode($answers)
-            ),
-            array('id' => $participant_id)
+        return array(
+            'score' => $correct_answers,
+            'total' => $total_questions,
+            'correct' => $correct_answers,
+            'percentage' => $percentage,
+            'passed' => $correct_answers >= 3 // Default pass score
         );
+    }
+    
+    /**
+     * ✅ GET CORRECT ANSWER
+     */
+    private function get_correct_answer($question_id) {
+        $options_table = $this->database->get_table_name('question_options');
         
-        // Check for gifts
-        $gift = $this->check_for_gift($participant_id, $score['score']);
-        
-        wp_send_json_success(array(
-            'score' => $score['score'],
-            'total' => $score['total'],
-            'percentage' => round(($score['score'] / $score['total']) * 100, 1),
-            'gift' => $gift,
-            'message' => 'Quiz completed successfully!'
+        return $this->wpdb->get_var($this->wpdb->prepare(
+            "SELECT option_value FROM {$options_table} 
+             WHERE question_id = %d AND is_correct = 1 
+             LIMIT 1",
+            $question_id
         ));
     }
     
     /**
-     * Calculate quiz score
+     * 🎁 CHECK AND ASSIGN GIFT
      */
-    private function calculate_score($answers) {
-        // Implementation for score calculation
-        return array('score' => 4, 'total' => 5); // Example
+    private function check_and_assign_gift($participant_id, $score) {
+        // Implementation for gift assignment
+        // This would check gift rules and assign appropriate gifts
+        return null; // For now
     }
     
     /**
-     * Check for eligible gifts
-     */
-    private function check_for_gift($participant_id, $score) {
-        // Implementation for gift checking
-        return null; // Return gift data if eligible
-    }
-    
-    /**
-     * Render quiz styles
-     */
-    private function render_quiz_styles($style) {
-        ?>
-        <style>
-        .vefify-quiz-container {
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        }
-        
-        .vefify-quiz-header {
-            text-align: center;
-            margin-bottom: 30px;
-        }
-        
-        .vefify-quiz-title {
-            color: #2c3e50;
-            margin-bottom: 10px;
-            font-size: 28px;
-        }
-        
-        .vefify-quiz-description {
-            color: #7f8c8d;
-            font-size: 16px;
-            line-height: 1.5;
-        }
-        
-        .vefify-form {
-            background: #fff;
-            padding: 30px;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            border: 1px solid #e1e8ed;
-        }
-        
-        .vefify-field {
-            margin-bottom: 20px;
-        }
-        
-        .vefify-field label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 600;
-            color: #2c3e50;
-        }
-        
-        .vefify-field input,
-        .vefify-field select {
-            width: 100%;
-            padding: 12px 16px;
-            border: 2px solid #e1e8ed;
-            border-radius: 8px;
-            font-size: 16px;
-            transition: border-color 0.3s ease;
-        }
-        
-        .vefify-field input:focus,
-        .vefify-field select:focus {
-            outline: none;
-            border-color: #3498db;
-        }
-        
-        .vefify-btn {
-            padding: 12px 24px;
-            border: none;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            text-decoration: none;
-            display: inline-block;
-        }
-        
-        .vefify-btn-primary {
-            background: linear-gradient(135deg, #3498db, #2980b9);
-            color: white;
-        }
-        
-        .vefify-btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
-        }
-        
-        .vefify-btn-secondary {
-            background: #95a5a6;
-            color: white;
-        }
-        
-        .vefify-quiz-progress {
-            margin-bottom: 30px;
-        }
-        
-        .vefify-progress-bar {
-            width: 100%;
-            height: 8px;
-            background: #ecf0f1;
-            border-radius: 4px;
-            overflow: hidden;
-        }
-        
-        .vefify-progress-fill {
-            height: 100%;
-            background: linear-gradient(135deg, #27ae60, #2ecc71);
-            transition: width 0.5s ease;
-        }
-        
-        .vefify-progress-text {
-            text-align: center;
-            margin-top: 10px;
-            color: #7f8c8d;
-        }
-        
-        .vefify-quiz-timer {
-            text-align: center;
-            margin-bottom: 20px;
-            padding: 10px;
-            background: #fff3cd;
-            border-radius: 6px;
-            color: #856404;
-        }
-        
-        .vefify-question {
-            background: #fff;
-            padding: 30px;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }
-        
-        .vefify-question-text {
-            font-size: 20px;
-            margin-bottom: 20px;
-            color: #2c3e50;
-        }
-        
-        .vefify-question-options {
-            margin-bottom: 30px;
-        }
-        
-        .vefify-option {
-            display: block;
-            padding: 15px 20px;
-            margin-bottom: 10px;
-            background: #f8f9fa;
-            border: 2px solid #e1e8ed;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-        
-        .vefify-option:hover {
-            background: #e3f2fd;
-            border-color: #3498db;
-        }
-        
-        .vefify-option.selected {
-            background: #e3f2fd;
-            border-color: #3498db;
-            color: #1976d2;
-        }
-        
-        .vefify-question-nav {
-            display: flex;
-            justify-content: space-between;
-            gap: 15px;
-        }
-        
-        .vefify-results-content {
-            text-align: center;
-            padding: 40px;
-            background: #fff;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }
-        
-        .vefify-score-circle {
-            width: 120px;
-            height: 120px;
-            border: 8px solid #3498db;
-            border-radius: 50%;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto 20px;
-            font-size: 24px;
-            font-weight: bold;
-            color: #2c3e50;
-        }
-        
-        .vefify-loading {
-            text-align: center;
-            padding: 40px;
-        }
-        
-        .vefify-spinner {
-            width: 40px;
-            height: 40px;
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #3498db;
-            border-radius: 50%;
-            animation: vefify-spin 1s linear infinite;
-            margin: 0 auto 20px;
-        }
-        
-        @keyframes vefify-spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        
-        .vefify-error {
-            background: #f8d7da;
-            color: #721c24;
-            padding: 15px;
-            border-radius: 6px;
-            border: 1px solid #f5c6cb;
-        }
-        
-        .vefify-message {
-            background: #d1ecf1;
-            color: #0c5460;
-            padding: 15px;
-            border-radius: 6px;
-            border: 1px solid #bee5eb;
-        }
-        
-        /* Responsive */
-        @media (max-width: 768px) {
-            .vefify-quiz-container {
-                padding: 15px;
-            }
-            
-            .vefify-form,
-            .vefify-question {
-                padding: 20px;
-            }
-            
-            .vefify-question-nav {
-                flex-direction: column;
-            }
-        }
-        
-        /* Style variations */
-        .vefify-quiz-container[data-style="modern"] {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 20px;
-            color: white;
-        }
-        
-        .vefify-quiz-container[data-style="minimal"] {
-            background: none;
-            box-shadow: none;
-        }
-        
-        .vefify-quiz-container[data-style="minimal"] .vefify-form {
-            box-shadow: none;
-            border: 1px solid #e1e8ed;
-        }
-        </style>
-        <?php
-    }
-    
-    /**
-     * Render quiz JavaScript
-     */
-    private function render_quiz_scripts() {
-        ?>
-        <script>
-        // Quiz JavaScript functionality
-        document.addEventListener('DOMContentLoaded', function() {
-            // Initialize quiz forms
-            const quizForms = document.querySelectorAll('#vefify-participant-form');
-            
-            quizForms.forEach(form => {
-                form.addEventListener('submit', function(e) {
-                    e.preventDefault();
-                    startQuiz(this);
-                });
-            });
-        });
-        
-        function startQuiz(form) {
-            // Show loading
-            const container = form.closest('.vefify-quiz-container');
-            const loading = container.querySelector('.vefify-loading');
-            loading.style.display = 'block';
-            
-            // Collect form data
-            const formData = new FormData(form);
-            formData.append('action', 'vefify_start_quiz');
-            
-            // Submit via AJAX
-            fetch('<?php echo admin_url('admin-ajax.php'); ?>', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                loading.style.display = 'none';
-                
-                if (data.success) {
-                    // Hide registration form
-                    container.querySelector('.vefify-registration-form').style.display = 'none';
-                    
-                    // Show quiz interface
-                    const quizInterface = container.querySelector('.vefify-quiz-interface');
-                    quizInterface.style.display = 'block';
-                    
-                    // Initialize quiz with questions
-                    initializeQuiz(container, data.data);
-                } else {
-                    alert('Error: ' + data.data);
-                }
-            })
-            .catch(error => {
-                loading.style.display = 'none';
-                alert('Error starting quiz. Please try again.');
-            });
-        }
-        
-        function initializeQuiz(container, quizData) {
-            // Quiz initialization logic
-            const questions = quizData.questions;
-            let currentQuestion = 0;
-            
-            // Display first question
-            displayQuestion(container, questions[currentQuestion]);
-            
-            // Set up navigation
-            setupQuizNavigation(container, questions, quizData);
-        }
-        
-        function displayQuestion(container, question) {
-            const questionText = container.querySelector('.vefify-question-text');
-            const optionsContainer = container.querySelector('.vefify-question-options');
-            
-            questionText.textContent = question.question_text;
-            
-            // Clear previous options
-            optionsContainer.innerHTML = '';
-            
-            // Add new options
-            question.options.forEach((option, index) => {
-                const optionElement = document.createElement('label');
-                optionElement.className = 'vefify-option';
-                optionElement.innerHTML = `
-                    <input type="radio" name="answer" value="${option.id}" style="display: none;">
-                    ${option.option_text}
-                `;
-                
-                optionElement.addEventListener('click', function() {
-                    // Remove previous selection
-                    container.querySelectorAll('.vefify-option').forEach(opt => {
-                        opt.classList.remove('selected');
-                    });
-                    
-                    // Mark as selected
-                    this.classList.add('selected');
-                    this.querySelector('input').checked = true;
-                });
-                
-                optionsContainer.appendChild(optionElement);
-            });
-        }
-        
-        function setupQuizNavigation(container, questions, quizData) {
-            // Navigation setup logic
-            let currentQuestion = 0;
-            const totalQuestions = questions.length;
-            
-            const nextBtn = container.querySelector('#vefify-next-btn');
-            const prevBtn = container.querySelector('#vefify-prev-btn');
-            const progressFill = container.querySelector('.vefify-progress-fill');
-            const progressText = container.querySelector('.vefify-progress-text');
-            
-            nextBtn.addEventListener('click', function() {
-                // Handle next question or finish quiz
-                if (currentQuestion < totalQuestions - 1) {
-                    currentQuestion++;
-                    displayQuestion(container, questions[currentQuestion]);
-                    updateProgress();
-                } else {
-                    finishQuiz(container, quizData);
-                }
-            });
-            
-            function updateProgress() {
-                const progress = ((currentQuestion + 1) / totalQuestions) * 100;
-                progressFill.style.width = progress + '%';
-                progressText.querySelector('.current').textContent = currentQuestion + 1;
-                
-                // Update buttons
-                prevBtn.style.display = currentQuestion > 0 ? 'block' : 'none';
-                nextBtn.textContent = currentQuestion === totalQuestions - 1 ? 'Finish Quiz' : 'Next →';
-            }
-            
-            updateProgress();
-        }
-        
-        function finishQuiz(container, quizData) {
-            // Show results
-            container.querySelector('.vefify-quiz-interface').style.display = 'none';
-            container.querySelector('.vefify-quiz-results').style.display = 'block';
-            
-            // Here you would calculate and display the final score
-            // For now, show a simple completion message
-            const scoreNumber = container.querySelector('.vefify-score-number');
-            const scoreTotal = container.querySelector('.vefify-score-total');
-            const scorePercentage = container.querySelector('.vefify-score-percentage');
-            
-            // Example results
-            scoreNumber.textContent = '4';
-            scoreTotal.textContent = '/ 5';
-            scorePercentage.textContent = '80% Score';
-        }
-        </script>
-        <?php
-    }
-    
-    /**
-     * Enqueue frontend scripts and styles
+     * 📚 ENQUEUE FRONTEND SCRIPTS
      */
     public function enqueue_frontend_scripts() {
-        if (is_admin()) return;
+        // Only on pages with shortcodes
+        global $post;
         
-        wp_enqueue_script('vefify-quiz-frontend', plugin_dir_url(__FILE__) . '../assets/js/quiz-frontend.js', array('jquery'), '1.0.0', true);
-        wp_enqueue_style('vefify-quiz-frontend', plugin_dir_url(__FILE__) . '../assets/css/quiz-frontend.css', array(), '1.0.0');
-        
-        wp_localize_script('vefify-quiz-frontend', 'vefify_ajax', array(
-            'ajax_url' => admin_url('admin-ajax.php'),
-            'nonce' => wp_create_nonce('vefify_quiz_nonce')
-        ));
+        if (is_a($post, 'WP_Post') && (
+            has_shortcode($post->post_content, 'vefify_quiz') ||
+            has_shortcode($post->post_content, 'vefify_simple_test') ||
+            has_shortcode($post->post_content, 'vefify_test')
+        )) {
+            
+            // Enqueue jQuery
+            wp_enqueue_script('jquery');
+            
+            // Enqueue our quiz scripts
+            wp_enqueue_script(
+                'vefify-quiz-frontend',
+                VEFIFY_QUIZ_PLUGIN_URL . 'assets/js/frontend-quiz.js',
+                array('jquery'),
+                VEFIFY_QUIZ_VERSION,
+                true
+            );
+            
+            // Enqueue CSS
+            wp_enqueue_style(
+                'vefify-quiz-frontend',
+                VEFIFY_QUIZ_PLUGIN_URL . 'assets/css/frontend-quiz.css',
+                array(),
+                VEFIFY_QUIZ_VERSION
+            );
+            
+            // Localize script
+            wp_localize_script('vefify-quiz-frontend', 'vefifyAjax', array(
+                'ajaxUrl' => admin_url('admin-ajax.php'),
+                'nonce' => wp_create_nonce('vefify_quiz_nonce'),
+                'strings' => array(
+                    'loading' => 'Loading...',
+                    'error' => 'An error occurred',
+                    'success' => 'Success!',
+                    'timeUp' => 'Time is up!',
+                    'confirmFinish' => 'Are you sure you want to finish the quiz?'
+                )
+            ));
+        }
     }
 }
 
-// Initialize shortcodes
+// Initialize the shortcode system
 new Vefify_Quiz_Shortcodes();
-?>
