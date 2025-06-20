@@ -554,43 +554,34 @@ class Vefify_Quiz_Shortcodes {
     /**
      * 📊 GET CAMPAIGN DATA
      */
-	    protected function get_campaign($campaign_id) {
+    private function get_campaign($campaign_id) {
         if (!$this->database) {
             return null;
         }
         
         $campaigns_table = $this->database->get_table_name('campaigns');
         if (!$campaigns_table) {
-            // Fallback to direct table name
-            $campaigns_table = $this->wpdb->prefix . 'vefify_campaigns';
-        }
-        
-        $campaign = $this->wpdb->get_row($this->wpdb->prepare(
-            "SELECT * FROM {$campaigns_table} WHERE id = %d",
-            $campaign_id
-        ));
-        
-        if ($this->wpdb->last_error) {
-            error_log('Vefify Quiz: Error getting campaign: ' . $this->wpdb->last_error);
             return null;
         }
         
-        return $campaign;
+        return $this->wpdb->get_row($this->wpdb->prepare(
+            "SELECT * FROM {$campaigns_table} WHERE id = %d",
+            $campaign_id
+        ));
     }
     
     /**
      * ✅ CHECK IF CAMPAIGN IS ACTIVE
      */
-    protected function is_campaign_active($campaign) {
+    private function is_campaign_active($campaign) {
         if (!$campaign) {
             return false;
         }
         
         $now = current_time('mysql');
-        $start_date = $campaign->start_date;
-        $end_date = $campaign->end_date;
-        
-        return ($now >= $start_date && $now <= $end_date);
+        return ($campaign->is_active == 1 && 
+                $campaign->start_date <= $now && 
+                $campaign->end_date >= $now);
     }
     
     /**
@@ -638,31 +629,28 @@ class Vefify_Quiz_Shortcodes {
         
         // Collect and sanitize participant data
         $participant_data = array(
-		   'campaign_id' => $campaign_id,
-			'session_id' => wp_generate_password(32, false),
-			// CORRECT COLUMN NAMES FROM YOUR DATABASE:
-			'participant_name' => sanitize_text_field($_POST['name'] ?? ''),           // NOT 'full_name'
-			'participant_email' => sanitize_email($_POST['email'] ?? ''),             // NOT 'email'
-			'participant_phone' => sanitize_text_field($_POST['phone'] ?? ''),        // NOT 'phone_number'
-			'province' => sanitize_text_field($_POST['province'] ?? ''),
-			'pharmacy_code' => sanitize_text_field($_POST['pharmacy_code'] ?? ''),
-			'company' => sanitize_text_field($_POST['company'] ?? ''),
-			'occupation' => sanitize_text_field($_POST['occupation'] ?? ''),
-			'age' => intval($_POST['age'] ?? 0),
-			'quiz_status' => 'started',
-			'start_time' => current_time('mysql'),
-			'ip_address' => $_SERVER['REMOTE_ADDR'],
-			'user_agent' => $_SERVER['HTTP_USER_AGENT'],
-			'created_at' => current_time('mysql')
+            'campaign_id' => $campaign_id,
+            'full_name' => sanitize_text_field($_POST['name'] ?? ''),
+            'email' => sanitize_email($_POST['email'] ?? ''),
+            'phone_number' => sanitize_text_field($_POST['phone'] ?? ''),
+            'province' => sanitize_text_field($_POST['province'] ?? ''),
+            'pharmacy_code' => sanitize_text_field($_POST['pharmacy_code'] ?? ''),
+            'occupation' => sanitize_text_field($_POST['occupation'] ?? ''),
+            'company' => sanitize_text_field($_POST['company'] ?? ''),
+            'age' => intval($_POST['age'] ?? 0),
+            'experience_years' => intval($_POST['experience'] ?? 0),
+            'registration_ip' => $_SERVER['REMOTE_ADDR'],
+            'user_agent' => $_SERVER['HTTP_USER_AGENT'],
+            'created_at' => current_time('mysql')
         );
         
         // Validate required fields
-        if (empty($participant_data['participant_name']) || empty($participant_data['participant_phone'])) {
+        if (empty($participant_data['full_name']) || empty($participant_data['phone_number'])) {
             wp_send_json_error('Name and phone number are required');
         }
         
         // Check for duplicate phone in this campaign
-        $existing = $this->check_existing_participant($campaign_id, $participant_data['participant_phone']);
+        $existing = $this->check_existing_participant($campaign_id, $participant_data['phone_number']);
         if ($existing) {
             wp_send_json_error('Phone number already registered for this campaign');
         }
@@ -688,13 +676,9 @@ class Vefify_Quiz_Shortcodes {
         );
         
         wp_send_json_success(array(
-			'participant_id' => $participant_id,
-			'session_token' => $session_token,  // or session_id
-			'questions' => $questions,          // THIS IS CRUCIAL
-			'total_questions' => count($questions),
-			'time_limit' => intval($campaign->time_limit),
-			'pass_score' => intval($campaign->pass_score),
-			'message' => 'Registration successful! Starting quiz...'
+            'participant_id' => $participant_id,
+            'session_token' => $session_token,
+            'message' => 'Registration successful!'
         ));
     }
     
@@ -832,7 +816,7 @@ class Vefify_Quiz_Shortcodes {
         
         return $this->wpdb->get_var($this->wpdb->prepare(
             "SELECT id FROM {$participants_table} 
-             WHERE campaign_id = %d AND participant_phone = %s",
+             WHERE campaign_id = %d AND phone_number = %s",
             $campaign_id, $phone
         ));
     }
@@ -853,52 +837,33 @@ class Vefify_Quiz_Shortcodes {
     /**
      * 📝 GET QUIZ QUESTIONS
      */
-	protected function get_quiz_questions($campaign_id, $limit) {
-    if (!$this->database) {
-        error_log('Vefify Quiz: Database not available');
-        return array();
-    }
-    
-    $questions_table = $this->database->get_table_name('questions');
-    $options_table = $this->database->get_table_name('question_options');
-    
-    if (!$questions_table || !$options_table) {
-        error_log('Vefify Quiz: Could not get table names');
-        return array();
-    }
-    
-    // Your original query
-    $questions = $this->wpdb->get_results($this->wpdb->prepare(
-        "SELECT * FROM {$questions_table} 
-         WHERE campaign_id = %d AND is_active = 1 
-         ORDER BY RAND() 
-         LIMIT %d",
-        $campaign_id, $limit
-    ), ARRAY_A);
-    
-    // DEBUG: Log what we found
-    error_log('Vefify Quiz: Found ' . count($questions) . ' questions for campaign ' . $campaign_id);
-    
-    if ($this->wpdb->last_error) {
-        error_log('Vefify Quiz: SQL Error: ' . $this->wpdb->last_error);
-        return array();
-    }
-    
-    // Load options for each question
-    foreach ($questions as &$question) {
-        $options = $this->wpdb->get_results($this->wpdb->prepare(
-            "SELECT option_text, option_value, is_correct FROM {$options_table} 
-             WHERE question_id = %d 
-             ORDER BY option_order",
-            $question['id']
+    private function get_quiz_questions($campaign_id, $limit) {
+        $questions_table = $this->database->get_table_name('questions');
+        $options_table = $this->database->get_table_name('question_options');
+        
+        // Get random questions
+        $questions = $this->wpdb->get_results($this->wpdb->prepare(
+            "SELECT * FROM {$questions_table} 
+             WHERE campaign_id = %d AND is_active = 1 
+             ORDER BY RAND() 
+             LIMIT %d",
+            $campaign_id, $limit
         ), ARRAY_A);
         
-        $question['options'] = $options ?: array();
-        error_log('Vefify Quiz: Question ' . $question['id'] . ' has ' . count($question['options']) . ' options');
+        // Get options for each question
+        foreach ($questions as &$question) {
+            $options = $this->wpdb->get_results($this->wpdb->prepare(
+                "SELECT option_text, option_value FROM {$options_table} 
+                 WHERE question_id = %d 
+                 ORDER BY option_order",
+                $question['id']
+            ), ARRAY_A);
+            
+            $question['options'] = $options;
+        }
+        
+        return $questions;
     }
-    
-    return $questions;
-}
     
     /**
      * 📊 CALCULATE QUIZ SCORE

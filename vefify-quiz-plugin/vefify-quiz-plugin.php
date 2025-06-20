@@ -2,12 +2,12 @@
 /**
  * Plugin Name: Vefify Quiz Campaign Manager
  * Description: Advanced quiz campaign management with mobile-first design
- * Version: 1.1.0
+ * Version: 1.0.3
  * Author: Vefify Team
  * License: GPL v2 or later
  * Text Domain: vefify-quiz
  * 
- * ENHANCED VERSION - Complete Question Flow Integration
+ * EMERGENCY FIXED VERSION - NO DUPLICATE CLASSES
  */
 
 // Prevent direct access
@@ -15,23 +15,21 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-// Plugin constants - FIXED: Add missing constants
-define('VEFIFY_QUIZ_VERSION', '1.1.0');
+// Plugin constants
+define('VEFIFY_QUIZ_VERSION', '1.0.0');
 define('VEFIFY_QUIZ_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('VEFIFY_QUIZ_PLUGIN_URL', plugin_dir_url(__FILE__));
-define('VEFIFY_QUIZ_PLUGIN_FILE', __FILE__); // ADD: Missing constant
 define('VEFIFY_QUIZ_TABLE_PREFIX', 'vefify_');
-define('VEFIFY_QUIZ_DB_VERSION', '1.1.0');
+define('VEFIFY_QUIZ_DB_VERSION', '1.0.0');
 
 /**
- * Main Plugin Class - ENHANCED VERSION
+ * Main Plugin Class - EMERGENCY FIXED VERSION
  */
 class Vefify_Quiz_Plugin {
     
     private static $instance = null;
     private $database;
     private $analytics;
-    private $shortcodes;
     private $modules = array();
     private $admin_initialized = false;
     
@@ -49,10 +47,10 @@ class Vefify_Quiz_Plugin {
     }
     
     /**
-     * Initialize WordPress hooks - ENHANCED
+     * Initialize WordPress hooks
      */
     private function init_hooks() {
-        // Keep ALL your existing hooks
+        // Activation/Deactivation
         register_activation_hook(__FILE__, array($this, 'activate'));
         register_deactivation_hook(__FILE__, array($this, 'deactivate'));
         
@@ -62,36 +60,27 @@ class Vefify_Quiz_Plugin {
         add_action('admin_menu', array($this, 'add_admin_menu'));
         add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_assets'));
         
-        // Keep your existing AJAX hooks
+        // AJAX hooks
         add_action('wp_ajax_vefify_refresh_dashboard', array($this, 'ajax_refresh_dashboard'));
         add_action('wp_ajax_vefify_health_check', array($this, 'ajax_health_check'));
         
-        // ADD: New AJAX hooks for enhanced features
-        add_action('wp_ajax_vefify_get_component_status', array($this, 'ajax_get_component_status'));
-        
-        // Emergency validation helper (keep existing)
+        // Emergency validation helper
         add_action('admin_menu', array($this, 'add_emergency_validation_menu'), 100);
-        
-        // ADD: Frontend script enqueuing
-        add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_scripts'));
     }
     
     /**
-     * Load dependencies in correct order - ENHANCED
+     * Load dependencies in correct order
      */
     private function load_dependencies() {
-        // Core classes first - ENHANCED to include new files
+        // Core classes first
         $core_files = array(
             'includes/class-database.php',
-            'includes/class-enhanced-database.php',        // ADD: Enhanced database
             'includes/class-utilities.php', 
             'includes/class-analytics.php',
             'includes/class-validation-helper.php',
-            'includes/class-shortcodes.php',               // Keep existing shortcode
-            'includes/class-enhanced-shortcodes.php'       // ADD: Enhanced shortcodes
+            'includes/class-shortcodes.php' #Add field short code
         );
         
-        // Keep your EXACT existing foreach loop - it's perfect!
         foreach ($core_files as $file) {
             $path = VEFIFY_QUIZ_PLUGIN_DIR . $file;
             if (file_exists($path)) {
@@ -106,12 +95,12 @@ class Vefify_Quiz_Plugin {
             }
         }
         
-        // Load modules (keep your existing method exactly as is)
+        // Load modules
         $this->load_modules();
     }
     
     /**
-     * Load modules with proper error handling - KEEP EXACTLY AS IS
+     * Load modules with proper error handling
      */
     private function load_modules() {
         $modules = array(
@@ -162,24 +151,24 @@ class Vefify_Quiz_Plugin {
     }
     
     /**
-     * Initialize core components - ENHANCED with fallback system
+     * Initialize core components
      */
     private function init_components() {
-        // Initialize ENHANCED database with fallback to original
-        if (class_exists('Vefify_Enhanced_Database')) {
+        // Initialize database with error handling
+        if (class_exists('Vefify_Quiz_Database')) {
             try {
-                $this->database = new Vefify_Enhanced_Database();
-                error_log("Vefify Quiz: Enhanced Database initialized successfully");
+                $this->database = new Vefify_Quiz_Database();
+                error_log("Vefify Quiz: Database initialized successfully");
             } catch (Exception $e) {
-                error_log("Vefify Quiz: Enhanced Database failed, falling back to original: " . $e->getMessage());
-                $this->init_fallback_database();
+                error_log("Vefify Quiz: Database initialization failed: " . $e->getMessage());
+                $this->database = null;
             }
         } else {
-            // Use your original database initialization
-            $this->init_fallback_database();
+            error_log("Vefify Quiz: Database class not found");
+            $this->database = null;
         }
         
-        // Keep your EXACT existing analytics initialization - it's perfect!
+        // Initialize analytics with error handling
         if (class_exists('Vefify_Quiz_Module_Analytics')) {
             try {
                 $this->analytics = new Vefify_Quiz_Module_Analytics($this->database);
@@ -192,96 +181,32 @@ class Vefify_Quiz_Plugin {
             error_log("Vefify Quiz: Analytics class not found");
             $this->analytics = null;
         }
-        
-        // ADD: Initialize enhanced shortcodes with fallback to original
-        $this->init_enhanced_shortcodes();
     }
     
     /**
-     * NEW: Fallback database initialization (extracted from your existing logic)
-     */
-    private function init_fallback_database() {
-        if (class_exists('Vefify_Quiz_Database')) {
-            try {
-                $this->database = new Vefify_Quiz_Database();
-                error_log("Vefify Quiz: Original Database initialized successfully");
-            } catch (Exception $e) {
-                error_log("Vefify Quiz: Database initialization failed: " . $e->getMessage());
-                $this->database = null;
-            }
-        } else {
-            error_log("Vefify Quiz: Database class not found");
-            $this->database = null;
-        }
-    }
-    
-    /**
-     * NEW: Enhanced shortcodes initialization with fallback
-     */
-    private function init_enhanced_shortcodes() {
-        // Try enhanced shortcodes first, fallback to original
-        if (class_exists('Vefify_Enhanced_Shortcodes')) {
-            try {
-                // Enhanced shortcodes will automatically extend your original shortcodes
-                $this->shortcodes = new Vefify_Enhanced_Shortcodes();
-                error_log("Vefify Quiz: Enhanced Shortcodes initialized successfully");
-            } catch (Exception $e) {
-                error_log("Vefify Quiz: Enhanced Shortcodes failed, using original: " . $e->getMessage());
-                $this->init_fallback_shortcodes();
-            }
-        } else {
-            // Use original shortcodes
-            $this->init_fallback_shortcodes();
-        }
-    }
-    
-    /**
-     * NEW: Fallback shortcodes initialization
-     */
-    private function init_fallback_shortcodes() {
-        if (class_exists('Vefify_Quiz_Shortcodes')) {
-            try {
-                $this->shortcodes = new Vefify_Quiz_Shortcodes();
-                error_log("Vefify Quiz: Original Shortcodes initialized successfully");
-            } catch (Exception $e) {
-                error_log("Vefify Quiz: Shortcodes initialization failed: " . $e->getMessage());
-                $this->shortcodes = null;
-            }
-        } else {
-            error_log("Vefify Quiz: Shortcodes class not found");
-            $this->shortcodes = null;
-        }
-    }
-    
-    /**
-     * Plugin activation - ENHANCED
+     * Plugin activation
      */
     public function activate() {
         try {
             error_log('Vefify Quiz: Starting activation...');
             
-            // Create database tables with enhanced version if available
+            // Create database tables
             if ($this->database) {
                 $this->database->create_tables();
                 error_log('Vefify Quiz: Database tables created');
                 
-                // Insert sample data if method exists
-                if (method_exists($this->database, 'insert_sample_data')) {
-                    $this->database->insert_sample_data();
-                    error_log('Vefify Quiz: Sample data inserted');
-                }
+                // Insert sample data
+                $this->database->insert_sample_data();
+                error_log('Vefify Quiz: Sample data inserted');
             } else {
                 error_log('Vefify Quiz: Database not available during activation');
             }
             
-            // Set activation flags (keep your existing logic)
+            // Set activation flag
             update_option('vefify_quiz_activated', true);
             update_option('vefify_quiz_version', VEFIFY_QUIZ_VERSION);
             
-            // NEW: Set enhanced version flag
-            update_option('vefify_quiz_enhanced', class_exists('Vefify_Enhanced_Database') && class_exists('Vefify_Enhanced_Shortcodes'));
-            
-            // Clear cache (keep your existing)
+            // Clear cache
             wp_cache_flush();
             
             error_log('Vefify Quiz: Activation completed successfully');
@@ -292,7 +217,7 @@ class Vefify_Quiz_Plugin {
     }
     
     /**
-     * Plugin deactivation - KEEP EXACTLY AS IS
+     * Plugin deactivation
      */
     public function deactivate() {
         delete_option('vefify_quiz_activated');
@@ -301,7 +226,7 @@ class Vefify_Quiz_Plugin {
     }
     
     /**
-     * Initialize plugin - KEEP EXACTLY AS IS
+     * Initialize plugin
      */
     public function init() {
         // Load text domain
@@ -312,7 +237,7 @@ class Vefify_Quiz_Plugin {
     }
     
     /**
-     * Admin initialization - KEEP EXACTLY AS IS
+     * Admin initialization
      */
     public function admin_init() {
         // Check if database tables exist (with null check)
@@ -354,7 +279,7 @@ class Vefify_Quiz_Plugin {
     }
     
     /**
-     * CENTRALIZED ADMIN MENU - KEEP EXACTLY AS IS
+     * CENTRALIZED ADMIN MENU - SAFE VERSION
      */
     public function add_admin_menu() {
         if ($this->admin_initialized) {
@@ -438,7 +363,7 @@ class Vefify_Quiz_Plugin {
     }
     
     /**
-     * Add emergency validation menu (uses external class) - KEEP EXACTLY AS IS
+     * Add emergency validation menu (uses external class)
      */
     public function add_emergency_validation_menu() {
         if (class_exists('Vefify_Quiz_Validation_Helper')) {
@@ -454,7 +379,7 @@ class Vefify_Quiz_Plugin {
     }
     
     /**
-     * Display dashboard with analytics - ENHANCED
+     * Display dashboard with analytics - SAFE VERSION
      */
     public function display_dashboard() {
         echo '<div class="wrap">';
@@ -515,7 +440,7 @@ class Vefify_Quiz_Plugin {
     }
     
     /**
-     * SAFE Get quick stats for dashboard - KEEP YOUR LOGIC, ADD ENHANCED FEATURES
+     * SAFE Get quick stats for dashboard
      */
     private function get_quick_stats_safe() {
         if (!$this->database) {
@@ -576,29 +501,27 @@ class Vefify_Quiz_Plugin {
     }
     
     /**
-     * Get fallback quick stats - ENHANCED with component status
+     * Get fallback quick stats
      */
     private function get_fallback_quick_stats() {
-        $enhanced_status = get_option('vefify_quiz_enhanced', false);
-        
         return array(
             array(
                 'title' => 'System Status',
-                'value' => $enhanced_status ? 'Enhanced' : 'Standard',
-                'icon' => $enhanced_status ? '🚀' : '⚙️',
-                'color' => $enhanced_status ? 'green' : 'blue'
+                'value' => 'Initializing...',
+                'icon' => '⚙️',
+                'color' => 'blue'
             ),
             array(
                 'title' => 'Database',
-                'value' => $this->database ? (($this->database instanceof Vefify_Enhanced_Database) ? 'Enhanced' : 'Standard') : 'Not Ready',
+                'value' => $this->database ? 'Connected' : 'Not Ready',
                 'icon' => '🗄️',
                 'color' => $this->database ? 'green' : 'orange'
             ),
             array(
-                'title' => 'Shortcodes',
-                'value' => $this->shortcodes ? (($this->shortcodes instanceof Vefify_Enhanced_Shortcodes) ? 'Enhanced' : 'Standard') : 'Not Ready',
-                'icon' => '🎯',
-                'color' => $this->shortcodes ? 'green' : 'orange'
+                'title' => 'Analytics',
+                'value' => $this->analytics ? 'Active' : 'Loading...',
+                'icon' => '📊',
+                'color' => $this->analytics ? 'green' : 'orange'
             ),
             array(
                 'title' => 'Plugin Version',
@@ -610,25 +533,9 @@ class Vefify_Quiz_Plugin {
     }
     
     /**
-     * Display simple dashboard - ENHANCED with status banner
+     * Display simple dashboard
      */
     private function display_simple_dashboard($analytics_data) {
-        // Enhanced status banner
-        $enhanced_status = get_option('vefify_quiz_enhanced', false);
-        
-        echo '<div style="background: ' . ($enhanced_status ? '#d4edda' : '#fff3cd') . '; border: 1px solid ' . ($enhanced_status ? '#c3e6cb' : '#ffeaa7') . '; padding: 15px; border-radius: 8px; margin: 20px 0;">';
-        echo '<h3 style="margin: 0 0 10px 0;">' . ($enhanced_status ? '🚀 Enhanced Features Active' : '⚙️ Standard Mode') . '</h3>';
-        echo '<p style="margin: 0;">';
-        if ($enhanced_status) {
-            echo 'Your quiz system is running with enhanced features including real-time progress tracking, advanced scoring, and gift management.';
-        } else {
-            echo 'Your quiz system is running in standard mode. Add the enhanced files to unlock advanced features.';
-        }
-        echo '</p>';
-        echo '</div>';
-        
-        // Keep your EXACT existing dashboard display code below this
-        
         // Quick Stats Cards
         echo '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin: 20px 0;">';
         
@@ -656,7 +563,7 @@ class Vefify_Quiz_Plugin {
         
         echo '</div>';
         
-        // Module Analytics Grid (keep your existing code)
+        // Module Analytics Grid
         echo '<h2>Module Status</h2>';
         echo '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0;">';
         
@@ -698,180 +605,22 @@ class Vefify_Quiz_Plugin {
         
         echo '</div>';
         
-        // Enhanced Emergency actions
+        // Emergency actions
         echo '<div style="background: #fff; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #f56e28;">';
-        echo '<h3>🚨 System Tools</h3>';
-        echo '<p>System management and troubleshooting tools:</p>';
+        echo '<h3>🚨 Emergency Actions</h3>';
+        echo '<p>If you\'re experiencing issues, use these emergency tools:</p>';
+        echo '<a href="' . admin_url('admin.php?page=vefify-emergency-validation') . '" class="button button-primary">🔧 System Validation</a> ';
         
-        echo '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">';
-        
-        // System Validation
-        echo '<div>';
-        echo '<a href="' . admin_url('admin.php?page=vefify-emergency-validation') . '" class="button button-primary" style="width: 100%;">🔧 System Validation</a>';
-        echo '<p style="font-size: 0.9em; color: #666; margin: 5px 0 0 0;">Check system health and fix issues</p>';
-        echo '</div>';
-        
-        // Database Tools
         if ($this->database) {
-            echo '<div>';
-            echo '<a href="' . wp_nonce_url(add_query_arg('recreate_tables', '1'), 'recreate_tables') . '" class="button" style="width: 100%;">🗄️ Recreate Database</a>';
-            echo '<p style="font-size: 0.9em; color: #666; margin: 5px 0 0 0;">Rebuild database tables</p>';
-            echo '</div>';
+            echo '<a href="' . wp_nonce_url(add_query_arg('recreate_tables', '1'), 'recreate_tables') . '" class="button">🗄️ Recreate Database</a> ';
         }
         
-        // Cache Management
-        echo '<div>';
-        echo '<a href="' . add_query_arg('clear_cache', '1') . '" class="button" style="width: 100%;">🗑️ Clear Cache</a>';
-        echo '<p style="font-size: 0.9em; color: #666; margin: 5px 0 0 0;">Clear all plugin caches</p>';
+        echo '<a href="' . add_query_arg('clear_cache', '1') . '" class="button">🗑️ Clear Cache</a>';
         echo '</div>';
-        
-        // Component Status
-        echo '<div>';
-        echo '<button type="button" class="button" onclick="vefifyShowComponentStatus()" style="width: 100%;">📊 Component Status</button>';
-        echo '<p style="font-size: 0.9em; color: #666; margin: 5px 0 0 0;">View detailed component info</p>';
-        echo '</div>';
-        
-        echo '</div>';
-        echo '</div>';
-        
-        // Add JavaScript for component status
-        ?>
-        <script>
-        function vefifyShowComponentStatus() {
-            jQuery.post(ajaxurl, {
-                action: 'vefify_get_component_status',
-                nonce: '<?php echo wp_create_nonce('vefify_admin_nonce'); ?>'
-            }, function(response) {
-                if (response.success) {
-                    let html = '<h3>📊 Component Status</h3><table class="wp-list-table widefat fixed striped">';
-                    html += '<thead><tr><th>Component</th><th>Class</th><th>Status</th><th>Enhanced</th></tr></thead><tbody>';
-                    
-                    Object.keys(response.data).forEach(function(key) {
-                        const component = response.data[key];
-                        if (typeof component === 'object' && component.class) {
-                            html += '<tr>';
-                            html += '<td><strong>' + key.charAt(0).toUpperCase() + key.slice(1) + '</strong></td>';
-                            html += '<td><code>' + component.class + '</code></td>';
-                            html += '<td><span style="color: ' + (component.status === 'Active' ? 'green' : 'red') + ';">● ' + component.status + '</span></td>';
-                            html += '<td>' + (component.enhanced ? '🚀 Yes' : '⚙️ Standard') + '</td>';
-                            html += '</tr>';
-                        }
-                    });
-                    
-                    html += '</tbody></table>';
-                    
-                    // Show in modal-like overlay
-                    jQuery('body').append('<div id="vefify-status-modal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 999999; display: flex; align-items: center; justify-content: center;"><div style="background: white; padding: 30px; border-radius: 8px; max-width: 80%; max-height: 80%; overflow: auto;">' + html + '<br><button onclick="jQuery(\'#vefify-status-modal\').remove()" class="button">Close</button></div></div>');
-                }
-            });
-        }
-        </script>
-        <?php
     }
     
     /**
-     * NEW: Get component status for debugging
-     */
-    public function get_component_status() {
-        return array(
-            'database' => array(
-                'class' => $this->database ? get_class($this->database) : 'Not initialized',
-                'enhanced' => $this->database instanceof Vefify_Enhanced_Database,
-                'status' => $this->database ? 'Active' : 'Failed'
-            ),
-            'shortcodes' => array(
-                'class' => $this->shortcodes ? get_class($this->shortcodes) : 'Not initialized',
-                'enhanced' => $this->shortcodes instanceof Vefify_Enhanced_Shortcodes,
-                'status' => $this->shortcodes ? 'Active' : 'Failed'
-            ),
-            'analytics' => array(
-                'class' => $this->analytics ? get_class($this->analytics) : 'Not initialized',
-                'status' => $this->analytics ? 'Active' : 'Failed'
-            ),
-            'modules' => array_map(function($module) {
-                return array(
-                    'class' => $module ? get_class($module) : 'Not loaded',
-                    'status' => $module ? 'Active' : 'Failed'
-                );
-            }, $this->modules)
-        );
-    }
-    
-    /**
-     * NEW: Enhanced frontend script enqueuing
-     */
-    public function enqueue_frontend_scripts() {
-        global $post;
-        
-        if (is_a($post, 'WP_Post') && (
-            has_shortcode($post->post_content, 'vefify_quiz') ||
-            has_shortcode($post->post_content, 'vefify_simple_test') ||
-            has_shortcode($post->post_content, 'vefify_test')
-        )) {
-            
-            wp_enqueue_script('jquery');
-            
-            // Choose JavaScript file based on available enhanced version
-            $js_file = 'assets/js/frontend-quiz.js'; // Default/fallback
-            
-            if (file_exists(VEFIFY_QUIZ_PLUGIN_DIR . 'assets/js/enhanced-frontend-quiz.js')) {
-                $js_file = 'assets/js/enhanced-frontend-quiz.js'; // Enhanced
-                error_log("Vefify Quiz: Loading enhanced frontend script");
-            } else {
-                error_log("Vefify Quiz: Loading original frontend script");
-            }
-            
-            wp_enqueue_script(
-                'vefify-quiz-frontend',
-                VEFIFY_QUIZ_PLUGIN_URL . $js_file,
-                array('jquery'),
-                VEFIFY_QUIZ_VERSION,
-                true
-            );
-            
-            // Enqueue CSS (keep your existing CSS)
-            wp_enqueue_style(
-                'vefify-quiz-frontend',
-                VEFIFY_QUIZ_PLUGIN_URL . 'assets/css/frontend-quiz.css',
-                array(),
-                VEFIFY_QUIZ_VERSION
-            );
-            
-            // Enhanced localization with feature detection
-            wp_localize_script('vefify-quiz-frontend', 'vefifyAjax', array(
-                'ajaxUrl' => admin_url('admin-ajax.php'),
-                'nonce' => wp_create_nonce('vefify_quiz_nonce'),
-                'isEnhanced' => $this->shortcodes instanceof Vefify_Enhanced_Shortcodes,
-                'version' => VEFIFY_QUIZ_VERSION,
-                'debug' => defined('WP_DEBUG') && WP_DEBUG,
-                'strings' => array(
-                    'loading' => __('Loading...', 'vefify-quiz'),
-                    'error' => __('An error occurred', 'vefify-quiz'),
-                    'success' => __('Success!', 'vefify-quiz'),
-                    'timeUp' => __('Time is up!', 'vefify-quiz'),
-                    'confirmFinish' => __('Are you sure you want to finish the quiz?', 'vefify-quiz'),
-                    'answerSaved' => __('Answer saved', 'vefify-quiz'),
-                    'quizCompleted' => __('Quiz completed successfully!', 'vefify-quiz')
-                )
-            ));
-        }
-    }
-    
-    /**
-     * NEW: AJAX - Get component status
-     */
-    public function ajax_get_component_status() {
-        if (!current_user_can('manage_options') || !wp_verify_nonce($_POST['nonce'], 'vefify_admin_nonce')) {
-            wp_send_json_error('Unauthorized');
-        }
-        
-        wp_send_json_success($this->get_component_status());
-    }
-    
-    // ... (KEEP ALL YOUR OTHER EXISTING METHODS EXACTLY AS IS)
-    
-    /**
-     * Safe helper methods - KEEP EXACTLY AS IS
+     * Safe helper methods
      */
     private function get_recent_activity_safe() {
         return array();
@@ -882,7 +631,7 @@ class Vefify_Quiz_Plugin {
     }
     
     /**
-     * Get fallback analytics data - KEEP EXACTLY AS IS
+     * Get fallback analytics data
      */
     private function get_fallback_analytics() {
         return array(
@@ -894,7 +643,7 @@ class Vefify_Quiz_Plugin {
     }
     
     /**
-     * Module display methods - KEEP ALL EXACTLY AS IS
+     * Module display methods - route to appropriate modules
      */
     public function display_campaigns() {
         if ($this->has_module('campaigns')) {
@@ -966,16 +715,14 @@ class Vefify_Quiz_Plugin {
     }
     
     public function display_settings() {
-        // Settings page - always available - ENHANCED with component info
+        // Settings page - always available
         echo '<div class="wrap">';
         echo '<h1>⚙️ Settings</h1>';
         echo '<div style="background: #fff; padding: 20px; border-radius: 8px; margin: 20px 0;">';
         echo '<h3>Plugin Information</h3>';
         echo '<p><strong>Version:</strong> ' . VEFIFY_QUIZ_VERSION . '</p>';
-        echo '<p><strong>Database Status:</strong> ' . ($this->database ? '✅ Connected (' . get_class($this->database) . ')' : '❌ Not Connected') . '</p>';
-        echo '<p><strong>Shortcodes Status:</strong> ' . ($this->shortcodes ? '✅ Active (' . get_class($this->shortcodes) . ')' : '❌ Not Active') . '</p>';
+        echo '<p><strong>Database Status:</strong> ' . ($this->database ? '✅ Connected' : '❌ Not Connected') . '</p>';
         echo '<p><strong>Analytics Status:</strong> ' . ($this->analytics ? '✅ Active' : '❌ Not Active') . '</p>';
-        echo '<p><strong>Enhanced Features:</strong> ' . (get_option('vefify_quiz_enhanced', false) ? '🚀 Active' : '⚙️ Standard Mode') . '</p>';
         echo '<h3>Emergency Actions</h3>';
         echo '<a href="' . admin_url('admin.php?page=vefify-emergency-validation') . '" class="button button-primary">Run System Validation</a>';
         echo '</div>';
@@ -983,7 +730,7 @@ class Vefify_Quiz_Plugin {
     }
     
     /**
-     * Display placeholder for inactive modules - KEEP EXACTLY AS IS
+     * Display placeholder for inactive modules
      */
     private function display_module_placeholder($module_name, $module_key) {
         echo '<div class="wrap">';
@@ -1003,7 +750,7 @@ class Vefify_Quiz_Plugin {
     }
     
     /**
-     * Display module error - KEEP EXACTLY AS IS
+     * Display module error
      */
     private function display_module_error($module_name, $error_message) {
         echo '<div class="wrap">';
@@ -1016,7 +763,7 @@ class Vefify_Quiz_Plugin {
     }
     
     /**
-     * Utility methods - KEEP EXACTLY AS IS + ADD SHORTCODE GETTER
+     * Utility methods
      */
     public function has_module($module_key) {
         return isset($this->modules[$module_key]) && $this->modules[$module_key] !== null;
@@ -1034,13 +781,8 @@ class Vefify_Quiz_Plugin {
         return $this->analytics;
     }
     
-    // NEW: Get shortcodes instance
-    public function get_shortcodes() {
-        return $this->shortcodes;
-    }
-    
     /**
-     * Enqueue admin assets - KEEP EXACTLY AS IS
+     * Enqueue admin assets
      */
     public function enqueue_admin_assets($hook) {
         if (strpos($hook, 'vefify') === false) {
@@ -1055,7 +797,7 @@ class Vefify_Quiz_Plugin {
     }
     
     /**
-     * AJAX: Refresh dashboard data - KEEP EXACTLY AS IS
+     * AJAX: Refresh dashboard data
      */
     public function ajax_refresh_dashboard() {
         if (!current_user_can('manage_options')) {
@@ -1075,7 +817,7 @@ class Vefify_Quiz_Plugin {
     }
     
     /**
-     * AJAX: Health check - KEEP EXACTLY AS IS
+     * AJAX: Health check
      */
     public function ajax_health_check() {
         if (!current_user_can('manage_options')) {
@@ -1097,7 +839,7 @@ class Vefify_Quiz_Plugin {
     }
     
     /**
-     * Maybe update database - KEEP EXACTLY AS IS
+     * Maybe update database
      */
     private function maybe_update_database() {
         $current_version = get_option('vefify_quiz_db_version', '0.0.0');
@@ -1115,15 +857,15 @@ class Vefify_Quiz_Plugin {
     }
 }
 
-// Initialize the plugin - KEEP EXACTLY AS IS
+// Initialize the plugin
 function vefify_quiz_init() {
     return Vefify_Quiz_Plugin::get_instance();
 }
 
-// Start the plugin - KEEP EXACTLY AS IS
+// Start the plugin
 add_action('plugins_loaded', 'vefify_quiz_init');
 
-// Global functions for backward compatibility - KEEP EXACTLY AS IS + ADD SHORTCODE GETTER
+// Global functions for backward compatibility
 function vefify_quiz() {
     return Vefify_Quiz_Plugin::get_instance();
 }
@@ -1138,63 +880,138 @@ function vefify_quiz_get_module($module_name) {
     return $plugin->get_module($module_name);
 }
 
-// NEW: Get shortcodes instance
-function vefify_quiz_get_shortcodes() {
-    $plugin = Vefify_Quiz_Plugin::get_instance();
-    return $plugin->get_shortcodes();
+/**
+ * SHORTCODE DEBUG AND TEST SCRIPT
+ * 
+ * Add this temporarily to your main plugin file to debug shortcode issues
+ */
+
+// Add this function to your main plugin class or functions.php temporarily
+function vefify_debug_shortcodes() {
+    if (!current_user_can('manage_options')) {
+        return;
+    }
+    
+    echo '<div style="background: #fff; padding: 20px; margin: 20px; border: 1px solid #ccc; border-radius: 8px;">';
+    echo '<h3>🔍 Vefify Quiz Shortcode Debug</h3>';
+    
+    // Check if shortcodes are registered
+    global $shortcode_tags;
+    echo '<h4>Registered Shortcodes:</h4>';
+    $vefify_shortcodes = array_filter($shortcode_tags, function($key) {
+        return strpos($key, 'vefify') !== false;
+    }, ARRAY_FILTER_USE_KEY);
+    
+    if (empty($vefify_shortcodes)) {
+        echo '<p style="color: red;">❌ No Vefify shortcodes found!</p>';
+        echo '<p><strong>Solution:</strong> Make sure class-shortcodes.php is loaded properly.</p>';
+    } else {
+        echo '<ul>';
+        foreach ($vefify_shortcodes as $tag => $callback) {
+            echo '<li>✅ <strong>' . $tag . '</strong> - ' . (is_array($callback) ? get_class($callback[0]) . '::' . $callback[1] : 'function') . '</li>';
+        }
+        echo '</ul>';
+    }
+    
+    // Check database connection
+    echo '<h4>Database Check:</h4>';
+    if (class_exists('Vefify_Quiz_Database')) {
+        $db = new Vefify_Quiz_Database();
+        $campaigns_table = $db->get_table_name('campaigns');
+        
+        global $wpdb;
+        $campaign_count = $wpdb->get_var("SELECT COUNT(*) FROM $campaigns_table WHERE is_active = 1");
+        
+        echo '<p>✅ Database class loaded</p>';
+        echo '<p>📊 Active campaigns: ' . $campaign_count . '</p>';
+        
+        if ($campaign_count > 0) {
+            $sample_campaign = $wpdb->get_row("SELECT * FROM $campaigns_table WHERE is_active = 1 LIMIT 1");
+            echo '<p>🎯 Sample campaign: <strong>' . $sample_campaign->name . '</strong> (ID: ' . $sample_campaign->id . ')</p>';
+        }
+    } else {
+        echo '<p style="color: red;">❌ Database class not found!</p>';
+    }
+    
+    // Test shortcode execution
+    echo '<h4>Shortcode Test:</h4>';
+    if (shortcode_exists('vefify_test')) {
+        echo '<p>Testing vefify_test shortcode:</p>';
+        echo do_shortcode('[vefify_test]');
+    }
+    
+    if (shortcode_exists('vefify_quiz')) {
+        echo '<p>Testing vefify_quiz shortcode with campaign_id=1:</p>';
+        echo '<div style="border: 1px solid #ddd; padding: 10px; margin: 10px 0;">';
+        echo do_shortcode('[vefify_quiz campaign_id="1" fields="name,email"]');
+        echo '</div>';
+    }
+    
+    // Show how to test
+    echo '<h4>📋 Test Instructions:</h4>';
+    echo '<ol>';
+    echo '<li>Create a new page in WordPress</li>';
+    echo '<li>Add this shortcode: <code>[vefify_test]</code></li>';
+    echo '<li>If it works, try: <code>[vefify_quiz campaign_id="1" fields="name,email,phone"]</code></li>';
+    echo '<li>Replace campaign_id with an actual campaign ID from your database</li>';
+    echo '</ol>';
+    
+    echo '</div>';
 }
 
+// Hook to show debug info in admin
+add_action('admin_notices', 'vefify_debug_shortcodes');
+
 /**
- * ENHANCED ADMIN NOTICES - Show enhancement status
+ * QUICK FIX FOR SHORTCODE PATH
+ * 
+ * Update your main plugin file load_dependencies() method:
  */
-add_action('admin_notices', function() {
-    if (current_user_can('manage_options')) {
-        $plugin = Vefify_Quiz_Plugin::get_instance();
+/*
+private function load_dependencies() {
+    $core_files = array(
+        'includes/class-database.php',
+        // ... other files ...
+        'includes/class-shortcodes.php'  // FIXED: Remove the extra 'includes/'
+    );
+    
+    foreach ($core_files as $file) {
+        $file_path = plugin_dir_path(__FILE__) . $file;
         
-        if (method_exists($plugin, 'get_component_status')) {
-            $status = $plugin->get_component_status();
-            
-            $enhanced_db = $status['database']['enhanced'] ?? false;
-            $enhanced_sc = $status['shortcodes']['enhanced'] ?? false;
-            
-            if ($enhanced_db && $enhanced_sc) {
-                // Show success notice only once
-                if (!get_transient('vefify_enhanced_notice_shown')) {
-                    echo '<div class="notice notice-success is-dismissible">';
-                    echo '<p><strong>🚀 Vefify Quiz Enhanced:</strong> All enhanced features are active and running perfectly!</p>';
-                    echo '</div>';
-                    set_transient('vefify_enhanced_notice_shown', true, DAY_IN_SECONDS);
-                }
-            } else if ($enhanced_db || $enhanced_sc) {
-                echo '<div class="notice notice-info is-dismissible">';
-                echo '<p><strong>⚡ Vefify Quiz:</strong> Partially enhanced. ';
-                if (!$enhanced_db) echo 'Enhanced database not loaded. ';
-                if (!$enhanced_sc) echo 'Enhanced shortcodes not loaded. ';
-                echo 'Check the <a href="' . admin_url('admin.php?page=vefify-emergency-validation') . '">System Status</a> page.</p>';
-                echo '</div>';
-            }
+        if (file_exists($file_path)) {
+            require_once $file_path;
+            error_log("Vefify Quiz: Loaded $file");
+        } else {
+            error_log("Vefify Quiz: File not found - $file_path");
         }
     }
-});
+}
+*/
 
 /**
- * ENHANCED DEBUG OUTPUT
+ * MANUAL SHORTCODE REGISTRATION (if auto-loading fails)
+ * 
+ * Add this to your main plugin activation or init:
  */
-add_action('wp_footer', function() {
-    if (defined('WP_DEBUG') && WP_DEBUG) {
-        $plugin = Vefify_Quiz_Plugin::get_instance();
-        if (method_exists($plugin, 'get_component_status')) {
-            $status = $plugin->get_component_status();
-            echo '<script>console.log("🎯 Vefify Quiz Enhanced Status:", ' . json_encode($status) . ');</script>';
+function vefify_manual_shortcode_init() {
+    // Check if shortcode class exists
+    if (class_exists('Vefify_Quiz_Shortcodes')) {
+        error_log('Vefify Quiz: Shortcode class found');
+        
+        // Initialize manually if needed
+        if (!shortcode_exists('vefify_quiz')) {
+            $shortcodes = new Vefify_Quiz_Shortcodes();
+            error_log('Vefify Quiz: Shortcodes manually initialized');
         }
+    } else {
+        error_log('Vefify Quiz: Shortcode class NOT found');
     }
-});
+}
+add_action('init', 'vefify_manual_shortcode_init', 20);
 
 /**
- * KEEP YOUR EXISTING DEBUG FUNCTIONS - ALL EXACTLY AS IS
+ * SIMPLE TEST SHORTCODE (add this to main plugin file temporarily)
  */
-
-// Keep your existing simple test shortcode
 function vefify_simple_test_shortcode($atts) {
     $atts = shortcode_atts(array(
         'campaign_id' => '1'
@@ -1205,141 +1022,33 @@ function vefify_simple_test_shortcode($atts) {
                 <p>Campaign ID: ' . esc_html($atts['campaign_id']) . '</p>
                 <p>Current time: ' . current_time('Y-m-d H:i:s') . '</p>
                 <p>If you see this, shortcodes are working!</p>
-                <p>Plugin File Constant: ' . (defined('VEFIFY_QUIZ_PLUGIN_FILE') ? '✅ Defined' : '❌ Not Defined') . '</p>
             </div>';
 }
 add_shortcode('vefify_simple_test', 'vefify_simple_test_shortcode');
-add_filter('query_vars', function($vars) {
-    $quiz_vars = array(
-        'campaign_id',
-        'vefify_nonce', 
-        'name',
-        'phone',
-        'email',
-        'province',
-        'pharmacy_code',
-        'occupation',
-        'company',
-        'age',
-        '_wp_http_referer'
-    );
-    
-    return array_merge($vars, $quiz_vars);
-});
 
 /**
- * 🔧 Handle template redirect to prevent 404
+ * TROUBLESHOOTING CHECKLIST
  */
-add_action('template_redirect', function() {
-    global $wp_query;
-    
-    // Check if we're on a page with quiz parameters
-    if (is_page() && (get_query_var('campaign_id') || isset($_GET['campaign_id']))) {
-        global $post;
-        
-        // Verify this page has the quiz shortcode
-        if ($post && has_shortcode($post->post_content, 'vefify_quiz')) {
-            
-            // Set query vars from GET parameters
-            foreach ($_GET as $key => $value) {
-                if (in_array($key, array('campaign_id', 'name', 'phone', 'email', 'province', 'pharmacy_code', 'vefify_nonce'))) {
-                    set_query_var($key, sanitize_text_field($value));
-                }
-            }
-            
-            // Prevent 404 error
-            $wp_query->is_404 = false;
-            status_header(200);
-            
-            // Debug logging
-            if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log('🔧 Fix #2: Prevented 404 for quiz page with parameters');
-                error_log('Campaign ID: ' . get_query_var('campaign_id'));
-                error_log('Request URI: ' . $_SERVER['REQUEST_URI']);
-            }
-        }
-    }
-});
+/*
+1. ✅ Check file path: Should be 'includes/class-shortcodes.php' (not 'includes/includes/...')
 
-/**
- * 🔧 Pre-get posts filter to handle quiz pages
- */
-add_action('pre_get_posts', function($query) {
-    if (!is_admin() && $query->is_main_query()) {
-        // If we have quiz parameters, ensure the page loads
-        if (isset($_GET['campaign_id']) && is_page()) {
-            $query->set('ignore_sticky_posts', true);
-        }
-    }
-});
+2. ✅ Verify file upload: Make sure the file is actually uploaded to the correct location
 
-/**
- * 🔧 Plugin activation hook - flush rewrite rules
- */
-register_activation_hook(__FILE__, function() {
-    // Flush rewrite rules to ensure proper URL handling
-    flush_rewrite_rules();
-    
-    // Set flag to indicate rewrite rules were flushed
-    update_option('vefify_quiz_permalinks_flushed', time());
-    
-    error_log('🔧 Fix #3: Rewrite rules flushed on plugin activation');
-});
+3. ✅ Check for PHP errors: Look at error logs for any syntax errors
 
-/**
- * 🔧 Check and flush rewrite rules if needed
- */
-add_action('init', function() {
-    // Check if we need to flush rewrite rules
-    $last_flush = get_option('vefify_quiz_permalinks_flushed', 0);
-    $plugin_version_option = get_option('vefify_quiz_version', '0');
-    
-    // Flush if this is a new version or if never flushed
-    if ($plugin_version_option !== VEFIFY_QUIZ_VERSION || !$last_flush) {
-        flush_rewrite_rules();
-        update_option('vefify_quiz_permalinks_flushed', time());
-        update_option('vefify_quiz_version', VEFIFY_QUIZ_VERSION);
-        
-        if (defined('WP_DEBUG') && WP_DEBUG) {
-            error_log('🔧 Fix #3: Rewrite rules flushed - Version: ' . VEFIFY_QUIZ_VERSION);
-        }
-    }
-});
+4. ✅ Test simple shortcode first: Try [vefify_simple_test] to see if shortcodes work at all
 
-/**
- * 🔧 Manual flush function for debugging
- * Call this function to manually flush permalinks
- */
-function vefify_quiz_flush_rewrite_rules() {
-    flush_rewrite_rules(true); // Hard flush
-    update_option('vefify_quiz_permalinks_flushed', time());
-    
-    if (defined('WP_DEBUG') && WP_DEBUG) {
-        error_log('🔧 Fix #3: Manual rewrite rules flush completed');
-    }
-    
-    return 'Rewrite rules flushed successfully';
-}
+5. ✅ Check database: Make sure you have active campaigns to display
 
-/**
- * 🔧 Add admin notice for manual flush
- */
-add_action('admin_notices', function() {
-    if (current_user_can('manage_options') && isset($_GET['vefify_flush_rules'])) {
-        $result = vefify_quiz_flush_rewrite_rules();
-        echo '<div class="notice notice-success is-dismissible">';
-        echo '<p><strong>🔧 Vefify Quiz:</strong> ' . esc_html($result) . '</p>';
-        echo '</div>';
-    }
-});
+6. ✅ Clear cache: If using caching plugins, clear them
 
-/**
- * 🔧 Add debug info to admin
- */
-add_action('admin_footer', function() {
-    if (defined('WP_DEBUG') && WP_DEBUG && current_user_can('manage_options')) {
-        $last_flush = get_option('vefify_quiz_permalinks_flushed', 0);
-        echo '<!-- Vefify Quiz Debug: Last permalink flush: ' . date('Y-m-d H:i:s', $last_flush) . ' -->';
-    }
-});
+7. ✅ Check theme compatibility: Try with a default theme
+
+Common Issues:
+- Wrong file path in load_dependencies()
+- PHP syntax errors in shortcode file
+- Database connection issues
+- Missing campaigns in database
+- Caching plugins interfering
+*/
 ?>
