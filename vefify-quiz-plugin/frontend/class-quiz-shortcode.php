@@ -69,28 +69,332 @@ class Vefify_Quiz_Shortcode {
      * [vefify_quiz campaign_id="1" fields="name,email,phone,company"]
      */
     public function render_quiz($atts) {
-        $atts = shortcode_atts(array(
-            'campaign_id' => 0,
-            'fields' => 'name,email,phone,company'
-        ), $atts);
+    $atts = shortcode_atts(array(
+        'campaign_id' => 0,
+        'fields' => 'name,email,phone,company' // Default fields
+    ), $atts);
+    
+    $campaign_id = intval($atts['campaign_id']);
+    
+    if (!$campaign_id) {
+        return '<div class="error-box">❌ Campaign ID required. Usage: [vefify_quiz campaign_id="1"]</div>';
+    }
+    
+    // Get campaign data
+    $campaign = $this->get_campaign_data($campaign_id);
+    if (!$campaign) {
+        return '<div class="error-box">❌ Campaign not found (ID: ' . $campaign_id . ')</div>';
+    }
+    
+    // FIXED: Parse requested fields properly
+    $requested_fields = array_map('trim', explode(',', $atts['fields']));
+    
+    // Available field definitions
+    $available_fields = $this->get_available_field_definitions();
+    
+    // Filter to only show requested fields that exist
+    $valid_fields = array();
+    foreach ($requested_fields as $field_key) {
+        if (isset($available_fields[$field_key])) {
+            $valid_fields[] = $field_key;
+        }
+    }
+    
+    if (empty($valid_fields)) {
+        return '<div class="error-box">❌ No valid fields specified. Available: ' . implode(', ', array_keys($available_fields)) . '</div>';
+    }
+    
+    ob_start();
+    ?>
+    
+    <!-- SIMPLE LAYOUT WITH FIELD FILTERING -->
+    <div class="simple-quiz-container">
         
-        $campaign_id = intval($atts['campaign_id']);
+        <!-- Title -->
+        <h2 class="quiz-title"><?php echo esc_html($campaign['name']); ?></h2>
         
-        if (!$campaign_id) {
-            return '<div class="error-box">❌ Campaign ID required. Usage: [vefify_quiz campaign_id="1"]</div>';
+        <!-- Info Pills -->
+        <div class="quiz-info">
+            <span class="info-pill">📝 <?php echo $campaign['questions_per_quiz']; ?> Câu hỏi</span>
+            <span class="info-pill">⏱️ <?php echo round($campaign['time_limit'] / 60); ?> phút</span>
+            <span class="info-pill">🎯 Điểm đậu: <?php echo $campaign['pass_score']; ?></span>
+        </div>
+        
+        <!-- Registration Form -->
+        <div class="registration-box">
+            <h3>📋 Nhập thông tin của bạn</h3>
+            
+            <form id="quiz-form" class="simple-form" method="GET">
+                <input type="hidden" name="campaign_id" value="<?php echo $campaign_id; ?>">
+                <?php wp_nonce_field('vefify_quiz_nonce', 'vefify_nonce'); ?>
+                
+                <!-- RENDER ONLY REQUESTED FIELDS -->
+                <?php foreach ($valid_fields as $field_key): ?>
+                    <?php if (isset($available_fields[$field_key])): ?>
+                        <?php echo $this->render_single_field($field_key, $available_fields[$field_key]); ?>
+                    <?php endif; ?>
+                <?php endforeach; ?>
+                
+                <button type="submit" class="start-btn">🚀 Bắt đầu làm bài</button>
+            </form>
+        </div>
+        
+        <!-- Debug Info -->
+        <div class="debug-box">
+            <small>
+                <strong>Debug:</strong> 
+                Campaign ID: <?php echo $campaign_id; ?> | 
+                Requested Fields: <?php echo esc_html($atts['fields']); ?> | 
+                Valid Fields: <?php echo implode(', ', $valid_fields); ?> | 
+                Total Available: <?php echo count($available_fields); ?> |
+                Status: <?php echo $this->is_campaign_active($campaign) ? 'Active' : 'Inactive'; ?>
+            </small>
+        </div>
+        
+        <!-- Simple CSS -->
+        <style>
+        .simple-quiz-container {
+            max-width: 600px;
+            margin: 20px auto;
+            background: #fff;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
         
-        // Get campaign data
-        $campaign = $this->get_campaign_data($campaign_id);
-        if (!$campaign) {
-            return '<div class="error-box">❌ Campaign not found (ID: ' . $campaign_id . ')</div>';
+        .quiz-title {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 20px;
+            font-size: 28px;
         }
         
-        // Parse fields
-        $requested_fields = array_map('trim', explode(',', $atts['fields']));
+        .quiz-info {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
         
-        ob_start();
-        ?>
+        .info-pill {
+            background: #3498db;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+        }
+        
+        .registration-box {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        
+        .registration-box h3 {
+            margin: 0 0 20px 0;
+            color: #34495e;
+            text-align: center;
+        }
+        
+        .simple-form .form-field {
+            margin-bottom: 20px;
+        }
+        
+        .simple-form label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #555;
+        }
+        
+        .simple-form input, .simple-form select {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        
+        .simple-form input:focus, .simple-form select:focus {
+            outline: none;
+            border-color: #3498db;
+        }
+        
+        .start-btn {
+            width: 100%;
+            background: #3498db;
+            color: white;
+            padding: 15px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        
+        .start-btn:hover {
+            background: #2980b9;
+        }
+        
+        .debug-box {
+            background: #f1f2f6;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #3498db;
+            margin-top: 20px;
+        }
+        
+        .error-box {
+            background: #ffe6e6;
+            color: #d63031;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #d63031;
+            margin: 20px 0;
+        }
+        
+        @media (max-width: 768px) {
+            .simple-quiz-container {
+                margin: 10px;
+                padding: 20px;
+            }
+            
+            .quiz-info {
+                flex-direction: column;
+                align-items: center;
+            }
+        }
+        </style>
+    </div>
+    
+    <?php
+    return ob_get_clean();
+}
+
+/**
+ * 📝 RENDER SINGLE FIELD (Helper method)
+ */
+private function render_single_field($field_key, $field_config) {
+    ob_start();
+    ?>
+    <div class="form-field">
+        <label for="<?php echo esc_attr($field_key); ?>">
+            <?php echo esc_html($field_config['label']); ?>
+            <?php if ($field_config['required']): ?>
+                <span style="color: #e74c3c;">*</span>
+            <?php endif; ?>
+        </label>
+        
+        <?php if ($field_config['type'] === 'select'): ?>
+            <select name="<?php echo esc_attr($field_key); ?>" id="<?php echo esc_attr($field_key); ?>" <?php echo $field_config['required'] ? 'required' : ''; ?>>
+                <option value="">-- Chọn <?php echo esc_html($field_config['label']); ?> --</option>
+                <?php foreach ($field_config['options'] as $value => $label): ?>
+                    <option value="<?php echo esc_attr($value); ?>" <?php selected($_GET[$field_key] ?? '', $value); ?>>
+                        <?php echo esc_html($label); ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        <?php else: ?>
+            <input 
+                type="<?php echo esc_attr($field_config['type']); ?>"
+                name="<?php echo esc_attr($field_key); ?>"
+                id="<?php echo esc_attr($field_key); ?>"
+                value="<?php echo esc_attr($_GET[$field_key] ?? ''); ?>"
+                placeholder="<?php echo esc_attr($field_config['placeholder'] ?? ''); ?>"
+                <?php echo isset($field_config['pattern']) ? 'pattern="' . esc_attr($field_config['pattern']) . '"' : ''; ?>
+                <?php echo $field_config['required'] ? 'required' : ''; ?>
+            >
+        <?php endif; ?>
+        
+        <?php if (isset($field_config['help'])): ?>
+            <small style="color: #666; font-size: 12px; display: block; margin-top: 5px;">
+                <?php echo esc_html($field_config['help']); ?>
+            </small>
+        <?php endif; ?>
+    </div>
+    <?php
+    return ob_get_clean();
+}
+
+/**
+ * 📋 GET AVAILABLE FIELD DEFINITIONS
+ */
+private function get_available_field_definitions() {
+    return array(
+        'name' => array(
+            'label' => 'Họ và tên',
+            'type' => 'text',
+            'placeholder' => 'Nhập họ và tên đầy đủ',
+            'required' => true
+        ),
+        'email' => array(
+            'label' => 'Email',
+            'type' => 'email',
+            'placeholder' => 'Nhập địa chỉ email',
+            'required' => false
+        ),
+        'phone' => array(
+            'label' => 'Số điện thoại',
+            'type' => 'tel',
+            'placeholder' => '0938474356',
+            'pattern' => '^(0[0-9]{9,10}|84[0-9]{9,10})$',
+            'required' => true,
+            'help' => 'Định dạng: 0938474356 hoặc 84938474356'
+        ),
+        'company' => array(
+            'label' => 'Công ty/Tổ chức',
+            'type' => 'text',
+            'placeholder' => 'Nhập tên công ty',
+            'required' => false
+        ),
+        'province' => array(
+            'label' => 'Tỉnh/Thành phố',
+            'type' => 'select',
+            'required' => false,
+            'options' => array(
+                'hanoi' => 'Hà Nội',
+                'hcmc' => 'TP. Hồ Chí Minh',
+                'danang' => 'Đà Nẵng',
+                'haiphong' => 'Hải Phòng',
+                'cantho' => 'Cần Thơ',
+                'other' => 'Khác'
+            )
+        ),
+        'pharmacy_code' => array(
+            'label' => 'Mã số nhà thuốc',
+            'type' => 'text',
+            'placeholder' => 'NT-123456',
+            'pattern' => '[A-Z]{2}-[0-9]{6}',
+            'required' => false,
+            'help' => 'Định dạng: XX-######'
+        ),
+        'occupation' => array(
+            'label' => 'Nghề nghiệp',
+            'type' => 'select',
+            'required' => false,
+            'options' => array(
+                'pharmacist' => 'Dược sĩ',
+                'doctor' => 'Bác sĩ',
+                'nurse' => 'Y tá',
+                'student' => 'Sinh viên',
+                'business' => 'Kinh doanh',
+                'other' => 'Khác'
+            )
+        ),
+        'age' => array(
+            'label' => 'Tuổi',
+            'type' => 'number',
+            'placeholder' => 'Nhập tuổi',
+            'required' => false
+        )
+    );
+}
+?>
         
         <!-- SIMPLE LAYOUT WITH VIETNAMESE PHONE -->
         <div class="simple-quiz-container">
